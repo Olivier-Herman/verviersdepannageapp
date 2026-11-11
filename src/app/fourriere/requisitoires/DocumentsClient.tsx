@@ -29,13 +29,13 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
 
   return (
     <AppShell title="Documents" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
-      <div className={habille ? 'px-3 lg:px-6 pt-5 max-w-[1800px] mx-auto space-y-3' : 'px-3 lg:px-6 pt-5 max-w-5xl mx-auto space-y-3'}>
+      <div className={habille ? 'px-3 lg:px-6 pt-5 max-w-[1800px] min-w-0 [contain:inline-size] mx-auto space-y-3' : 'px-3 lg:px-6 pt-5 max-w-5xl mx-auto space-y-3'}>
         <div className={habille ? 'rounded-3xl text-white shadow-md p-5 lg:p-7 bg-[radial-gradient(120%_160%_at_100%_0%,#4c1d95_0%,#17110f_62%)]' : ''}>
           <h1 className={habille ? 'text-2xl lg:text-3xl font-extrabold tracking-tight' : 'text-ink text-2xl font-bold leading-tight'}>{habille ? 'Réquisitoires' : '📄 Documents police'}</h1>
           <p className={habille ? 'text-white/75 text-sm mt-1' : 'text-ink-muted text-sm mt-0.5'}>Réquisitoires et levées : ce qui est arrivé et attend une fiche, ce qui manque et attend un policier.</p>
         </div>
         {habille && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] lg:grid-cols-[repeat(3,minmax(0,1fr))] gap-3">
             <button onClick={() => setTab('recus')} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm bg-amber-50 border-amber-300 text-amber-900 ${tab === 'recus' ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
               <b className="block text-3xl font-extrabold leading-none tabular-nums">{pendingCount}</b><span className="text-[13px] font-semibold">Reçus à rattacher</span>
             </button>
@@ -59,9 +59,11 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
           { dot: 'bg-sky-500', label: 'Manquants', text: 'le réquisitoire n\'est pas là : chez le policier (portail, rappel à 7 j) — ou à nous s\'il n\'est pas identifié' },
         ]} />
       </div>
+      <div className={habille ? '[contain:inline-size]' : undefined}>
       {tab === 'recus'
         ? <RequisitoiresClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded />
         : <RelanceRequisitoireClient initialItems={relanceItems} appUrl={appUrl} embedded />}
+      </div>
     </AppShell>
   )
 }

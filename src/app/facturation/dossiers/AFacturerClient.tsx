@@ -331,7 +331,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   ]
 
   return (
-    <div className={habille ? 'px-3 lg:px-6 py-5 space-y-4 max-w-[1800px] mx-auto' : 'px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto'}>
+    <div className={habille ? 'px-3 lg:px-6 py-5 space-y-4 max-w-[1800px] min-w-0 [contain:inline-size] mx-auto' : 'px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto'}>
       {/* En-tête */}
       <div className={habille ? 'rounded-3xl text-white shadow-md p-5 lg:p-7 flex items-end justify-between flex-wrap gap-4 bg-[radial-gradient(120%_160%_at_100%_0%,#6d111c_0%,#17110f_62%)]' : 'flex items-end justify-between flex-wrap gap-3'}>
         <div>
@@ -341,9 +341,9 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
             {counts.robot ? ` · ${counts.robot} au robot` : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''} · le montant s'affiche à l'ouverture du dossier
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Plaque, n°, client, dossier, facture…" className={habille ? 'w-64 lg:w-80 bg-white/10 border border-white/25 rounded-2xl pl-4 pr-9 min-h-[48px] text-base text-white placeholder:text-white/60 focus:outline-none focus:border-white' : 'w-56 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand'} />
+        <div className={habille ? 'flex items-center gap-2 w-full sm:w-auto' : 'flex items-center gap-2'}>
+          <div className={habille ? 'relative flex-1 min-w-0' : 'relative'}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Plaque, n°, client, dossier, facture…" className={habille ? 'w-full sm:w-80 bg-white/10 border border-white/25 rounded-2xl pl-4 pr-9 min-h-[48px] text-base text-white placeholder:text-white/60 focus:outline-none focus:border-white' : 'w-56 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand'} />
             {search && <button onClick={() => setSearch('')} className={`absolute right-2 top-1/2 -translate-y-1/2 ${habille ? 'text-white/70 hover:text-white p-2' : 'text-ink-faint hover:text-ink'}`}>×</button>}
           </div>
           <button onClick={() => router.refresh()} className={habille ? 'min-h-[48px] min-w-[48px] bg-white/10 hover:bg-white/20 border border-white/25 rounded-2xl text-base' : 'px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary'} title="Rafraîchir">↻</button>
@@ -367,10 +367,10 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
       {afterHeader}
       {/* Onglets = qui a la main */}
       {habille ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] sm:grid-cols-[repeat(3,minmax(0,1fr))] xl:grid-cols-[repeat(5,minmax(0,1fr))] gap-2 sm:gap-3">
           {TABS.map(t => { const w = t.key !== 'all' ? WHO[t.key as Who] : null; return (
-            <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${w ? w.cls : 'bg-surface text-ink'} ${filter === t.key ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
-              <b className="block text-3xl font-extrabold leading-none tabular-nums">{counts[t.key] || 0}</b>
+            <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`text-left rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 min-h-[64px] sm:min-h-[80px] border shadow-sm ${w ? w.cls : 'bg-surface text-ink'} ${filter === t.key ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
+              <b className="block text-2xl sm:text-3xl font-extrabold leading-none tabular-nums">{counts[t.key] || 0}</b>
               <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold mt-1">{t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}{t.label}</span>
             </button>) })}
         </div>
@@ -405,7 +405,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
         </div>
       )}
 
-      <div className={habille ? 'grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start' : 'space-y-4'}>
+      <div className={habille ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>
       {visible.map(d => {
         const r = readings.get(d.root_id)!
         const who = WHO[r.who]
