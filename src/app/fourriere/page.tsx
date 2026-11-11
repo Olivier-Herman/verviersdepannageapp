@@ -27,7 +27,7 @@ export default async function FourrierePage() {
   // fourriere_v2) ; les autres gardent la recherche. La recherche reste sur
   // /fourriere/recherche pour tout le monde.
   if (await isPreviewOn('fourriere_v2', role, user.id)) {
-    return <ParcClient userRole={role} userName={user.name || ''} userEmail={user.email} userModules={modules} />
+    return <ParcClient userRole={role} userName={user.name || ''} userEmail={user.email} userModules={modules} journee={await isPreviewOn('ma_journee', role, user.id)} />
   }
   return (
     <FourriereSearchClient

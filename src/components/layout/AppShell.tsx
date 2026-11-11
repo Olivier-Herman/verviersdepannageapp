@@ -134,7 +134,10 @@ export default function AppShell({
         setNavBadges(d.badges || {})
         setNavV2Flag(!!d.flags?.nav_menu_v2)
         setNavEspacesFlag(!!d.flags?.nav_espaces)
-        setNavFlags(d.flags && typeof d.flags === 'object' ? d.flags : {})
+        // « Revenir à l'ancien menu » (préversion ma_journee, 11/11/2026) : réglage du navigateur, réversible depuis Ma journée.
+        const f = d.flags && typeof d.flags === 'object' ? { ...d.flags } : {}
+        try { if (f.ma_journee && localStorage.getItem('vd_ma_journee_off') === '1') f.ma_journee = false } catch {}
+        setNavFlags(f)
         if (d.work) setWork(d.work)
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
