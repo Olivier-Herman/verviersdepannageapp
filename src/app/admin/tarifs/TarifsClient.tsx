@@ -6,6 +6,7 @@ import AppShell from '@/components/layout/AppShell'
 import RulesPanel from './RulesPanel'
 import { Search, X, Plus, FileText, FileUp, PenLine, Trash2 } from 'lucide-react'
 import BandeauChiffres from '@/components/admin/BandeauChiffres'
+import { Fenetre, BoutonsPied, Etape, ChampNombre, ChampDate, ChampTexteLong, ChampListe, Pastilles, CartesChoix, Interrupteur, Note } from '@/components/admin/Fenetre'
 import { normaliser } from '@/lib/admin/reglages'
 
 interface Props {
@@ -905,193 +906,121 @@ export default function TarifsClient(props: Props) {
         )}
         </>}
 
-        {/* ── Edit modal ────────────────────────────────────── */}
-        {editTariff && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <h2 className="text-lg font-display font-bold mb-4">
-                {editTariff.id ? '✏️ Modifier le tarif' : '➕ Nouveau tarif manuel'}
-              </h2>
-              <div className="grid grid-cols-2 gap-3">
-                <FieldSelect label="Source" value={editTariff.source || ''} options={sortedSources.map(s => s.source)} optionLabels={SOURCE_LABELS} onChange={v => setEditTariff(p => {
-                  const allowed = typesForSource(v)
-                  const type = allowed.includes(p!.mission_type || '') ? p!.mission_type : allowed[0]
-                  return { ...p!, source: v, mission_type: type }
-                })} />
-                <FieldSelect label="Type mission" value={editTariff.mission_type || ''} options={typesForSource(editTariff.source || '')} optionLabels={TYPE_LABELS} onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
+        {/* ── Fenêtre d'ajout / modification (maquette validée par Olivier le 11/11/2026) ── */}
+        {editTariff && (() => {
+          const mode = editTariff.pricing_mode || 'forfait'
+          const isRel = editTariff.mission_type === 'relivraison'
+          const relMode = editTariff.rel_mode || 'forfait'
+          const champsForfait = mode === 'forfait' && !(isRel && !['forfait', 'after_included'].includes(relMode))
+          const fr = (n: number) => n.toFixed(2).replace('.', ',')
+          // « En clair » : le tarif redit pendant la saisie.
+          const enClair = (() => {
+            if (!champsForfait) return null
+            const u = editTariff.unit_price, k = editTariff.km_inclus || 0, km = editTariff.km_price
+            if (u == null && km == null) return null
+            const morceaux: string[] = []
+            if (u != null) morceaux.push(`${fr(u)} €${k ? ` pour ${k} km` : ''}`)
+            if (km != null) morceaux.push(`${u != null ? 'puis ' : ''}${fr(km)} € par km${u == null && k ? ` au-delà de ${k} km` : ''}`)
+            return `En clair : ${morceaux.join(', ')}.`
+          })()
+          return (
+            <Fenetre
+              titre={editTariff.id ? 'Modifier le tarif' : 'Nouveau tarif'}
+              sousTitre={editTariff.id ? `${SOURCE_LABELS[editTariff.source || ''] || editTariff.source} · ${libelleType(editTariff.mission_type || '')}` : 'Quatre étapes, de haut en bas'}
+              couleur="success" icone={editTariff.id ? <PenLine size={24} /> : <Plus size={26} />}
+              onClose={() => setEditTariff(null)}
+              pied={<BoutonsPied couleur="success" onAnnuler={() => setEditTariff(null)} onValider={handleEditSave} enCours={editSaving} libelle={editTariff.id ? 'Enregistrer' : 'Créer le tarif'} />}
+            >
+              <Etape n={1} titre="Pour qui ?">
+                <ChampListe label="Assistance" valeur={editTariff.source || ''}
+                  options={sortedSources.map(x => ({ value: x.source, label: x.label || x.source }))}
+                  onChange={v => setEditTariff(p => {
+                    const allowed = typesForSource(v)
+                    const type = allowed.includes(p!.mission_type || '') ? p!.mission_type : allowed[0]
+                    return { ...p!, source: v, mission_type: type }
+                  })} />
+                <Pastilles label="Type d’intervention" couleur="success" valeur={editTariff.mission_type || ''}
+                  options={typesForSource(editTariff.source || '').map(t => ({ value: t, label: libelleType(t) }))}
+                  onChange={v => setEditTariff(p => ({ ...p!, mission_type: v }))} />
+              </Etape>
 
-                {/* Toggle pricing mode : forfait vs brackets vs lines */}
-                <div className="col-span-2 bg-info/5 border border-info/30 rounded p-2">
-                  <label className="text-[10px] text-info uppercase tracking-wider font-semibold">Mode de tarification</label>
-                  <div className="flex flex-col gap-1.5 mt-1.5 text-xs">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="pricing_mode"
-                        checked={(editTariff.pricing_mode || 'forfait') === 'forfait'}
-                        onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'forfait' }))}
-                      />
-                      <span>📐 <strong>Forfait</strong> (forfait + km supp + majorations classiques)</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="pricing_mode"
-                        checked={editTariff.pricing_mode === 'brackets'}
-                        onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'brackets' }))}
-                      />
-                      <span>📊 <strong>Tranches de km</strong> (IPA style, majoration intégrée)</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="pricing_mode"
-                        checked={editTariff.pricing_mode === 'lines'}
-                        onChange={() => setEditTariff(p => ({ ...p!, pricing_mode: 'lines' }))}
-                      />
-                      <span>📋 <strong>Lignes pré-configurées</strong> (set de prestations, qty/PU saisies à la facturation)</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Relivraison : la règle par assisteur (Olivier 21/09/2026) */}
-                {editTariff.mission_type === 'relivraison' && (
-                  <>
-                    <div className="col-span-2">
-                      <label className="text-[10px] text-ink-faint uppercase tracking-wider">Relivraison — mode de facturation</label>
-                      <select
-                        value={editTariff.rel_mode || 'forfait'}
-                        onChange={e => setEditTariff(p => ({ ...p!, rel_mode: e.target.value as any }))}
-                        className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                      >
-                        {Object.entries(REL_MODE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-[10px] text-ink-faint uppercase tracking-wider">Départ des km</label>
-                      <select
-                        value={editTariff.rel_depart || 'parc'}
-                        onChange={e => setEditTariff(p => ({ ...p!, rel_depart: e.target.value as any }))}
-                        className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                      >
-                        {Object.entries(REL_DEPART_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                    </div>
-                    {(editTariff.rel_mode || 'forfait') === 'all_km' && (
-                      <FieldNumber label="€/km (tous les km)" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
-                    )}
-                    {(editTariff.rel_mode || 'forfait') === 'rem_tariff' && (
-                      <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
-                        La relivraison se calcule avec la grille <strong>Remorquage</strong> de cette source. Rien d'autre à régler ici.
-                      </div>
-                    )}
-                    {(editTariff.rel_mode || 'forfait') === 'after_included' && (
-                      <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
-                        Le forfait est facturé sur le remorquage ; la relivraison ne facture que les km au-delà des km inclus que le remorquage n'a pas consommés (total du dossier).
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Champs forfait — masques si mode brackets, ou si la relivraison n'est pas en mode forfait */}
-                {(editTariff.pricing_mode || 'forfait') === 'forfait' && !(editTariff.mission_type === 'relivraison' && !['forfait', 'after_included'].includes(editTariff.rel_mode || 'forfait')) && (
-                  <>
-                    <FieldNumber label="Forfait €" value={editTariff.unit_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
-                    <FieldNumber label="Km inclus" value={editTariff.km_inclus ?? 0} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
-                    <FieldNumber label="€/km extra" value={editTariff.km_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
-                    <FieldNumber label="€/jour parc" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
-                  </>
-                )}
-
-                {/* Champs brackets — visible si mode brackets */}
-                {editTariff.pricing_mode === 'brackets' && (
-                  <>
-                    <FieldNumber label="Limite max (km)" value={editTariff.beyond_max_km ?? null} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_km: v }))} />
-                    <FieldNumber label="Pas au-delà (km)" value={editTariff.beyond_max_step_km ?? null} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_step_km: v }))} />
-                    <FieldNumber label="€ / pas" value={editTariff.beyond_max_step_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_step_price: v }))} />
-                    <FieldNumber label="€/jour parc (optionnel)" value={editTariff.parc_day_price ?? null} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
-                    <div className="col-span-2 bg-warning/5 border border-warning/30 rounded p-2 text-xs text-ink-faint">
-                      ⚠️ Après création, clique sur la ligne dans le tableau pour ajouter les tranches (from_km, to_km, prix normal, prix majoré).
-                    </div>
-                  </>
-                )}
-
-                {/* Mode lines : pas de champ structurel, juste un hint */}
-                {editTariff.pricing_mode === 'lines' && (
-                  <div className="col-span-2 bg-warning/5 border border-warning/30 rounded p-2 text-xs text-ink-faint">
-                    ⚠️ Après création, clique sur la ligne dans le tableau pour ajouter les lignes pré-configurées (kind + nom + qty/PU par défaut).
-                    La ligne <strong>SERV-MAJ</strong> sera ajoutée automatiquement à la facturation si une majoration est applicable (matrice surcharges).
+              <Etape n={2} titre="Comment on calcule ?">
+                <CartesChoix valeur={mode} onChange={v => setEditTariff(p => ({ ...p!, pricing_mode: v as Tariff['pricing_mode'] }))} options={[
+                  { value: 'forfait',  titre: 'Forfait',        desc: 'Un prix fixe, puis un prix au km' },
+                  { value: 'brackets', titre: 'Par tranches',   desc: 'Un prix selon la distance, majoration comprise' },
+                  { value: 'lines',    titre: 'Lignes prévues', desc: 'Prestations ajustées à la facturation' },
+                ]} />
+                {isRel && (
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <ChampListe label="Relivraison : ce qu’on facture" valeur={relMode}
+                      options={Object.entries(REL_MODE_SHORT).map(([value, label]) => ({ value, label }))}
+                      onChange={v => setEditTariff(p => ({ ...p!, rel_mode: v as any }))} />
+                    <ChampListe label="Départ des km" valeur={editTariff.rel_depart || 'parc'}
+                      options={Object.entries(REL_DEPART_LABELS).map(([value, label]) => ({ value, label }))}
+                      onChange={v => setEditTariff(p => ({ ...p!, rel_depart: v as any }))} />
                   </div>
                 )}
+                {isRel && <p className="text-ink-muted text-sm">{REL_MODE_LABELS[relMode]}</p>}
+              </Etape>
 
-                <div className="col-span-2">
-                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Base de calcul des km</label>
-                  <select
-                    value={editTariff.km_basis || 'total'}
-                    onChange={e => setEditTariff(p => ({ ...p!, km_basis: e.target.value as 'charged' | 'total' }))}
-                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                  >
-                    <option value="total">Km totaux (dépôt → incident → destination → retour) — privé / garage / IPA</option>
-                    <option value="charged">Km chargés (incident → destination) — assurances</option>
-                  </select>
-                </div>
-                <div className="col-span-2 bg-brand/5 border border-brand/20 rounded p-2 text-xs text-ink-faint">
-                  💡 <strong>Majorations</strong> (mode Forfait) gérées par le module <a href="/admin/surcharges" className="underline">Surcharges</a>. En mode Tranches, les majorations sont intégrées dans le prix majoré de chaque bracket (selon heure d'appel &lt; 7h, ≥ 18h, sa, di, JF BE).
-                </div>
-                <div>
-                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Effective from</label>
-                  <input
-                    type="date"
-                    value={editTariff.effective_from || ''}
-                    onChange={e => setEditTariff(p => ({ ...p!, effective_from: e.target.value }))}
-                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Effective to (vide = en vigueur)</label>
-                  <input
-                    type="date"
-                    value={editTariff.effective_to || ''}
-                    onChange={e => setEditTariff(p => ({ ...p!, effective_to: e.target.value || null }))}
-                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-[10px] text-ink-faint uppercase tracking-wider">Conditions / Notes</label>
-                  <textarea
-                    value={editTariff.conditions || ''}
-                    onChange={e => setEditTariff(p => ({ ...p!, conditions: e.target.value }))}
-                    rows={2}
-                    className="w-full px-2 py-1 bg-surface-hover rounded text-sm"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-ink-faint flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={editTariff.is_autofac || false}
-                      onChange={e => setEditTariff(p => ({ ...p!, is_autofac: e.target.checked }))}
-                    />
-                    Autofacturation (l'assurance facture elle-même, pas de facture VD)
-                  </label>
-                </div>
-                {editTariff.notes && (
-                  <div className="col-span-2 text-xs text-ink-faint italic border-l-2 border-brand/30 pl-2">
-                    {editTariff.notes}
-                  </div>
+              <Etape n={3} titre="Les prix, hors TVA">
+                {champsForfait && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <ChampNombre label="Forfait" unite="€" valeur={editTariff.unit_price} onChange={v => setEditTariff(p => ({ ...p!, unit_price: v }))} />
+                      <ChampNombre label="Km inclus" unite="km" placeholder="0" valeur={editTariff.km_inclus || null} onChange={v => setEditTariff(p => ({ ...p!, km_inclus: v ?? 0 }))} />
+                      <ChampNombre label="Prix du km en plus" unite="€ / km" valeur={editTariff.km_price} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
+                      <ChampNombre label="Parc, par jour" unite="€ / jour" placeholder="Facultatif" valeur={editTariff.parc_day_price} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+                    </div>
+                    {enClair && <Note ton="clair">{enClair}</Note>}
+                  </>
                 )}
-              </div>
-              <div className="flex gap-2 mt-6">
-                <button onClick={() => setEditTariff(null)} disabled={editSaving} className="flex-1 px-4 py-2 bg-surface-hover rounded text-sm">
-                  Annuler
-                </button>
-                <button onClick={handleEditSave} disabled={editSaving} className="flex-1 px-4 py-2 bg-brand text-surface rounded font-medium text-sm disabled:opacity-50">
-                  {editSaving ? '⏳ Enregistrement…' : (editTariff.id ? '💾 Modifier' : '➕ Créer')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+                {mode === 'forfait' && isRel && relMode === 'all_km' && (
+                  <ChampNombre label="Prix du km (tous les km)" unite="€ / km" valeur={editTariff.km_price} onChange={v => setEditTariff(p => ({ ...p!, km_price: v }))} />
+                )}
+                {mode === 'forfait' && isRel && relMode === 'rem_tariff' && (
+                  <Note>La relivraison se calcule avec la grille <b>Remorquage</b> de cette assistance. Rien d’autre à régler ici.</Note>
+                )}
+                {mode === 'forfait' && isRel && relMode === 'after_included' && (
+                  <Note>Le forfait est facturé sur le remorquage ; la relivraison ne facture que les km au-delà des km inclus que le remorquage n’a pas utilisés.</Note>
+                )}
+                {mode === 'brackets' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <ChampNombre label="Dernière tranche jusqu’à" unite="km" valeur={editTariff.beyond_max_km} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_km: v }))} />
+                      <ChampNombre label="Au-delà, par pas de" unite="km" valeur={editTariff.beyond_max_step_km} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_step_km: v }))} />
+                      <ChampNombre label="Prix de chaque pas" unite="€" valeur={editTariff.beyond_max_step_price} onChange={v => setEditTariff(p => ({ ...p!, beyond_max_step_price: v }))} />
+                      <ChampNombre label="Parc, par jour" unite="€ / jour" placeholder="Facultatif" valeur={editTariff.parc_day_price} onChange={v => setEditTariff(p => ({ ...p!, parc_day_price: v }))} />
+                    </div>
+                    <Note ton="attention">{editTariff.id ? 'Les tranches se règlent en touchant ce tarif dans sa carte.' : 'Après la création, touchez ce tarif dans sa carte pour saisir les tranches (de… à… km, prix normal et prix majoré).'}</Note>
+                  </>
+                )}
+                {mode === 'lines' && (
+                  <Note ton="attention">{editTariff.id ? 'Les lignes se règlent en touchant ce tarif dans sa carte.' : 'Après la création, touchez ce tarif dans sa carte pour saisir les lignes prévues.'} La majoration s’ajoute toute seule à la facturation quand elle s’applique.</Note>
+                )}
+                <ChampListe label="Km comptés" valeur={editTariff.km_basis || 'total'} onChange={v => setEditTariff(p => ({ ...p!, km_basis: v as 'charged' | 'total' }))} options={[
+                  { value: 'total',   label: 'Tous : dépôt, lieu, destination, retour' },
+                  { value: 'charged', label: 'Seulement le trajet chargé : lieu → destination' },
+                ]} />
+                <p className="text-ink-muted text-sm">
+                  {mode === 'brackets' ? 'Nuit, week-end et fériés : compris dans le prix majoré de chaque tranche.' : <>Nuit, week-end et fériés : à régler dans l’onglet <a href="/admin/surcharges" className="underline font-medium text-ink-secondary">Majorations</a>.</>}
+                </p>
+              </Etape>
+
+              <Etape n={4} titre="Validité et remarques">
+                <div className="grid grid-cols-2 gap-3">
+                  <ChampDate label="Valable à partir du" valeur={editTariff.effective_from} onChange={v => setEditTariff(p => ({ ...p!, effective_from: v || '' }))} />
+                  <ChampDate label="Jusqu’au" placeholder="sans fin" valeur={editTariff.effective_to} onChange={v => setEditTariff(p => ({ ...p!, effective_to: v }))} />
+                </div>
+                <ChampTexteLong label="Remarques" placeholder="Conditions particulières, source du barème…" lignes={2}
+                  valeur={editTariff.conditions} onChange={v => setEditTariff(p => ({ ...p!, conditions: v }))} />
+                <Interrupteur label="L’assistance se facture elle-même" aide="Aucune facture n’est créée chez nous pour ce tarif"
+                  valeur={!!editTariff.is_autofac} onChange={v => setEditTariff(p => ({ ...p!, is_autofac: v }))} />
+                {editTariff.notes && <Note>{editTariff.notes}</Note>}
+              </Etape>
+            </Fenetre>
+          )
+        })()}
 
         {/* ── Brackets editor modal (tarifs IPA en mode "brackets") ─────────── */}
         {bracketsModal && (

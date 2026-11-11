@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Trash2, X, Edit2, Eye, EyeOff, ChevronRight, Search, AlertTriangle } from 'lucide-react'
 import BandeauChiffres from '@/components/admin/BandeauChiffres'
+import { Fenetre, BoutonsPied, Etape, ChampTexte, ChampNombre, ChampListe, ChampTexteLong, Interrupteur, Note } from '@/components/admin/Fenetre'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 
 interface Source {
@@ -283,51 +284,44 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
     }
   }
 
+  // Fenêtre au modèle commun des écrans de Réglages (Olivier 11/11/2026, maquette validée).
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-      <div onClick={e => e.stopPropagation()} className="bg-surface w-full max-w-md rounded-2xl border p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-ink font-semibold">{isNew ? 'Ajouter une source' : 'Modifier la source'}</h3>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink"><X size={20} /></button>
-        </div>
+    <Fenetre titre={isNew ? 'Nouvelle source' : 'Modifier la source'} sousTitre={isNew ? 'Quatre étapes, de haut en bas' : label}
+      couleur="info" icone={isNew ? <Plus size={26} /> : <Edit2 size={22} />} onClose={onClose}
+      pied={<BoutonsPied couleur="info" onAnnuler={onClose} onValider={save} enCours={saving} desactive={!label.trim()} libelle={isNew ? 'Créer la source' : 'Enregistrer'} />}>
 
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Libellé</label>
-          <input value={label} onChange={e => { setLabel(e.target.value); setError(null) }}
-            placeholder="Ex: Touring"
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand" />
-        </div>
-
+      <Etape n={1} titre="La source">
+        <ChampTexte grand label="Nom affiché" placeholder="Ex. : Touring" valeur={label} onChange={v => { setLabel(v); setError(null) }} />
         {isNew && (
-          <div>
-            <label className="block text-ink-muted text-xs mb-1">Clé technique (optionnel)</label>
-            <input value={key} onChange={e => setKey(e.target.value)}
-              placeholder={autoKey || 'auto-générée depuis le libellé'}
-              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
-            <p className="text-ink-muted text-xs mt-1">
-              Doit matcher la valeur dans <span className="font-mono">incoming_missions.source</span>. Auto-générée : <span className="font-mono text-ink-secondary">{autoKey || '—'}</span>
-            </p>
-          </div>
+          <ChampTexte label="Code interne (facultatif)" placeholder={autoKey || 'créé à partir du nom'} valeur={key} onChange={setKey}
+            aide={`Doit correspondre au code des missions de cette source. Proposé : ${autoKey || '—'}`} />
         )}
-
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-ink-muted text-xs mb-1">Ordre d'affichage</label>
-            <input type="number" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value) || 100)}
-              className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
+          <ChampNombre label="Ordre dans les listes" valeur={sortOrder} onChange={v => setSortOrder(v ?? 100)} />
+          <div className="flex items-center gap-3 rounded-2xl bg-surface-hover/60 border border-strong px-4">
+            <span className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-md ${displayColor || 'bg-stone-500'}`}>{(label.match(/\p{L}/u)?.[0] || '?').toUpperCase()}</span>
+            <span className="text-ink-muted text-sm">Aperçu</span>
           </div>
         </div>
-
         <div>
-          <label className="block text-ink-muted text-xs mb-1">Client à facturer par défaut (optionnel)</label>
-          <p className="text-ink-faint text-[11px] mb-2">
-            Si défini, les missions de cette source seront pré-remplies avec ce client. Le dispatcher peut toujours le modifier.
-          </p>
+          <span className="block text-ink-muted text-sm mb-1.5">Couleur</span>
+          <div className="flex flex-wrap gap-2">
+            {COLOR_PALETTE.map(c => (
+              <button key={c.value} type="button" onClick={() => setDisplayColor(c.value)} title={c.label} aria-label={c.label}
+                className={`w-11 h-11 rounded-2xl ${c.value} transition ${displayColor === c.value ? 'ring-4 ring-offset-2 ring-sky-400' : 'opacity-75 hover:opacity-100'}`} />
+            ))}
+            {displayColor && <button type="button" onClick={() => setDisplayColor('')} className="min-h-[44px] px-3 text-sm text-ink-muted hover:text-ink">Sans couleur</button>}
+          </div>
+        </div>
+      </Etape>
+
+      <Etape n={2} titre="Facturation">
+        <div>
+          <span className="block text-ink-muted text-sm mb-1.5">Client facturé par défaut</span>
           {defaultBilledId ? (
-            <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success/30 rounded-xl">
-              <span className="text-success text-xs flex-1 truncate">✓ {defaultBilledName}</span>
-              <button onClick={clearClient} type="button"
-                className="text-ink-muted hover:text-critical text-xs">✕ retirer</button>
+            <div className="flex items-center gap-2 min-h-[52px] px-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+              <span className="text-emerald-800 font-semibold flex-1 truncate">✓ {defaultBilledName}</span>
+              <button onClick={clearClient} type="button" className="min-h-[44px] px-3 text-sm text-ink-muted hover:text-red-700">Retirer</button>
             </div>
           ) : (
             <div className="relative">
@@ -337,141 +331,57 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
                 onFocus={() => setShowClientDrop(true)}
                 onBlur={() => setTimeout(() => setShowClientDrop(false), 200)}
                 placeholder="Chercher un client (3 lettres puis Entrée)…"
-                className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
+                className="w-full min-h-[52px] rounded-2xl bg-surface-hover/60 border border-strong px-4 text-ink text-base outline-none focus:border-ink-faint placeholder:text-ink-faint" />
               {showClientDrop && clientResults.length > 0 && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+                <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface border border-strong rounded-2xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
                   {clientResults.map(c => (
-                    <button key={c.id} type="button"
-                      onMouseDown={() => selectClient(c)}
-                      className="w-full text-left px-3 py-2 hover:bg-surface-hover text-ink text-sm border-b last:border-b-0">
-                      {c.name}
-                    </button>
+                    <button key={c.id} type="button" onMouseDown={() => selectClient(c)}
+                      className="w-full text-left min-h-[48px] px-4 hover:bg-surface-hover text-ink border-b border-strong last:border-b-0">{c.name}</button>
                   ))}
                 </div>
               )}
-              {clientSearching && (
-                <p className="text-ink-faint text-xs mt-1">⏳ Recherche…</p>
-              )}
+              {clientSearching && <p className="text-ink-muted text-sm mt-1.5 px-1">Recherche…</p>}
             </div>
           )}
+          <p className="text-ink-muted text-sm mt-1.5 px-1">Pré-rempli sur les missions de cette source ; le dispatch peut le changer.</p>
         </div>
-
         <div>
-          <label className="block text-ink-muted text-xs mb-1">Client à facturer pour un accident police (optionnel)</label>
-          <p className="text-ink-faint text-[11px] mb-2">
-            Quand un véhicule d'un appel police accident part en dossier chez cette assistance, c'est ce client qui est facturé. Vide : le client par défaut ci-dessus.
-          </p>
+          <span className="block text-ink-muted text-sm mb-1.5">Client facturé pour un accident police</span>
           <OdooClientPick value={accidentBilled} onChange={setAccidentBilled} />
+          <p className="text-ink-muted text-sm mt-1.5 px-1">Vide : le client par défaut ci-dessus.</p>
         </div>
+        <Interrupteur label="Sans facturation (transport interne)" aide="La mission clôturée est archivée directement, sans passer par la facturation."
+          valeur={skipFacturation} onChange={setSkipFacturation} />
+      </Etape>
 
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Parc par défaut (mise en parc)</label>
-          <p className="text-ink-faint text-[11px] mb-2">
-            Si défini, la mise en parc d'un véhicule de cette source pré-sélectionne ce dépôt. Le dispatcher/chauffeur peut toujours en choisir un autre.
-          </p>
-          <select value={defaultDepotId} onChange={e => {
-              const newDepot = e.target.value
-              setDefaultDepotId(newDepot)
-              // Reset la zone si elle n'appartient plus au dépôt choisi.
+      <Etape n={3} titre="Mise en parc">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <ChampListe label="Parc par défaut" valeur={defaultDepotId}
+            options={[{ value: '', label: 'Aucun : choisi à chaque fois' }, ...depots.map(d => ({ value: d.id, label: d.name }))]}
+            onChange={nouveau => {
+              setDefaultDepotId(nouveau)
+              // La zone ne suit pas un changement de parc qu'elle ne couvre pas.
               if (defaultZoneKey) {
                 const z = zones.find(z => z.key === defaultZoneKey)
-                if (newDepot && z && z.depot_id && z.depot_id !== newDepot) setDefaultZoneKey('')
+                if (nouveau && z && z.depot_id && z.depot_id !== nouveau) setDefaultZoneKey('')
               }
-            }}
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand">
-            <option value="">— Aucun (choix manuel à chaque fois)</option>
-            {depots.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-
-          {/* Zone par défaut : filtrée sur le dépôt choisi (sinon toutes). */}
-          <label className="block text-ink-muted text-xs mb-1 mt-3">Zone par défaut dans ce parc</label>
-          <select value={defaultZoneKey} onChange={e => setDefaultZoneKey(e.target.value)}
-            disabled={!defaultDepotId}
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand disabled:opacity-50">
-            <option value="">— Aucune (choix manuel à chaque fois)</option>
-            {zones
-              .filter(z => !defaultDepotId || !z.depot_id || z.depot_id === defaultDepotId)
-              .map(z => (
-                <option key={z.key} value={z.key}>{parcZoneLabel(z.key)}</option>
-              ))}
-          </select>
-          {!defaultDepotId && (
-            <p className="text-ink-faint text-[11px] mt-1">Choisis d'abord un parc pour pouvoir fixer une zone.</p>
-          )}
+            }} />
+          {defaultDepotId ? (
+            <ChampListe label="Zone par défaut" valeur={defaultZoneKey}
+              options={[{ value: '', label: 'Aucune : choisie à chaque fois' }, ...zones.filter(z => !z.depot_id || z.depot_id === defaultDepotId).map(z => ({ value: z.key, label: parcZoneLabel(z.key) }))]}
+              onChange={setDefaultZoneKey} />
+          ) : <p className="text-ink-muted text-sm self-end pb-3 px-1">Choisissez d’abord un parc pour fixer une zone.</p>}
         </div>
+      </Etape>
 
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Couleur du badge</label>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {COLOR_PALETTE.map(c => (
-              <button key={c.value} type="button"
-                onClick={() => setDisplayColor(c.value)}
-                title={`${c.label} — ${c.value}`}
-                className={`w-7 h-7 rounded-md ${c.value} ${displayColor === c.value ? 'ring-2 ring-offset-2 ring-brand' : 'opacity-70 hover:opacity-100'} transition`}
-              />
-            ))}
-            {displayColor && (
-              <button type="button" onClick={() => setDisplayColor('')}
-                className="text-ink-muted hover:text-critical text-xs px-2">✕ effacer</button>
-            )}
-          </div>
-          <input value={displayColor} onChange={e => setDisplayColor(e.target.value)}
-            placeholder="bg-blue-600 (classe Tailwind)"
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
-          {displayColor && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${displayColor}`}>{label || 'Aperçu'}</span>
-              <span className="text-ink-faint text-xs">aperçu badge</span>
-            </div>
-          )}
-        </div>
+      <Etape n={4} titre="Regroupement et notes">
+        <ChampTexte label="Groupe dans « Nouvelle mission » (facultatif)" placeholder="Ex. : police" valeur={groupKey} onChange={setGroupKey}
+          aide="Les sources d’un même groupe sont proposées sous un seul choix. Vide : source à part." />
+        <ChampTexteLong label="Notes" placeholder="Contrat signé le…, contact…" lignes={2} valeur={notes} onChange={setNotes} />
+      </Etape>
 
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Groupe UI (optionnel)</label>
-          <input value={groupKey} onChange={e => setGroupKey(e.target.value)}
-            placeholder="ex: police (regroupe les sources sous un meta-choix dans /dispatch/new)"
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono focus:outline-none focus:border-brand" />
-          <p className="text-ink-faint text-[11px] mt-1">
-            Sources avec le même groupe sont regroupées sous un menu unique. Laisser vide pour une source autonome.
-          </p>
-        </div>
-
-        <button type="button" onClick={() => setSkipFacturation(v => !v)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition ${
-            skipFacturation ? 'bg-amber-50 border-amber-400' : 'bg-surface-2 border'
-          }`}>
-          <span className={`w-5 h-5 rounded flex items-center justify-center text-white text-xs flex-shrink-0 ${skipFacturation ? 'bg-amber-600' : 'bg-ink-faint'}`}>
-            {skipFacturation ? '✓' : ''}
-          </span>
-          <span>
-            <span className="block text-ink text-sm font-medium">Sans facturation (transport interne)</span>
-            <span className="block text-ink-muted text-xs">La mission clôturée par le chauffeur est archivée directement, sans passer par /facturation.</span>
-          </span>
-        </button>
-
-        <div>
-          <label className="block text-ink-muted text-xs mb-1">Notes (optionnel)</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-            placeholder="Contrat signé le..., contact..., etc."
-            className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand resize-none" />
-        </div>
-
-        {error && <div className="bg-critical-soft border border-critical rounded-lg p-2 text-critical text-xs">⚠ {error}</div>}
-
-        <div className="flex gap-2 pt-2">
-          <button onClick={onClose} disabled={saving}
-            className="flex-1 py-2 bg-surface-2 hover:bg-surface-hover border text-ink-secondary rounded-xl text-sm transition">
-            Annuler
-          </button>
-          <button onClick={save} disabled={saving || !label.trim()}
-            className="flex-1 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition">
-            {saving ? '⏳…' : isNew ? 'Créer' : 'Enregistrer'}
-          </button>
-        </div>
-      </div>
-    </div>
+      {error && <Note ton="attention">{error}</Note>}
+    </Fenetre>
   )
 }
 
@@ -488,19 +398,19 @@ function OdooClientPick({ value, onChange }: { value: { id: number; name: string
     catch { setResults([]) } finally { setBusy(false) }
   }
   if (value) return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success/30 rounded-xl">
-      <span className="text-success text-xs flex-1 truncate">✓ {value.name} <span className="text-ink-muted">(n° {value.id})</span></span>
-      <button onClick={() => onChange(null)} type="button" className="text-ink-muted hover:text-critical text-xs">✕ retirer</button>
+    <div className="flex items-center gap-2 min-h-[52px] px-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+      <span className="text-emerald-800 font-semibold flex-1 truncate">✓ {value.name}</span>
+      <button onClick={() => onChange(null)} type="button" className="min-h-[44px] px-3 text-sm text-ink-muted hover:text-red-700">Retirer</button>
     </div>
   )
   return (
     <div>
       <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); search() } }}
-        placeholder="Rechercher un client (3 lettres + Entrée)…"
-        className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
+        placeholder="Chercher un client (3 lettres puis Entrée)…"
+        className="w-full min-h-[52px] rounded-2xl bg-surface-hover/60 border border-strong px-4 text-ink text-base outline-none focus:border-ink-faint placeholder:text-ink-faint" />
       {busy && <p className="text-ink-faint text-xs mt-1">Recherche…</p>}
-      {results.length > 0 && <div className="mt-1 bg-surface border rounded-xl overflow-hidden max-h-56 overflow-y-auto">
-        {results.map(c => <button key={c.id} type="button" onClick={() => { onChange(c); setQ(''); setResults([]) }} className="w-full text-left px-3 py-2 hover:bg-surface-hover text-ink text-sm border-b last:border-b-0">{c.name} <span className="text-ink-muted text-xs">n° {c.id}</span></button>)}
+      {results.length > 0 && <div className="mt-1 bg-surface border border-strong rounded-2xl overflow-hidden max-h-56 overflow-y-auto">
+        {results.map(c => <button key={c.id} type="button" onClick={() => { onChange(c); setQ(''); setResults([]) }} className="w-full text-left min-h-[48px] px-4 hover:bg-surface-hover text-ink border-b border-strong last:border-b-0">{c.name}</button>)}
       </div>}
     </div>
   )
