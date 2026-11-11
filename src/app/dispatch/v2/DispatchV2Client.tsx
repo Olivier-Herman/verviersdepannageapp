@@ -59,6 +59,22 @@ function etat(m: M): { txt: string; cls: string } {
 }
 // Compte à rebours ou ancienneté, recalculé chaque seconde.
 function minutesDepuis(iso: string | null | undefined, now: number) { return iso ? Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000)) : 0 }
+// Panne lisible (affichage seulement, la donnée ne change pas) : les assistances (Touring surtout)
+// envoient « retroviseurs//U2//P1//0000000000 0444555//Incident//vandalisme ». On coupe sur « // »,
+// on retire les codes courts (U2, P1) et les suites de chiffres, on évite les doublons.
+function panneLisible(t?: string | null): string {
+  if (!t) return ''
+  if (!t.includes('//')) return t.trim()
+  const vus = new Set<string>(), morceaux: string[] = []
+  for (const brut of t.split('//')) {
+    const x = brut.trim()
+    if (!x || /^[A-Z]{1,2}\d{1,2}$/.test(x) || /^[\d\s.\-/]+$/.test(x)) continue
+    const k = x.toLowerCase()
+    if (vus.has(k)) continue
+    vus.add(k); morceaux.push(morceaux.length ? x.toLowerCase() : x.charAt(0).toUpperCase() + x.slice(1).toLowerCase())
+  }
+  return morceaux.join(' · ') || t.trim()
+}
 function duree(min: number) {
   if (min < 60) return `${min} min`
   if (min < 24 * 60) return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`
@@ -215,7 +231,7 @@ const DetailTel = ({ m }: { m: M }) => (
         {([
           ['Lieu', court(m.incident_address) || m.incident_city],
           ['Vers', m.destination_name || m.destination_address ? [court(m.destination_name), court(m.destination_address)].filter(Boolean).join(', ') : ''],
-          ['Panne', m.incident_description],
+          ['Panne', panneLisible(m.incident_description)],
           ['Véhicule', vehicule(m)],
           ['Reçue', m.received_at ? new Date(m.received_at).toLocaleString('fr-BE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''],
         ] as const).filter(([, v]) => v).map(([k, v]) => (
@@ -551,7 +567,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                           </td>
                           <td className="px-2 py-2"><div className="flex gap-1.5 items-center flex-wrap"><Source m={m} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(m)}</span></div>
                             <div className="mt-1 flex gap-1.5 items-center flex-wrap"><Plaque m={m} /><span className="text-stone-600">{vehicule(m)}</span></div></td>
-                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{court(m.incident_address) || m.incident_city || '—'}</div>{(m.destination_name || m.destination_address) && <div className="text-stone-500 truncate">→ {court(m.destination_name || m.destination_address)}</div>}{m.incident_description && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{m.incident_description}</div>}</td>
+                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{court(m.incident_address) || m.incident_city || '—'}</div>{(m.destination_name || m.destination_address) && <div className="text-stone-500 truncate">→ {court(m.destination_name || m.destination_address)}</div>}{m.incident_description && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{panneLisible(m.incident_description)}</div>}</td>
                           <td className="px-2 py-2 text-stone-900">{m.assigned_user?.name || <span className="text-stone-400">—</span>}</td>
                         </tr>
                       )
@@ -596,7 +612,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     ['Véhicule', vehicule(sel)],
                     ['Lieu', court(sel.incident_address) || sel.incident_city],
                     ['Vers', sel.destination_name || sel.destination_address ? [court(sel.destination_name), court(sel.destination_address)].filter(Boolean).join(', ') : ''],
-                    ['Panne', sel.incident_description],
+                    ['Panne', panneLisible(sel.incident_description)],
                     ['Délai', sel.limite ? `accepter chez ${getSourceLabel(sel.source, sources)} avant ${hm(new Date(sel.limite))}` : sel.intervention_date && new Date(sel.intervention_date).getTime() > now ? `prévue à ${hm(new Date(sel.intervention_date))}` : ''],
                     ['Chauffeur', sel.assigned_user?.name || 'Aucun'],
                     ['Dossier', sel.dossier_number || sel.external_id],
