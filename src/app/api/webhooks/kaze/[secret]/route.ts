@@ -145,12 +145,35 @@ export async function POST(req: NextRequest, { params }: { params: { secret: str
         }
       } else if (action === 'import') {
         result.import = await importKazeJob(kazeJobId, { webhookEventId: eventId })
-        // Stocke le proposal_id sur la mission importée (best-effort).
-        const importedId = (result.import as any)?.mission_id
-        if (proposalId && importedId) {
+        // Stocke le proposal_id sur la mission (best-effort).
+        // La proposition et les « job_cell_updated » arrivent dans la même
+        // seconde : c'est souvent un AUTRE événement qui crée la fiche, et
+        // l'import de la proposition revient alors sans mission_id. Sans ce
+        // numéro, « Valider » n'accepte rien chez Kaze et la proposition expire
+        // (2EHC951, 11/11/2026 : IMA « pas validé dans Kaze »). On retrouve donc
+        // la fiche par son job Kaze, en laissant à l'autre import le temps de finir.
+        if (proposalId) {
           try {
             const sb2 = createAdminClient()
-            await sb2.from('incoming_missions').update({ kaze_proposal_id: proposalId }).eq('id', importedId)
+            let targetId: string | null = (result.import as any)?.mission_id || null
+            for (let essai = 0; !targetId && essai < 5; essai++) {
+              await new Promise(r => setTimeout(r, 1500))
+              const { data: f } = await sb2.from('incoming_missions').select('id')
+                .eq('kaze_job_id', kazeJobId).eq('dossier_leg', false).maybeSingle()
+              targetId = (f as any)?.id || null
+            }
+            if (targetId) {
+              await sb2.from('incoming_missions').update({ kaze_proposal_id: proposalId }).eq('id', targetId)
+              // Fiche déjà validée par le dispatch avant que le numéro n'arrive :
+              // on accepte maintenant chez Kaze.
+              const { data: f } = await sb2.from('incoming_missions').select('status').eq('id', targetId).maybeSingle()
+              if (f && !['new', 'cancelled', 'ignored'].includes(String((f as any).status))) {
+                const { acceptKazeProposalBg } = await import('@/lib/missions/provider-accept-bg')
+                await acceptKazeProposalBg(targetId, proposalId, null, sb2)
+              }
+            } else {
+              console.warn('[kaze-webhook] proposition sans fiche :', kazeJobId, proposalId)
+            }
           } catch (e: any) {
             console.warn('[kaze-webhook] set kaze_proposal_id failed:', e?.message)
           }

@@ -25,6 +25,7 @@ import { odooRpc } from '@/lib/odoo'
 import {
   fetchAllTransactions,
   paymentIdFromLabel,
+  payoutIdFromCommunication,
   tidFromLabel,
   type PaynovateTx,
 } from '@/lib/paynovate'
@@ -151,20 +152,28 @@ export async function buildMatchReport(
 ): Promise<MatchReport> {
   let lines = await unreconciledPaynovateLines()
 
+  const to   = new Date()
+  const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - monthsBack, 1))
+  const txs  = await fetchAllTransactions(from, to)
+
+  // Identifiant du versement : « PAYMENT n° » (ancien libellé) ou, depuis le
+  // 09/11/2026, la communication MID/TID/SOURCE/DATE/BRUT + le net crédité.
+  const pidByLine = new Map<number, number | null>()
+  for (const l of lines) {
+    pidByLine.set(l.id, paymentIdFromLabel(l.payment_ref) ?? payoutIdFromCommunication(l.payment_ref, l.amount, txs))
+  }
+  const pidOf = (l: any): number | null => pidByLine.get(l.id) ?? null
+
   // Vérification ciblée (validation d'un versement) : on ne résout que celui-là.
   // Sans ce filtre, valider un versement coûtait la résolution des 163 autres
   // transactions — plusieurs secondes d'attente pour rien.
   if (opts.onlyPayouts?.length) {
     const wanted = new Set(opts.onlyPayouts.map(Number))
     lines = lines.filter(l => {
-      const pid = paymentIdFromLabel(l.payment_ref)
+      const pid = pidOf(l)
       return pid !== null && wanted.has(pid)
     })
   }
-
-  const to   = new Date()
-  const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() - monthsBack, 1))
-  const txs  = await fetchAllTransactions(from, to)
 
   // Index des transactions par versement.
   const byPayout = new Map<number, PaynovateTx[]>()
@@ -178,7 +187,7 @@ export async function buildMatchReport(
   // lisent en une seule requête. Le reste passe par le résolveur, un par un.
   const exactRefs = new Set<string>()
   for (const l of lines) {
-    const pid = paymentIdFromLabel(l.payment_ref)
+    const pid = pidOf(l)
     if (!pid) continue
     for (const t of byPayout.get(pid) ?? []) {
       if (/^\d{4}\/\d{2}\/\d{3,4}$/.test(t.merchantRef.trim())) exactRefs.add(t.merchantRef.trim())
@@ -189,7 +198,7 @@ export async function buildMatchReport(
   // Les lignes qu'on a décidé de passer en OD : elles ne bloquent plus rien.
   const unallocated = await loadUnallocated('paynovate', [...new Set(
     lines.flatMap(l => {
-      const pid = paymentIdFromLabel(l.payment_ref)
+      const pid = pidOf(l)
       return pid ? (byPayout.get(pid) ?? []).map(t => t.merchantRef.trim()) : []
     }),
   )])
@@ -200,7 +209,7 @@ export async function buildMatchReport(
   const unmatched: MatchReport['unmatched'] = []
 
   for (const line of lines) {
-    const pid = paymentIdFromLabel(line.payment_ref)
+    const pid = pidOf(line)
     if (!pid) {
       unmatched.push({
         bankLineId: line.id, date: line.date, amount: line.amount,

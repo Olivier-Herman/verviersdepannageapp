@@ -371,6 +371,34 @@ export function paymentIdFromLabel(label: string): number | null {
   return m ? Number(m[1]) : null
 }
 
+/**
+ * Depuis le 09/11/2026, le virement Paynovate ne porte plus « PAYMENT n° » :
+ * le libellé bancaire reprend seulement la communication du versement
+ * (« MID 020312582 TID 38904065 SOURCE BCMC DATE 2026-11-05 BRUT 365.21 »),
+ * la même que la colonne « Payment Communication » de l'export. On retrouve
+ * donc le versement par terminal + type de carte + date + brut, contrôlé par
+ * le net crédité. Plusieurs versements possibles → null (jamais de choix au hasard).
+ */
+function communicationKey(text: string): string | null {
+  const t = String(text || '')
+  const tid = t.match(/\bTID\s+(\d+)/i)?.[1]
+  const src = t.match(/\bSOURCE\s+([A-Z0-9]+)/i)?.[1]
+  const date = t.match(/\bDATE\s+(\d{4}-\d{2}-\d{2})/i)?.[1]
+  const brut = t.match(/\bBRUT\s+([\d.,]+\d)/i)?.[1]
+  if (!tid || !src || !date || !brut) return null
+  return `${tid}|${src.toUpperCase()}|${date}|${Number(brut.replace(/,/g, '')).toFixed(2)}`
+}
+
+export function payoutIdFromCommunication(label: string, amount: number, txs: PaynovateTx[]): number | null {
+  const key = communicationKey(label)
+  if (!key) return null
+  const ids = new Set<number>()
+  for (const t of txs) {
+    if (communicationKey(t.communication) === key && Math.abs(t.paymentNet - Number(amount)) < 0.005) ids.add(t.paymentId)
+  }
+  return ids.size === 1 ? [...ids][0] : null
+}
+
 /** Le TID du libellé bancaire → dit quel terminal a encaissé. */
 export function tidFromLabel(label: string): string | null {
   return String(label || '').match(/\bTID\s+(\d+)/i)?.[1] ?? null
