@@ -66,7 +66,11 @@ function checkAccess(session: any): { ok: boolean; user?: any } {
 }
 
 // ─── GET : liste eligibles (≥ 60 jours) ─────────────────────────────────
-export async function GET() {
+export async function GET(req: Request) {
+  // ?regle=commune (préversion ma_journee, Olivier 11/11/2026) : un abandon signé
+  // par le client n'est pas un abandon voie publique → hors relevé ; et la liste
+  // des AVP mis en épave ailleurs, à déclarer dans le prochain relevé.
+  const regleCommune = new URL(req.url).searchParams.get('regle') === 'commune'
   const grid = (await getRestitutionGrid('police_avp')) || undefined
   const session = await getServerSession(authOptions)
   const access = checkAccess(session)
@@ -83,7 +87,7 @@ export async function GET() {
       vehicle_vin, client_name, billed_to_name,
       parc_zone_key, parc_row_number, parc_slot_index,
       parked_at, received_at, intervention_date,
-      driver_photos, odoo_helpdesk_id, status, mission_number
+      driver_photos, odoo_helpdesk_id, status, mission_number, abandon_at
     `)
     .eq('source', 'police_avp')
     .in('status', ['parked', 'delivering'])
@@ -106,7 +110,18 @@ export async function GET() {
       }
     })
     .filter(m => m.days_in_parc >= DESTRUCTION_THRESHOLD_DAYS)
+    .filter(m => !regleCommune || !(m as any).abandon_at)
     .sort((a, b) => b.days_in_parc - a.days_in_parc)
+
+  // AVP déjà mis en épave par une autre porte, pas encore déclarés.
+  let pending: any[] = []
+  if (regleCommune) {
+    const { data: pd } = await sb.from('incoming_missions')
+      .select('id, external_id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parked_at, received_at, intervention_date, scratched_at, mission_number')
+      .not('releve_commune_attente_at', 'is', null).is('releve_commune_envoye_at', null)
+      .order('scratched_at', { ascending: true })
+    pending = (pd || []).map(m => ({ ...m, entry_date: entryDate(m) }))
+  }
 
   const { data: settings } = await sb
     .from('parc_settings')
@@ -116,6 +131,7 @@ export async function GET() {
 
   return NextResponse.json({
     eligible:                enriched,
+    pending,
     threshold_days:          DESTRUCTION_THRESHOLD_DAYS,
     ville_destruction_email: settings?.ville_destruction_email || null,
   })
@@ -130,8 +146,10 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const missionIds: string[] = Array.isArray(body.mission_ids) ? body.mission_ids : []
+  // AVP déjà mis en épave ailleurs, à ajouter au relevé (ne sont pas re-sortis).
+  const pendingIds: string[] = Array.isArray(body.pending_ids) ? body.pending_ids : []
   const format: 'xlsx' | 'pdf' = body.format === 'pdf' ? 'pdf' : 'xlsx'
-  if (missionIds.length === 0) {
+  if (missionIds.length === 0 && pendingIds.length === 0) {
     return NextResponse.json({ error: 'Au moins une mission requise' }, { status: 400 })
   }
 
@@ -145,14 +163,28 @@ export async function POST(req: Request) {
       parc_zone_key, parc_row_number, parc_slot_index,
       parked_at, intervention_date, received_at, driver_photos, police_blocked
     `)
-    .in('id', missionIds)
+    .in('id', missionIds.length ? missionIds : ['00000000-0000-0000-0000-000000000000'])
   if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 })
-  if (!missions || missions.length === 0) {
+  if (missionIds.length > 0 && (!missions || missions.length === 0)) {
     return NextResponse.json({ error: 'Aucune mission trouvee' }, { status: 404 })
   }
 
+  // Relevé commune : AVP déjà en épave (autre porte), seulement s'ils attendent leur déclaration.
+  let pendingRows: any[] = []
+  if (pendingIds.length) {
+    const { data: pr, error: pErr } = await sb.from('incoming_missions')
+      .select('id, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, parc_zone_key, parc_row_number, parc_slot_index, parked_at, intervention_date, received_at, scratched_at, releve_commune_attente_at, releve_commune_envoye_at')
+      .in('id', pendingIds)
+    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
+    const bad = (pr || []).filter((m: any) => !m.releve_commune_attente_at || m.releve_commune_envoye_at)
+    if (bad.length || (pr || []).length !== pendingIds.length) {
+      return NextResponse.json({ error: 'Un des véhicules déjà en épave n\'est plus à déclarer (déjà dans un relevé ?)', invalid_ids: bad.map((m: any) => m.id) }, { status: 400 })
+    }
+    pendingRows = pr || []
+  }
+
   // Bloqué par la police (Olivier 27/10/2026) : la police doit d'abord lever le blocage.
-  const bloques = missions.filter((m: any) => m.police_blocked)
+  const bloques = (missions || []).filter((m: any) => m.police_blocked)
   if (bloques.length > 0) {
     return NextResponse.json({
       error: `${bloques.map((m: any) => m.vehicle_plate || m.id).join(', ')} : bloqué par la police, impossible à détruire tant que le blocage n'est pas levé`,
@@ -161,7 +193,7 @@ export async function POST(req: Request) {
   }
 
   // Securite : uniquement des AVP en parc
-  const invalid = missions.filter(m => m.source !== 'police_avp' || !['parked', 'delivering'].includes(m.status))
+  const invalid = (missions || []).filter(m => m.source !== 'police_avp' || !['parked', 'delivering'].includes(m.status))
   if (invalid.length > 0) {
     return NextResponse.json({
       error: `${invalid.length} mission(s) ne sont pas des AVP en parc (impossibles a detruire)`,
@@ -182,7 +214,7 @@ export async function POST(req: Request) {
   // 10/09 sont restées « au parc ». On contrôle l'erreur et on s'arrête AVANT
   // le rapport : jamais un PV de destruction pour des fiches non sorties.
   const epaveNote = `Scratch AVP — sortie le ${destructionDate}`
-  const { error: upErr } = await sb
+  const { error: upErr } = missionIds.length === 0 ? { error: null } : await sb
     .from('incoming_missions')
     .update({
       status:           'cancelled',
@@ -207,7 +239,7 @@ export async function POST(req: Request) {
   }
 
   // 3. Log audit
-  const logs = missions.map(m => ({
+  const logs = (missions || []).map(m => ({
     mission_id: m.id,
     actor_id:   actorId,
     action:     'scratched',
@@ -218,10 +250,10 @@ export async function POST(req: Request) {
       was_at: { zone: m.parc_zone_key, row: m.parc_row_number, slot: m.parc_slot_index },
     },
   }))
-  await sb.from('mission_logs').insert(logs).then(() => {}, () => {})
+  if (logs.length) await sb.from('mission_logs').insert(logs).then(() => {}, () => {})
 
   // 4. Construit le rapport (frais arretes a la date de sortie)
-  const vehicles: DestructionVehicle[] = missions.map(m => ({
+  const vehicles: DestructionVehicle[] = [...(missions || []), ...pendingRows].map((m: any) => ({
     plate:    m.vehicle_plate,
     brand:    m.vehicle_brand,
     model:    m.vehicle_model,
@@ -230,7 +262,7 @@ export async function POST(req: Request) {
     row:      m.parc_row_number,
     slot:     m.parc_slot_index,
     entryIso: m.parked_at || m.intervention_date || m.received_at || null,
-    exitIso:  now,
+    exitIso:  m.scratched_at && pendingIds.includes(m.id) ? m.scratched_at : now,
   }))
 
   const fileBuffer = format === 'pdf'
@@ -265,7 +297,7 @@ export async function POST(req: Request) {
           <td style="padding:6px">${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
           <td style="padding:6px">${v.vin || '—'}</td>
           <td style="padding:6px">${fmtDate(v.entryIso)}</td>
-          <td style="padding:6px">${destructionDate}</td>
+          <td style="padding:6px">${fmtDate(v.exitIso)}</td>
           <td style="padding:6px;text-align:right">${fees.days} j</td>
         </tr>`
       }).join('')
@@ -310,9 +342,16 @@ export async function POST(req: Request) {
     }
   }
 
+  // Relevé commune : tous les véhicules du relevé sont déclarés (préversion, 11/11/2026).
+  const declares = [...missionIds, ...pendingIds]
+  if (emailSent && declares.length) {
+    await sb.from('incoming_missions').update({ releve_commune_envoye_at: now }).in('id', declares)
+      .then(() => {}, (e: any) => console.warn('[destruction] relevé commune marquage KO:', e?.message))
+  }
+
   return NextResponse.json({
     ok:               true,
-    count:            missions.length,
+    count:            vehicles.length,
     format,
     file_base64:      fileBase64,
     file_name:        fileName,
