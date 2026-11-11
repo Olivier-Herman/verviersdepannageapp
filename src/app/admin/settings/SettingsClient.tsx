@@ -186,9 +186,9 @@ export default function SettingsClient({
   }
 
   return (
-    <div className="px-4 py-5">
+    <div className="px-4 py-4 lg:px-0 max-w-[1800px]">
       {/* Onglets de la page (11/11/2026 : Paramètres en premier, c'est lui qui s'ouvre ; même style que les onglets de Réglages). */}
-      <div role="tablist" className="flex gap-2 mb-5 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="mb-5 overflow-x-auto [contain:inline-size] scrollbar-hide"><div role="tablist" className="inline-flex p-1 rounded-full bg-surface-hover">
         {([
           { key: 'params',       label: 'Paramètres' },
           ...LIST_TYPES,
@@ -196,13 +196,13 @@ export default function SettingsClient({
         ] as { key: 'motif' | 'payment_mode' | 'calls' | 'params'; label: string }[]).map(t => (
           <button key={t.key} type="button" role="tab" aria-selected={activeTab === t.key}
             onClick={() => { setActiveTab(t.key); setShowAdd(false) }}
-            className={`flex items-center min-h-[44px] px-4 rounded-xl text-sm font-semibold whitespace-nowrap border transition-colors ${
-              activeTab === t.key ? 'bg-brand/10 border-brand text-brand' : 'bg-surface border-strong text-ink-secondary hover:text-ink hover:border-brand/40'
+            className={`flex items-center min-h-[42px] px-4 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+              activeTab === t.key ? 'bg-surface text-ink shadow-card' : 'text-ink-muted hover:text-ink'
             }`}>
             {t.label}
           </button>
         ))}
-      </div>
+      </div></div>
 
       {/* ── Onglet Paramètres ── */}
       {activeTab === 'params' && (() => {

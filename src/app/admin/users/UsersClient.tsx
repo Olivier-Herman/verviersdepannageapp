@@ -12,6 +12,7 @@
 import { useState } from 'react'
 import { Plus, X, Mail, Key, ArrowLeft } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import BandeauChiffres from '@/components/admin/BandeauChiffres'
 import { Badge, type BadgeVariant } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import PinInput from '@/components/ui/PinInput'
@@ -473,7 +474,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
 
       {/* ── Accès Odoo ── */}
       <div className="bg-surface border rounded-card shadow-card p-4 mb-4">
-        <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Accès Odoo</p>
+        <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">Accès à l’ERP</p>
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <span className="block text-ink-muted text-xs font-semibold uppercase tracking-wider">Activé</span>
@@ -483,7 +484,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         </div>
 
         <div className="mb-3">
-          <label className={labelCls}>UID Odoo (res.users.id)</label>
+          <label className={labelCls}>N° d’utilisateur dans l’ERP</label>
           <input
             type="number"
             placeholder="Ex: 12"
@@ -491,11 +492,11 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
             onChange={e => setUserOdooUid(e.target.value)}
             className={inputCls}
           />
-          <p className="text-ink-faint text-xs mt-1">ID utilisateur dans Odoo. À récupérer depuis <span className="font-mono">Paramètres → Utilisateurs</span> (mode dev → URL).</p>
+          <p className="text-ink-faint text-xs mt-1">Numéro de l’utilisateur dans l’ERP. À récupérer depuis <span className="font-mono">Paramètres → Utilisateurs</span> (mode dev → URL).</p>
         </div>
 
         <div>
-          <label className={labelCls}>Clé API Odoo personnelle</label>
+          <label className={labelCls}>Clé personnelle de l’ERP</label>
           <div className="relative">
             <input
               type={showOdooKey ? 'text' : 'password'}
@@ -515,7 +516,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
               </button>
             )}
           </div>
-          <p className="text-ink-faint text-xs mt-1">Clé API personnelle de l'utilisateur (Odoo → Préférences → Sécurité du compte → Clés API). Permet aux écritures déclenchées depuis l'app d'être signées au nom de l'utilisateur. Si vide : utilise la clé maître.</p>
+          <p className="text-ink-faint text-xs mt-1">Clé API personnelle de l'utilisateur (ERP → Préférences → Sécurité du compte → Clés API). Permet aux écritures déclenchées depuis l'app d'être signées au nom de l'utilisateur. Si vide : utilise la clé maître.</p>
         </div>
       </div>
 
@@ -532,7 +533,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         </div>
 
         <div className="mb-3">
-          <label className={labelCls}>ID Partenaire Odoo</label>
+          <label className={labelCls}>N° de client dans l’ERP</label>
           <input
             type="number"
             placeholder="Ex: 1251"
@@ -540,7 +541,7 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
             onChange={e => setUserOdooId(e.target.value)}
             className={inputCls}
           />
-          <p className="text-ink-faint text-xs mt-1">ID partenaire Odoo pour les devis TGR</p>
+          <p className="text-ink-faint text-xs mt-1">N° de client dans l’ERP pour les devis TGR</p>
         </div>
 
         {isSuperAdmin && (
@@ -718,21 +719,12 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
           />
         </div>
 
-        {/* Mobile : stats compactes */}
-        <div className="flex gap-2 mb-4 lg:hidden">
-          <div className="flex-1 bg-surface border rounded-card p-3 text-center">
-            <p className="font-display text-ink font-bold text-xl">{users.length}</p>
-            <p className="text-ink-muted text-xs">Total</p>
-          </div>
-          <div className="flex-1 bg-surface border rounded-card p-3 text-center">
-            <p className="font-display text-ink font-bold text-xl">{users.filter(u => u.active).length}</p>
-            <p className="text-ink-muted text-xs">Actifs</p>
-          </div>
-          <div className="flex-1 bg-surface border rounded-card p-3 text-center">
-            <p className="font-display text-ink font-bold text-xl">{users.filter(u => u.role === 'driver').length}</p>
-            <p className="text-ink-muted text-xs">Chauffeurs</p>
-          </div>
-        </div>
+        {/* Chiffres dans le bandeau de l'écran (Olivier 11/11/2026) */}
+        <BandeauChiffres chiffres={[
+          { label: 'Comptes', valeur: users.length },
+          { label: 'Actifs', valeur: users.filter(u => u.active).length },
+          { label: 'Chauffeurs', valeur: users.filter(u => u.active && u.role === 'driver').length },
+        ]} />
 
         {/* Form inline : nouvel utilisateur (accordion expandable) */}
         {showNewUser && (
@@ -906,7 +898,6 @@ export default function UsersClient({ users, modules, currentUserRole = 'admin' 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
-            onClick={roleSaving ? undefined : () => setShowRoleModal(false)}
             aria-hidden="true"
           />
           <div

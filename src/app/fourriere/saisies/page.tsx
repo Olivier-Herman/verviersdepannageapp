@@ -10,6 +10,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { redirect }         from 'next/navigation'
 import SaisiesClient        from './SaisiesClient'
+import { isPreviewOn }       from '@/lib/feature-flags'
 
 export default async function FourriereSaisiesPage() {
   const session = await getServerSession(authOptions)
@@ -23,6 +24,7 @@ export default async function FourriereSaisiesPage() {
       userRole={user.role || ''}
       userName={user.name || ''}
       userEmail={user.email || ''}
+      habille={await isPreviewOn('ma_journee', user.role, user.id)}
       userModules={user.modules || []}
     />
   )

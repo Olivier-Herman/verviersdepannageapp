@@ -229,6 +229,14 @@ export async function POST(req: Request) {
     })
 
   } else if (action === 'refuse') {
+    // Lue AVANT le changement d'état : le refus chez l'assistance dépend de
+    // l'état d'origine (une proposition IMA ne se refuse que « nouvelle »).
+    const { data: avant } = await supabase
+      .from('incoming_missions')
+      .select('status, source, source_format, kaze_job_id, kaze_proposal_id, axa_mission_order_id, vab_assignment_ids')
+      .eq('id', mission_id)
+      .maybeSingle()
+
     await supabase
       .from('incoming_missions')
       .update({ status: 'ignored', updated_at: now })
@@ -241,7 +249,13 @@ export async function POST(req: Request) {
       notes:    reason || 'Mission refusée',
     })
 
-    return NextResponse.json({ ok: true, status: 'ignored' })
+    // Refus chez l'assistance (Olivier 11/11/2026). Jamais bloquant : la fiche
+    // est refusée chez nous quoi qu'il arrive, et la réponse dit ce qu'il reste
+    // à faire à la main.
+    const { refuserChezAssistance } = await import('@/lib/missions/provider-refuse')
+    const assistance = await refuserChezAssistance(mission_id, avant as any, actor?.id || null, supabase).catch(() => null)
+
+    return NextResponse.json({ ok: true, status: 'ignored', assistance })
   }
 
   return NextResponse.json({ error: 'Action invalide' }, { status: 400 })

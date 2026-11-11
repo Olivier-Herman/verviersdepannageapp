@@ -279,8 +279,8 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           {canBill && <div className="md:text-right">
             <div className="flex md:justify-end items-center gap-2 flex-wrap">
               {(() => { const rootLeg = d.legs.find(l => l.mission_id === d.root_id) || d.legs[0]; return rootLeg ? <BillingRow d={d} leg={rootLeg} onChanged={refresh} gmKey={shared.googleMapsKey} allLegs onApplied={applyBilledTo} /> : null })()}
-              {hasDrafts && <button disabled={verifying} onClick={verifyInvoices} title="Lit l'état des brouillons dans Odoo : s'ils sont confirmés, le numéro de facture remplace le tampon brouillon" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{verifying ? '⏳ Vérification…' : '✓ Facturation OK'}</button>}
-              <button disabled={!billable.length || openingBilling} onClick={async () => { if (d.light || refining) { setOpeningBilling(true); try { await refresh() } finally { setOpeningBilling(false) } } setBilling(true) }} title={billable.length ? 'Une facture Odoo par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
+              {hasDrafts && <button disabled={verifying} onClick={verifyInvoices} title="Lit l'état des brouillons dans l'ERP : s'ils sont confirmés, le numéro de facture remplace le tampon brouillon" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">{verifying ? '⏳ Vérification…' : '✓ Facturation OK'}</button>}
+              <button disabled={!billable.length || openingBilling} onClick={async () => { if (d.light || refining) { setOpeningBilling(true); try { await refresh() } finally { setOpeningBilling(false) } } setBilling(true) }} title={billable.length ? 'Une facture par client, créée directement' : 'Rien à facturer'} className={`px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white ${billable.length ? 'hover:bg-brand-hover' : 'opacity-40 cursor-not-allowed'}`}>Facturer{billable.length ? ` (${billable.length})` : ''}</button>
               {/* Restitution unifiée (pilote) : à côté de Facturer, elle clôt tout le dossier. */}
               {restitutionV2 && (() => { const rl = d.legs.find(l => l.mission_id === d.root_id); const parc = rl?.status === 'parked' || d.legs.some(l => l.kind === 'gard' && l.open); return parc && rl && rl.kind !== 'rel' })() && (
                 <a href={`/restitution/${d.root_id}`} title="Restitue le véhicule et clôt tout le dossier" className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">🚪 Restituer</a>
@@ -355,9 +355,9 @@ export default function DossierGroups({ initial, fiches, shared, isSuperadmin, o
           embedOpen={embed.has(it.leg!.letter)} onToggleEmbed={() => toggleEmbed(it.leg!.letter)} fiche={fiches[it.leg!.mission_id]} shared={shared} onChanged={refresh} mobile={mobile} onApplied={applyBilledTo} />
       ))}
 
-      {!mobile && <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures Odoo en brouillon, une par client.</p>}
+      {!mobile && <p className="text-[11px] text-ink-faint px-1 pt-2">Les fiches Gardiennage sont créées automatiquement à la mise en parc et n'apparaissent que sur cet écran. « Facturer » crée directement les factures en brouillon, une par client.</p>}
 
-      {billing && <BillingModal d={d} onClose={() => setBilling(false)} onDone={async (res) => { if (res?.invoices?.length) { setBilling(false); setBanner({ tone: 'ok', text: `✓ ${res.invoices.length} facture${res.invoices.length > 1 ? 's' : ''} brouillon créée${res.invoices.length > 1 ? 's' : ''} dans Odoo et ouverte${res.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Confirme-la dans Odoo, puis clique « Facturation OK » ici (ou attends le cron, 20 min).`, links: res.invoices.map((i: any) => ({ url: i.url, label: `${i.client_name} · ${Number(i.total_htva).toFixed(2)} € HTVA` })) }) } await refresh() }} />}
+      {billing && <BillingModal d={d} onClose={() => setBilling(false)} onDone={async (res) => { if (res?.invoices?.length) { setBilling(false); setBanner({ tone: 'ok', text: `✓ ${res.invoices.length} facture${res.invoices.length > 1 ? 's' : ''} brouillon créée${res.invoices.length > 1 ? 's' : ''} et ouverte${res.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Confirme-la dans l'ERP, puis clique « Facturation OK » ici (ou attends la vérification automatique, toutes les 20 min).`, links: res.invoices.map((i: any) => ({ url: i.url, label: `${i.client_name} · ${Number(i.total_htva).toFixed(2)} € HTVA` })) }) } await refresh() }} />}
     </div>
   )
 }
@@ -468,12 +468,12 @@ function Group({ d, leg, canBill, isOpen, onToggle, embedOpen, onToggleEmbed, fi
           {canBill && leg.kind !== 'out' && leg.channel !== 'parquet' && <BillingRow d={d} leg={leg} onChanged={onChanged} gmKey={shared.googleMapsKey} onApplied={onApplied} />}
           {canBill && leg.channel === 'parquet' && (
             <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary flex flex-wrap items-center gap-2">
-              <span>Circuit <b>Parquet</b> : réglé par état de frais (module Saisie, JustInvoice), pas par une facture Odoo de ce dossier.</span>
+              <span>Circuit <b>Parquet</b> : réglé par état de frais (module Saisie, JustInvoice), pas par une facture de ce dossier.</span>
               {d.parquet?.efs?.length ? <span className="text-ink-muted">{d.parquet.efs.map(e => `EF n°${e.numero ?? '?'} ${e.status === 'refuse' ? 'refusé' : e.liquide_at ? 'liquidé' : (e.status || 'envoyé')}`).join(' · ')}</span> : null}
               <Link href="/fourriere/saisies" className="ml-auto px-2 py-0.5 rounded-lg border bg-surface text-ink-secondary hover:text-ink font-semibold">Module Saisie ↗</Link>
             </div>
           )}
-          {canBill && leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture Odoo de ce dossier.</div>}
+          {canBill && leg.kind === 'out' && leg.channel === 'domaine' && <div className="bg-surface-2 border border-dashed rounded-xl px-3 py-2 text-xs text-ink-secondary">Facturé au <b>SPF Finances — Domaine</b> par le relevé trimestriel (Fourrière → Domaine), pas par une facture de ce dossier.</div>}
 
           {canBill && !mobile && <EstimationTable d={d} me={leg.letter} />}
 
@@ -1013,7 +1013,7 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { 
         </>
       ) : (
         <div className="relative flex-1 min-w-[240px]">
-          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Chercher un client Odoo (3 lettres min.)" className="w-full border rounded-lg px-2.5 py-1 bg-surface text-ink text-xs" />
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Chercher un client (3 lettres min.)" className="w-full border rounded-lg px-2.5 py-1 bg-surface text-ink text-xs" />
           <button onClick={() => { setEditing(false); setQ('') }} className="absolute right-1.5 top-1 text-ink-faint text-xs">✕</button>
           <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[11px]">
             <span className="text-ink-faint">ou compléter depuis</span>
@@ -1025,8 +1025,8 @@ function BillingRow({ d, leg, onChanged, gmKey, allLegs = false, onApplied }: { 
             <div className="absolute z-10 left-0 right-0 mt-1 bg-surface border rounded-lg shadow-lg max-h-64 overflow-auto">
               {results.map(c => <button key={c.id} disabled={busy} onClick={() => save(c)} className="block w-full text-left px-2.5 py-1.5 text-xs text-ink hover:bg-surface-2">{c.name} <span className="text-ink-faint">#{c.id}</span></button>)}
               {searching && <div className="px-2.5 py-1.5 text-[11px] text-ink-faint">Recherche…</div>}
-              {!searching && results.length === 0 && <div className="px-2.5 py-1.5 text-[11px] text-ink-faint">Aucun client Odoo ne correspond.</div>}
-              {!searching && <button onClick={() => setCreating(true)} className="block w-full text-left px-2.5 py-1.5 text-xs font-semibold text-brand border-t hover:bg-brand/10">＋ Créer « {q.trim()} » comme nouveau client Odoo</button>}
+              {!searching && results.length === 0 && <div className="px-2.5 py-1.5 text-[11px] text-ink-faint">Aucun client ne correspond.</div>}
+              {!searching && <button onClick={() => setCreating(true)} className="block w-full text-left px-2.5 py-1.5 text-xs font-semibold text-brand border-t hover:bg-brand/10">＋ Créer « {q.trim()} » comme nouveau client</button>}
             </div>
           )}
         </div>
@@ -1102,10 +1102,10 @@ function OdooVehicleSuggest({ missionId, plate, current, onDone }: {
       await onDone()
     } finally { setBusy(false) }
   }
-  if (list === null) return <p className="text-[11px] text-ink-muted">Recherche du véhicule dans le parc Odoo…</p>
+  if (list === null) return <p className="text-[11px] text-ink-muted">Recherche du véhicule dans l'ERP…</p>
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[11px] bg-surface-2 border rounded-lg px-2 py-1.5">
-      <span className="text-ink-muted">{list.length ? 'Véhicule Odoo pour cette plaque :' : 'Aucun véhicule Odoo pour cette plaque — il sera créé à la facturation.'}</span>
+      <span className="text-ink-muted">{list.length ? 'Véhicule lié pour cette plaque :' : 'Aucun véhicule enregistré pour cette plaque — il sera créé à la facturation.'}</span>
       {list.slice(0, 3).map(v => (
         <button key={v.id} type="button" disabled={busy} onClick={() => link(v)} className="px-2 py-0.5 rounded border bg-surface text-ink font-semibold hover:bg-brand/10 disabled:opacity-50">
           🔗 {v.plate} {[v.brand, v.model].filter(Boolean).join(' ')}

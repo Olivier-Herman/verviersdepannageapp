@@ -42,7 +42,7 @@ export default function AutoDispatchButton({
   if (!allowed) return null
 
   async function cancel() {
-    if (!confirm('Stopper la procedure auto-dispatch en cours ?')) return
+    if (!confirm('Stopper la procédure auto-dispatch en cours ?')) return
     setLoading(true); setFeedback(null)
     try {
       const r = await fetch('/api/auto-dispatch/cancel', {
@@ -54,11 +54,11 @@ export default function AutoDispatchButton({
       if (!r.ok) {
         setFeedback(`❌ ${j.error || 'Erreur'}`)
       } else {
-        setFeedback('🛑 Stoppe')
+        setFeedback('🛑 Stoppé')
         setTimeout(() => onTriggered?.(), 300)
       }
     } catch (e: any) {
-      setFeedback(`❌ ${e.message || 'Erreur reseau'}`)
+      setFeedback(`❌ ${e.message || 'Erreur réseau'}`)
     } finally {
       setLoading(false)
       setTimeout(() => setFeedback(null), 4000)
@@ -117,7 +117,7 @@ export default function AutoDispatchButton({
         type="button"
         onClick={cancel}
         disabled={loading}
-        title="Stopper la procedure auto-dispatch en cours (sans assigner de chauffeur)"
+        title="Stopper la procédure auto-dispatch en cours (sans assigner de chauffeur)"
         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-critical hover:bg-critical-hover text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
       >
         🛑 {loading ? '…' : 'Stop'}

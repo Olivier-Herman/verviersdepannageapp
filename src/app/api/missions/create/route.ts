@@ -74,10 +74,13 @@ export async function POST(req: Request) {
     if (existing) {
       console.warn(`[MissionCreate] DOUBLON evite : mission ${existing.id} existe deja pour plaque ${cleanPlate} (${existing.created_at})`)
       return NextResponse.json({
+        ok: true,
         success: true,
+        mission_id: existing.id,
+        external_id: existing.external_id,
         mission: existing,
         duplicate_prevented: true,
-        message: 'Mission deja creee il y a quelques secondes (anti-doublon).',
+        message: 'Mission déjà créée il y a quelques secondes (anti-doublon).',
       })
     }
   }

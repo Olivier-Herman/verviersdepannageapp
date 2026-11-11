@@ -246,3 +246,37 @@ body {
   html.vd-tabbar .fixed.bottom-4:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1rem); }
   html.vd-tabbar .fixed.bottom-5:not(.vd-tabbar-el) { bottom: calc(var(--vd-tabbar-h, 0px) + 1.25rem); }
 }
+
+/* Écrans de Réglages (Olivier 11/11/2026) : le titre de l'écran est dans le bandeau de couleur
+   d'AdminNav ; le <h1> propre à chaque page ferait doublon. data-garder = titre à conserver
+   (accueil de Réglages, fiche d'une source dont le nom est le titre). */
+.reglages-contenu h1:not([data-garder]) { display: none; }
+/* La mise en colonnes des cartes calcule une largeur minimale (colonnes × carte) que le cadre
+   de l'app laisserait déborder de l'écran : la zone prend toujours la largeur disponible. */
+.reglages-contenu { contain: inline-size; }
+/* Habillage commun des écrans de Réglages pas encore passés en cartes (Olivier 11/11/2026 :
+   « pas un écran vert ») : l'ancien en-tête gris s'efface (le bandeau porte le titre), les
+   tableaux deviennent des cartes aérées aux titres de colonnes lisibles. */
+.reglages-contenu .bg-surface-2.border-b.px-5 { background: transparent; border-width: 0; padding-top: .25rem; }
+.reglages-contenu table { border-collapse: separate; border-spacing: 0; background: var(--bg-surface); }
+.reglages-contenu :not(td) > div:has(> table) { border-radius: 1.5rem; border: 1px solid var(--border-strong); box-shadow: var(--shadow-card); overflow-x: auto; background: var(--bg-surface); }
+.reglages-contenu thead, .reglages-contenu thead tr { background: transparent; }
+.reglages-contenu thead th { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: var(--text-muted); padding-top: .85rem; padding-bottom: .6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.reglages-contenu tbody td { padding-top: .7rem; padding-bottom: .7rem; }
+.reglages-contenu tbody tr { transition: background-color .12s; }
+.reglages-contenu tbody tr:hover { background: var(--bg-surface-hover); }
+/* Anciens écrans en colonne blanche centrée (affichage téléphone d'origine) : fond de la page,
+   alignés sous le bandeau, sans hauteur d'écran forcée. */
+.reglages-contenu .min-h-screen.bg-surface { background: transparent; min-height: 0; margin-left: 0; max-width: 72rem; }
+/* Le fond décoratif (AmbientBackground) enfermait les fenêtres des écrans de Réglages dans une couche
+   sous la barre du haut (téléphone) et le menu de gauche (ordinateur). Sans cette couche, une fenêtre
+   z-50 passe au-dessus de tout. Le contenu reste devant les taches de couleur (ordre du document). */
+.reglages-zone > .relative > .relative.z-10 { z-index: auto; }
+/* Anciennes fenêtres pas encore passées au modèle commun : coins arrondis, ombre, champs plus grands. */
+.reglages-contenu .fixed.inset-0 > div:first-child { border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,.35); }
+.reglages-contenu .fixed.inset-0 :is(input:not([type=checkbox]):not([type=radio]):not([type=color]), select) { min-height: 44px; border-radius: .9rem; }
+.reglages-contenu .fixed.inset-0 textarea { border-radius: .9rem; }
+.reglages-contenu .fixed.inset-0 button { min-height: 40px; border-radius: .9rem; }
+/* Anciens champs repris tels quels dans les fenêtres au modèle commun (rendues hors de la zone). */
+.fenetre-reglages :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]), select) { min-height: 44px; border-radius: .9rem; }
+.fenetre-reglages textarea { border-radius: .9rem; }

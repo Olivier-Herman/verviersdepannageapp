@@ -10,6 +10,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions }      from '@/lib/auth'
 import { redirect }         from 'next/navigation'
 import DomaineClient        from './DomaineClient'
+import { isPreviewOn } from '@/lib/feature-flags'
 
 export default async function FourriereDomainePage() {
   const session = await getServerSession(authOptions)
@@ -23,6 +24,7 @@ export default async function FourriereDomainePage() {
       userName={user.name || ''}
       userEmail={user.email || ''}
       userModules={user.modules || []}
+      sortiesEnTete={await isPreviewOn('ma_journee', user.role, user.id)}
     />
   )
 }

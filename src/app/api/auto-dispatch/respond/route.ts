@@ -63,11 +63,18 @@ export async function POST(req: Request) {
       updated_at:    now,
     }).eq('id', attempt.id)
 
-    // Assign mission
+    // Assign mission — camion = camion du moment du chauffeur, comme
+    // l'attribution manuelle (/api/missions/assign).
+    const { data: driverRow } = await sb
+      .from('users')
+      .select('current_truck_id')
+      .eq('id', userId)
+      .maybeSingle()
     await sb.from('incoming_missions').update({
       assigned_to: userId,
       status:      'assigned',
       assigned_at: now,
+      truck_id:    (driverRow as any)?.current_truck_id || null,
       updated_at:  now,
     }).eq('id', attempt.mission_id)
 

@@ -13,7 +13,7 @@ export default function TowsoftCreateToggle({ canEdit }: { canEdit: boolean }) {
   async function toggle() {
     if (!canEdit || enabled == null) return
     const next = !enabled
-    if (!next && !confirm('Couper la création de fiche dans TowSoft ?\n\nLes missions continueront d\'être créées dans VD Soft (+ ticket Odoo), mais ne seront plus poussées dans TowSoft. La lecture/recherche TowSoft reste active. Réversible.')) return
+    if (!next && !confirm('Couper la création de fiche dans TowSoft ?\n\nLes missions continueront d\'être créées dans VD Soft (+ ticket dans l\'ERP), mais ne seront plus poussées dans TowSoft. La lecture/recherche TowSoft reste active. Réversible.')) return
     setBusy(true)
     try {
       const r = await fetch('/api/admin/towsoft-create', {
@@ -36,7 +36,7 @@ export default function TowsoftCreateToggle({ canEdit }: { canEdit: boolean }) {
         </p>
         <p className="text-ink-muted text-xs mt-0.5">
           {enabled === false
-            ? 'Les missions sont créées dans VD Soft uniquement (ticket Odoo conservé). Push TowSoft désactivé. Lecture TowSoft toujours active.'
+            ? 'Les missions sont créées dans VD Soft uniquement (ticket dans l’ERP conservé). Push TowSoft désactivé. Lecture TowSoft toujours active.'
             : 'Les missions sont aussi poussées dans TowSoft (double-écriture / backup).'}
         </p>
       </div>

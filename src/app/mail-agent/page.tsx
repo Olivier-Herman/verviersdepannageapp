@@ -6,6 +6,7 @@ import { redirect }         from 'next/navigation'
 import { authOptions }      from '@/lib/auth'
 import { sessionAccess }    from '@/lib/access'
 import MailAgentClient      from './MailAgentClient'
+import { isPreviewOn }       from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,7 @@ export default async function MailAgentPage() {
       userName={user.name || ''}
       userEmail={user.email || ''}
       userModules={user.modules || []}
+      habille={await isPreviewOn('ma_journee', user.role, user.id)}
     />
   )
 }

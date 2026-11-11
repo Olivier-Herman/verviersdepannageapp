@@ -11,7 +11,7 @@ export async function scratchMission(sb: any, missionId: string, actorId: string
   // 1. Charge mission
   const { data: mission, error: mErr } = await sb
     .from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, status, parc_zone_key, odoo_vehicle_id, odoo_helpdesk_id')
+    .select('id, mission_number, vehicle_plate, status, parc_zone_key, odoo_vehicle_id, odoo_helpdesk_id, source, abandon_at')
     .eq('id', params.id)
     .maybeSingle()
   if (mErr || !mission) {
@@ -52,6 +52,14 @@ export async function scratchMission(sb: any, missionId: string, actorId: string
     })
     .eq('id', params.id)
   if (upErr) return { ok: false, status: 500, error: `Update KO : ${upErr.message}` }
+
+  // Relevé commune (Olivier 11/11/2026) : une épave AVP (réquisition police, y
+  // compris une mal garée passée en AVP) va dans le prochain relevé envoyé à la
+  // commune, même mise en épave par ce bouton. Pas un abandon signé par le client.
+  if (mission.source === 'police_avp' && !mission.abandon_at) {
+    await sb.from('incoming_missions').update({ releve_commune_attente_at: nowIso }).eq('id', params.id)
+      .then(() => {}, (e: any) => console.warn(`[scratch] relevé commune KO mission=${params.id}:`, e?.message))
+  }
 
   // Les volets gardiennage du dossier suivent : sortis, sans frais.
   await sb.from('incoming_missions')

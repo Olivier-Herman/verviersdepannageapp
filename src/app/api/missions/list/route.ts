@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       status, dispatch_mode,
       saisie_motif_code, saisie_motif_label,
       assigned_to, assigned_at, accepted_at,
-      parse_confidence,
+      parse_confidence, warnings,
       invoice_method, invoice_number,
       requested_by_garage_id,
       kaze_cancelled_after_accept,
@@ -337,7 +337,9 @@ export async function GET(req: Request) {
   const exclFuture = (q: any) => q.or(`intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}`)
   const [cNew, cDisp, cAssigned, cInProg, cCompleted, cErrors, cRdv, cVhu] = await Promise.all([
     countBy(q => q.eq('status', 'new').neq('source', VHU_SOURCE)),
-    countBy(q => exclFuture(q.eq('status', 'dispatching')).neq('source', VHU_SOURCE)),
+    // Même règle que la liste de l'onglet « En attente » : toutes les 'new' +
+    // les 'dispatching' du jour (hors VHU).
+    countBy(q => q.or(`status.eq.new,and(status.eq.dispatching,or(intervention_date.is.null,intervention_date.lte.${RDV_THRESHOLD}))`).neq('source', VHU_SOURCE)),
     countBy(q => exclFuture(q.in('status', ['assigned', 'accepted']))),
     countBy(q => exclFuture(q.in('status', ['in_progress', 'delivering']))),
     countBy(q => q.in('status', ['completed', 'to_invoice'])),

@@ -43,8 +43,8 @@ const GROUPS: Group[] = [
   { title: 'Worker VPS', tools: [
     { id: 'worker', label: 'État du worker', desc: 'Le worker du VPS bat-il (dernier signal), que reste-t-il dans sa file, et ses derniers résultats. S’il se tait, Vercel clôture lui-même : c’est ce que dit le verdict.', method: 'GET', path: '/api/admin/debug/worker-status' },
   ]},
-  { title: 'Odoo & facturation', tools: [
-    { id: 'helpdesk', label: 'Champs d’un ticket helpdesk', desc: 'Tous les champs d’un ticket Odoo, pour vérifier un mapping.', method: 'GET', path: '/api/admin/odoo-helpdesk-debug', params: [{ name: 'id', label: 'ID ticket', placeholder: '2033', required: true }] },
+  { title: 'ERP & facturation', tools: [
+    { id: 'helpdesk', label: 'Champs d’un ticket helpdesk', desc: 'Tous les champs d’un ticket de l’ERP, pour vérifier un mapping.', method: 'GET', path: '/api/admin/odoo-helpdesk-debug', params: [{ name: 'id', label: 'ID ticket', placeholder: '2033', required: true }] },
     { id: 'delay', label: 'Délai moyen à facturer', desc: 'Moyenne, médiane et tranches du délai clôture → facture, sur la même fenêtre que le tableau de bord.', method: 'GET', path: '/api/admin/facturation-delay' },
   ]},
   { title: 'Parc & trajets', tools: [

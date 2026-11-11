@@ -96,7 +96,7 @@ export default function FacturationAutoClient(props: {
         <div>
           <h1 className="text-ink text-lg font-bold">🧾 Facturation automatique par source</h1>
           <p className="text-ink-muted text-sm mt-1">
-            Quand c'est activé pour une source + un type, la <b>facture brouillon Odoo</b> est créée
+            Quand c'est activé pour une source + un type, la <b>facture brouillon dans l’ERP</b> est créée
             <b> automatiquement à la clôture</b> de la mission.
           </p>
         </div>

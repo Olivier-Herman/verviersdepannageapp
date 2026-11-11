@@ -27,7 +27,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       userModules={userModules}
     >
       <AdminNav obd={await isPreviewOn('obd_diagnostic', userRole, userId)} superadmin={userRole === 'superadmin'} />
-      <div className="flex-1 overflow-y-auto">
+      {/* reglages-contenu : le titre de l'écran est dans le bandeau d'AdminNav, les <h1> des pages sont masqués (globals.css). */}
+      <div className="reglages-contenu flex-1 overflow-y-auto">
         {children}
       </div>
     </AdminLayoutClient>

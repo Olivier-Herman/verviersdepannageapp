@@ -195,7 +195,7 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   }
 
   async function sendToPurchase(fineId: string) {
-    if (!confirm('Créer la facture fournisseur Odoo (brouillon) pour cette amende ?')) return
+    if (!confirm('Créer la facture fournisseur (brouillon) dans l\'ERP pour cette amende ?')) return
     setSavingId(fineId)
     try {
       const res = await fetch(`/api/fines/${fineId}/send-to-purchase`, { method: 'POST' })

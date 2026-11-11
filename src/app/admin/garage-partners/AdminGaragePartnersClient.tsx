@@ -3,6 +3,8 @@
 // CRUD garages partenaires. Une entree = 1 entite (un meme garage peut avoir
 // plusieurs entites = plusieurs partner_id Odoo). Olivier 2026-06-02.
 
+import { Fenetre, BoutonsPied } from '@/components/admin/Fenetre'
+import { PenLine, Plus } from 'lucide-react'
 import { useState }   from 'react'
 import { useRouter }  from 'next/navigation'
 import Link           from 'next/link'
@@ -101,7 +103,7 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
 
         {visible.length === 0 ? (
           <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted text-sm">
-            Aucun garage. Crée le premier — pense à renseigner son <code>odoo_partner_id</code> après avoir créé le partner côté Odoo.
+            Aucun garage. Crée le premier — pense à renseigner son <code>odoo_partner_id</code> après avoir créé le client dans l’ERP.
           </div>
         ) : (
           <ul className="space-y-2">
@@ -116,8 +118,8 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
                     </p>
                     <div className="text-ink-muted text-xs mt-0.5 space-y-0.5">
                       {p.odoo_partner_id != null
-                        ? <p>📎 Odoo partner ID : <span className="font-mono">{p.odoo_partner_id}</span></p>
-                        : <p className="text-amber-500">⚠️ Pas d&apos;Odoo partner ID — facturation impossible tant que pas renseigné</p>}
+                        ? <p>📎 Client ERP n° <span className="font-mono">{p.odoo_partner_id}</span></p>
+                        : <p className="text-amber-500">⚠️ Pas de client ERP — facturation impossible tant qu’il n’est pas renseigné</p>}
                       {p.contact_email && <p>📧 {p.contact_email}</p>}
                       {p.contact_phone && <p>📞 {p.contact_phone}</p>}
                     </div>
@@ -143,9 +145,10 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4 py-8 overflow-y-auto">
-          <div className="bg-surface w-full max-w-lg rounded-2xl border p-5 space-y-3 my-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="text-ink font-bold text-base">{editing.id ? '✏️ Modifier le garage' : '+ Nouveau garage'}</h3>
+        <Fenetre titre={editing.id ? 'Modifier le garage' : 'Nouveau garage'} couleur="brand"
+          icone={editing.id ? <PenLine size={22} /> : <Plus size={24} />} onClose={() => setEditing(null)}
+          pied={<BoutonsPied couleur="brand" onAnnuler={() => setEditing(null)} onValider={save} enCours={busy} desactive={!editing.name} libelle={editing.id ? 'Enregistrer' : 'Créer'} />}>
+          <div className="space-y-4">
 
             <div>
               <label className="block text-ink-muted text-xs font-semibold mb-1.5">Nom de l&apos;entité *</label>
@@ -156,12 +159,12 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
             </div>
 
             <div>
-              <label className="block text-ink-muted text-xs font-semibold mb-1.5">Odoo partner ID</label>
+              <label className="block text-ink-muted text-xs font-semibold mb-1.5">N° du client dans l’ERP</label>
               <input type="number" value={editing.odoo_partner_id ?? ''}
                 onChange={e => setEditing({ ...editing, odoo_partner_id: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
-                placeholder="Ex: 1234 (ID Odoo res.partner)"
+                placeholder="Ex. : 1234"
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono" />
-              <p className="text-ink-faint text-[10px] mt-1">Crée le partner côté Odoo d&apos;abord, puis copie son ID ici. Sans ça la facturation auto ne fonctionnera pas.</p>
+              <p className="text-ink-faint text-[10px] mt-1">Crée d’abord le client dans l’ERP, puis copie son numéro ici. Sans ça la facturation auto ne fonctionnera pas.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -213,17 +216,8 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
             </label>
 
             {error && <p className="text-critical text-xs">⚠ {error}</p>}
-
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setEditing(null)} disabled={busy}
-                className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm">Annuler</button>
-              <button onClick={save} disabled={busy || !editing.name}
-                className="flex-1 py-2.5 bg-brand text-white rounded-xl text-sm font-semibold disabled:opacity-50">
-                {busy ? '⏳ ...' : 'Enregistrer'}
-              </button>
-            </div>
           </div>
-        </div>
+        </Fenetre>
       )}
     </div>
   )

@@ -183,7 +183,7 @@ async function fourriere(sb: any): Promise<Bloc> {
     sb.from('requisitoire_intake').select('id', { count: 'exact', head: true }).in('status', ['pending', 'to_verify']),
   ])
   const lignes: Ligne[] = [
-    { texte: `${parc || 0} véhicule(s) au parc`, niveau: 'info', lien: '/fourriere/parc' },
+    { texte: `${parc || 0} véhicule(s) au parc`, niveau: 'info', lien: '/fourriere' },
     { texte: `${levees || 0} réquisitoire(s) ou levée(s) à rattacher`, niveau: levees ? 'attention' : 'ok', lien: '/fourriere/requisitoires' },
   ]
   return { cle: 'fourriere', titre: 'Fourrière', resume: `${levees || 0} document(s) à rattacher`, niveau: levees ? 'attention' : 'ok', lignes, lien: '/fourriere' }

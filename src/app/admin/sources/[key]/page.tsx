@@ -74,7 +74,7 @@ export default async function SourceDetailPage({ params }: { params: { key: stri
             <ArrowLeft size={20} />
           </Link>
           <div className="min-w-0">
-            <h1 className="text-ink font-bold text-2xl truncate">{source.label}</h1>
+            <h1 data-garder className="text-ink font-bold text-2xl truncate">{source.label}</h1>
             <p className="text-ink-muted text-sm mt-1">
               Clé technique : <span className="font-mono">{source.key}</span>
               {source.active
@@ -126,7 +126,7 @@ export default async function SourceDetailPage({ params }: { params: { key: stri
                 ? <>
                     {source.default_billed_to_name}
                     {source.default_billed_to_id != null && (
-                      <span className="text-ink-faint text-xs ml-2">(Odoo partner #{source.default_billed_to_id})</span>
+                      <span className="text-ink-faint text-xs ml-2">(client ERP n° {source.default_billed_to_id})</span>
                     )}
                   </>
                 : <span className="text-ink-muted italic">— non configuré (les missions seront créées sans client par défaut)</span>}

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOutCascade } from '@/lib/auth-signout'
-import { useState, useEffect, useLayoutEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import TruckCheckPopup from '@/components/check-vehicule/TruckCheckPopup'
@@ -98,6 +98,20 @@ export default function AppShell({
   const navRoles = enChauffeur ? ['driver'] : userRoles
   const visibleNavAll = filterNavItems({ userModules: navModules, userRole: navRole, userNavOrder, userRoles: navRoles, flags: navFlags })
   const visibleNav = visibleNavAll.filter(i => !i.ownerOnly || navFlags.agents_shortcut)
+  // Nouveau Dispatch (préversion dispatch_v2, Olivier seul, 11/11/2026) : trois appuis
+  // rapides sur le titre basculent entre nouvel et ancien affichage. Placé ici, dans
+  // l'en-tête commun, pour répondre même si le nouvel écran ne s'affiche pas.
+  const appuisTitre = useRef<number[]>([])
+  const onTitre = () => {
+    if (pathname !== '/dispatch' || !navFlags.dispatch_v2) return
+    const t = Date.now()
+    appuisTitre.current = [...appuisTitre.current.filter(x => t - x < 900), t]
+    if (appuisTitre.current.length < 3) return
+    appuisTitre.current = []
+    const ancien = document.cookie.split('; ').includes('vd_dispatch_ancien=1')
+    document.cookie = `vd_dispatch_ancien=${ancien ? '' : '1'}; path=/; max-age=${ancien ? 0 : 31536000}; samesite=lax`
+    window.location.href = '/dispatch'
+  }
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])
@@ -115,6 +129,8 @@ export default function AppShell({
         if (Array.isArray(c.now)) setNavNow(c.now)
         if (Array.isArray(c.favorites)) setNavFavs(c.favorites)
         if (c.work?.available) setWork(c.work)
+        // Flags du menu en cache aussi : sans eux, le 1er affichage montre l'ancien menu (Facturation → À facturer) jusqu'à la réponse.
+        if (c.flags && typeof c.flags === 'object') { const f = { ...c.flags }; try { if (f.ma_journee && localStorage.getItem('vd_ma_journee_off') === '1') f.ma_journee = false } catch {}; setNavFlags(f); if (typeof f.nav_menu_v2 === 'boolean') setNavV2Flag(f.nav_menu_v2); if (typeof f.nav_espaces === 'boolean') setNavEspacesFlag(f.nav_espaces) }
       }
     } catch { /* stockage indisponible : on attend le fetch */ }
   }, [])
@@ -134,11 +150,14 @@ export default function AppShell({
         setNavBadges(d.badges || {})
         setNavV2Flag(!!d.flags?.nav_menu_v2)
         setNavEspacesFlag(!!d.flags?.nav_espaces)
-        setNavFlags(d.flags && typeof d.flags === 'object' ? d.flags : {})
+        // « Revenir à l'ancien menu » (préversion ma_journee, 11/11/2026) : réglage du navigateur, réversible depuis Ma journée.
+        const f = d.flags && typeof d.flags === 'object' ? { ...d.flags } : {}
+        try { if (f.ma_journee && localStorage.getItem('vd_ma_journee_off') === '1') f.ma_journee = false } catch {}
+        setNavFlags(f)
         if (d.work) setWork(d.work)
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
-        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [], work: d.work })) } catch {}
+        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [], work: d.work, flags: d.flags || {} })) } catch {}
       }).catch(() => {})
     load()
     const stop = pollWhenVisible(load, 60000, { immediate: false })   // toutes les minutes, onglet visible seulement
@@ -326,7 +345,7 @@ export default function AppShell({
             <TruckSwitcherIcon />
             <GlobalSearch shortcut={!navV2} />
           </div>
-          <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
+          <h1 onClick={onTitre} className="font-display text-ink font-bold text-lg select-none">{title}</h1>
           {headerExtra}
         </div>
 
@@ -361,7 +380,7 @@ export default function AppShell({
         {/* Header desktop */}
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between gap-4">
-            <h1 className="font-display text-ink font-bold text-2xl">{title}</h1>
+            <h1 onClick={onTitre} className="font-display text-ink font-bold text-2xl select-none">{title}</h1>
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
             {work.available && <WorkModeButton mode={work.mode} />}
             <DispatchAlertBadge userRole={navRole} />

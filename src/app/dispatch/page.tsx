@@ -2,12 +2,17 @@
 
 import { getServerSession } from 'next-auth'
 import { redirect }         from 'next/navigation'
+import { cookies }          from 'next/headers'
 import { authOptions }      from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DispatchClient       from './DispatchClient'
 import { isPreviewOn }      from '@/lib/feature-flags'
+import DispatchV2Client     from './v2/DispatchV2Client'
+import DispatchV2Garde      from './v2/DispatchV2Garde'
 
-export default async function DispatchPage() {
+export const dynamic = 'force-dynamic'
+
+export default async function DispatchPage({ searchParams }: { searchParams?: { ancien?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -19,7 +24,7 @@ export default async function DispatchPage() {
 
   const supabase = createAdminClient()
   // Chauffeurs + catalog sources (display_color, group_key) en parallele
-  const [{ data: drivers }, { data: catalogSources }, dossierView] = await Promise.all([
+  const [{ data: drivers }, { data: catalogSources }, dossierView, v2] = await Promise.all([
     supabase
       .from('users')
       .select('id, name, avatar_url')
@@ -33,9 +38,11 @@ export default async function DispatchPage() {
       .order('label'),
     // Vue dossier + nouvelle liste : superadmin, pilotes nommés, ou tout le monde (flag).
     isPreviewOn('dossier_view', user.role, user.id),
+    // Nouveau Dispatch : Olivier seul (préversion dispatch_v2, 11/11/2026).
+    isPreviewOn('dispatch_v2', user.role, user.id),
   ])
 
-  return (
+  const ancien = (
     <DispatchClient
       dossierView={dossierView}
       drivers={drivers || []}
@@ -46,5 +53,16 @@ export default async function DispatchPage() {
       userRole={user.role || ''}
       userModules={user.modules || []}
     />
+  )
+
+  // Ancien affichage forcé : trois appuis sur le titre (cookie) ou adresse de secours ?ancien=1.
+  const forceAncien = searchParams?.ancien === '1' || cookies().get('vd_dispatch_ancien')?.value === '1'
+  if (!v2 || forceAncien) return ancien
+
+  return (
+    <DispatchV2Garde ancien={ancien}>
+      <DispatchV2Client userName={user.name || ''} userEmail={user.email || undefined} userId={user.id || undefined}
+        userRole={user.role || ''} userModules={user.modules || []} sources={catalogSources || []} />
+    </DispatchV2Garde>
   )
 }

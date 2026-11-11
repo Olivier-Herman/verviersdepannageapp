@@ -70,6 +70,8 @@ export async function PATCH(req: Request, { params }: { params: { key: string } 
     patch.depot_id = body.depot_id
   }
   // driver_allowed : si true, chauffeurs peuvent deposer dans cette zone
+  // zone_attente : véhicule à ranger tant qu'il y est (Olivier 11/11/2026)
+  if (typeof body.zone_attente === 'boolean') patch.zone_attente = body.zone_attente
   if (typeof body.driver_allowed === 'boolean') {
     patch.driver_allowed = body.driver_allowed
   }

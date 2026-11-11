@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
+import { Bandeau, Tuiles, CONTENEUR_HABILLE, RECHERCHE_BANDEAU, BOUTON_BANDEAU } from '@/components/ui/Bandeau'
 import TabLegend from '@/components/ui/TabLegend'
 
 type Recipient = 'parquet' | 'domaine' | 'client'
@@ -190,10 +191,12 @@ const TONE: Record<NonNullable<Reading['primary']>['tone'] & string, string> = {
 }
 
 // ── Écran ────────────────────────────────────────────────────────────────────
-type Filter = 'nous' | 'eux' | 'rien' | 'closed' | 'all'
+type Filter = 'retours' | 'danger' | 'nous' | 'eux' | 'pause' | 'rien' | 'closed' | 'all'
 
-export default function SaisiesClient({ userRole, userName, userEmail, userModules }: {
+export default function SaisiesClient({ userRole, userName, userEmail, userModules, habille = false }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
+  /** Préversion ma_journee (Olivier seul, 11/11/2026) : habillage, « Délai en danger » d'abord, confirmations dans la page. */
+  habille?: boolean
 }) {
   const [dossiers, setDossiers] = useState<Dossier[]>([])
   const [orphans, setOrphans] = useState<Orphan[]>([])
@@ -208,6 +211,13 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   const [showScan, setShowScan] = useState(false)
   const [showTools, setShowTools] = useState(false)
   const isAdmin = ['admin', 'superadmin'].includes(userRole)
+  // Confirmations DANS la page (préversion) au lieu des fenêtres du navigateur (P3, 11/11/2026).
+  type Dlg = { titre: string; texte: string; ok: string; saisie?: string; coche?: string; res: (v: { ok: boolean; texte: string; coche: boolean }) => void }
+  const [dlg, setDlg] = useState<Dlg | null>(null)
+  const [dlgTexte, setDlgTexte] = useState(''); const [dlgCoche, setDlgCoche] = useState(true)
+  const demander = (titre: string, texte: string, ok: string, opts: { saisie?: string; coche?: string } = {}) =>
+    new Promise<{ ok: boolean; texte: string; coche: boolean }>(res => { setDlgTexte(opts.saisie || ''); setDlgCoche(true); setDlg({ titre, texte, ok, ...opts, res }) })
+  const ask = async (titre: string, texte: string, ok: string) => habille ? (await demander(titre, texte, ok)).ok : window.confirm(`${titre}\n\n${texte}`)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -219,6 +229,10 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+  // P2 : retours du Parquet que le robot n'a pas su lire (préversion).
+  const [nonLus, setNonLus] = useState<{ id: string; subject: string | null; from_addr: string | null; received_at: string | null; outcome: string | null; nonLues: number }[]>([])
+  const chargerNonLus = useCallback(() => { if (habille) fetch('/api/fourriere/saisies/retours-non-lus', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j?.items) setNonLus(j.items) }).catch(() => {}) }, [habille])
+  useEffect(() => { chargerNonLus() }, [chargerNonLus])
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 6000); return () => clearTimeout(t) }, [msg])
 
   async function post(url: string, body?: any, method = 'POST') {
@@ -239,18 +253,24 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
   const factureOdoo = (id: string, efId: string) => run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/facture-odoo`, { ef_id: efId }); if (j.url) window.open(j.url, '_blank'); return `✓ Facture créée (brouillon)${j.odooId ? ` #${j.odooId}` : ''}` })
   const uploadValidation = (id: string, efId: string, file: File) => run(id, async () => { const fd = new FormData(); fd.append('file', file); fd.append('ef_id', efId); await post(`/api/fourriere/saisies/${id}/validation-upload`, fd); return '✓ Retour signé enregistré → validé' })
   const efStatus = (id: string, efId: string, status: 'accepte' | 'refuse' | 'annule') => run(id, async () => { await post(`/api/fourriere/saisies/${id}/ef-status`, { ef_id: efId, status }); return status === 'refuse' ? 'Marqué refusé' : status === 'annule' ? '✓ Annulé (note de crédit)' : '✓ Marqué validé' })
-  const depotJustInvoice = (id: string, efId: string, plate: string) => { if (!confirm(`Déposer l'état de frais de ${plate} sur JustInvoice (SPF Justice) ?\n\nEnvoie l'état de frais signé + le réquisitoire au portail. Action réelle.`)) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/justinvoice`, { ef_id: efId }); return `✓ Déposé sur JustInvoice${j.ref ? ` — dossier ${j.ref}` : ''}` }) }
-  const sendAll = (ids: string[]) => { if (!ids.length) return; if (!confirm(`Envoyer ${ids.length} état(s) de frais au Parquet maintenant ?\n\nKm aller-retour comptés à 0 (franchise 30 km). Mails envoyés depuis fourriere@.`)) return; run('sync', async () => { const j = await post('/api/fourriere/saisies', { action: 'send_all', ids }); const ko = (j.results || []).filter((x: any) => !x.ok); return `✓ ${j.sent} envoyé(s)${j.failed ? ` · ⚠ ${j.failed} échec(s) : ${ko.map((x: any) => x.error).slice(0, 3).join(' ; ')}` : ''}` }) }
-  const resendEf = (id: string, efId: string, numero: string) => { if (!confirm(`Renvoyer l'état de frais ${numero} (même numéro, données véhicule à jour) avec le réquisitoire ?`)) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/etat-frais/${efId}/renvoyer`); return `✓ ${j.numero} renvoyé à ${j.email}` }) }
-  const correctionJI = (id: string, efId: string, numero: string, ref: string) => {
+  const depotJustInvoice = async (id: string, efId: string, plate: string) => { if (!(await ask(`Déposer l'état de frais de ${plate} sur JustInvoice ?`, 'Envoie l\'état de frais signé et le réquisitoire au portail du SPF Justice. Action réelle.', 'Déposer sur JustInvoice'))) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/justinvoice`, { ef_id: efId }); return `✓ Déposé sur JustInvoice${j.ref ? ` — dossier ${j.ref}` : ''}` }) }
+  const sendAll = async (ids: string[]) => { if (!ids.length) return; if (!(await ask(`Envoyer ${ids.length} état(s) de frais au Parquet maintenant ?`, 'Km aller-retour comptés à 0 (franchise 30 km). Mails envoyés depuis fourriere@.', `Envoyer les ${ids.length}`))) return; run('sync', async () => { const j = await post('/api/fourriere/saisies', { action: 'send_all', ids }); const ko = (j.results || []).filter((x: any) => !x.ok); return `✓ ${j.sent} envoyé(s)${j.failed ? ` · ⚠ ${j.failed} échec(s) : ${ko.map((x: any) => x.error).slice(0, 3).join(' ; ')}` : ''}` }) }
+  const resendEf = async (id: string, efId: string, numero: string) => { if (!(await ask(`Renvoyer l'état de frais ${numero} ?`, 'Même numéro, données du véhicule à jour, avec le réquisitoire.', 'Renvoyer'))) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/etat-frais/${efId}/renvoyer`); return `✓ ${j.numero} renvoyé à ${j.email}` }) }
+  const correctionJI = async (id: string, efId: string, numero: string, ref: string) => {
+    if (habille) {
+      const r = await demander(`Correction JustInvoice — dossier ${ref} (${numero})`, 'L\'état de frais tel qu\'il est maintenant (corrigé) part dans le même dossier, au statut « Correction soumise ». Commentaire pour le bureau de taxation :', 'Envoyer la correction', { saisie: 'État de frais corrigé suivant votre demande.', coche: 'Joindre aussi le réquisitoire (PDF)' })
+      if (!r.ok) return
+      run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/etat-frais/${efId}/justinvoice-correction`, { docs: r.coche ? ['CostState', 'Claim'] : ['CostState'], comment: r.texte }); return `✓ Correction envoyée sur JustInvoice (${j.ref}) : ${(j.sent || []).join(', ')}` })
+      return
+    }
     const comment = prompt(`Correction JustInvoice — dossier ${ref} (${numero})\n\nL'état de frais tel qu'il est maintenant dans VD Soft (corrigé) sera envoyé dans le même dossier, au statut « Correction soumise ».\n\nCommentaire pour le bureau de taxation (ce qui a été corrigé) :`, 'État de frais corrigé suivant votre demande.')
     if (comment == null) return
     const withReq = confirm('Joindre aussi le réquisitoire (PDF) ?\n\nOK = oui · Annuler = seulement l\'état de frais')
     run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/etat-frais/${efId}/justinvoice-correction`, { docs: withReq ? ['CostState', 'Claim'] : ['CostState'], comment }); return `✓ Correction envoyée sur JustInvoice (${j.ref}) : ${(j.sent || []).join(', ')}` })
   }
-  const relanceEf = (id: string, efId: string, numero: string) => { if (!confirm(`Renvoyer ${numero} au Parquet avec un rappel courtois ?\n\nÀ réserver aux cas proches de la forclusion.`)) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/ef-relance`, { ef_id: efId }); return `✓ Rappel envoyé à ${j.email}` }) }
+  const relanceEf = async (id: string, efId: string, numero: string) => { if (!(await ask(`Renvoyer ${numero} au Parquet avec un rappel courtois ?`, 'À réserver aux cas proches de la forclusion.', 'Envoyer le rappel'))) return; run(id, async () => { const j = await post(`/api/fourriere/saisies/${id}/ef-relance`, { ef_id: efId }); return `✓ Rappel envoyé à ${j.email}` }) }
   const relanceReq = (missionId: string | null, id: string) => { if (!missionId) { setMsg('⚠ Pas de fiche liée — relance impossible'); return } run(id, async () => { const j = await post(`/api/missions/${missionId}/requisitoire-relance`); return `✓ Relance envoyée${j.email ? ` à ${j.email}` : ''}` }) }
-  const remove = (id: string, plate: string) => { if (!confirm(`Retirer ${plate} du suivi ?\n\nLa fiche reste intacte. Les états de frais de ce dossier seront supprimés.`)) return; run(id, async () => { await post(`/api/fourriere/saisies/${id}`, undefined, 'DELETE'); return '✓ Dossier retiré' }) }
+  const remove = async (id: string, plate: string) => { if (!(await ask(`Retirer ${plate} du suivi ?`, 'La fiche reste intacte. Les états de frais de ce dossier seront supprimés.', 'Retirer du suivi'))) return; run(id, async () => { await post(`/api/fourriere/saisies/${id}`, undefined, 'DELETE'); return '✓ Dossier retiré' }) }
   const patch = (id: string, body: any, okMsg = '✓ Mis à jour') => run(id, async () => { await post(`/api/fourriere/saisies/${id}`, body, 'PATCH'); return okMsg })
 
   const primaryAction = (d: Dossier, r: Reading) => {
@@ -261,14 +281,19 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     else if (p.kind === 'facture' && p.efId) factureOdoo(d.id, p.efId)
     else if (p.kind === 'close') patch(d.id, { state: 'clos' }, '✓ Dossier clôturé')
     else if (p.kind === 'resume') patch(d.id, { paused: false }, '▶ Dossier repris — le robot s\'en occupe à nouveau')
-    else if (p.kind === 'annule' && p.efId) { if (confirm('La note de crédit a été envoyée au Parquet pour cet état de frais ?')) efStatus(d.id, p.efId, 'annule') }
+    else if (p.kind === 'annule' && p.efId) { const efId = p.efId; ask('La note de crédit a été envoyée au Parquet ?', 'L\'état de frais passe en « annulé ».', 'Oui, envoyée').then(ok => { if (ok) efStatus(d.id, efId, 'annule') }) }
     // 'upload' : géré par l'input fichier du bouton
   }
 
   const readings = useMemo(() => new Map(dossiers.map(d => [d.id, readDossier(d)] as const)), [dossiers])
   const counts = useMemo(() => {
-    const c = { nous: 0, eux: 0, rien: 0, closed: 0, all: dossiers.length, forclusion: 0 }
-    for (const d of dossiers) { const r = readings.get(d.id)!; if (d.state === 'clos') c.closed++; else c[r.who]++; if (r.forclusion >= 2) c.forclusion++ }
+    const c = { nous: 0, eux: 0, rien: 0, closed: 0, all: dossiers.length, forclusion: 0, danger: 0, pause: 0, attente: 0 }
+    for (const d of dossiers) {
+      const r = readings.get(d.id)!; if (d.state === 'clos') c.closed++; else c[r.who]++; if (r.forclusion >= 2) c.forclusion++
+      if (d.state !== 'clos' && r.forclusion >= 1) c.danger++
+      if (d.state !== 'clos' && d.paused_at) c.pause++
+      for (const e of d.etats || []) if (e.status === 'envoye') c.attente += Number(e.total_tvac || 0)
+    }
     return c
   }, [dossiers, readings])
   const norm = (s: string) => s.toLowerCase().replace(/[\s.-]/g, '')
@@ -277,7 +302,10 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     const rank: Record<Who, number> = { nous: 0, eux: 1, rien: 2 }
     return dossiers.filter(d => {
       const r = readings.get(d.id)!
-      const inTab = filter === 'all' ? true : filter === 'closed' ? d.state === 'clos' : (d.state !== 'clos' && r.who === filter)
+      const inTab = filter === 'all' ? true : filter === 'closed' ? d.state === 'clos'
+        : filter === 'danger' ? (d.state !== 'clos' && r.forclusion >= 1)
+        : filter === 'pause' ? (d.state !== 'clos' && !!d.paused_at)
+        : (d.state !== 'clos' && r.who === filter && !(habille && filter === 'rien' && d.paused_at))
       if (!inTab) return false
       if (!nq) return true
       return norm(`${d.vehicle_plate || ''} ${d.dossier_ref || ''} ${d.ef_number || ''} ${d.vehicle_brand || ''} ${d.vehicle_model || ''}`).includes(nq)
@@ -285,7 +313,9 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
       const ra = readings.get(a.id)!, rb = readings.get(b.id)!
       return (rb.forclusion - ra.forclusion) || (rank[ra.who] - rank[rb.who]) || (a.parked_at || '').localeCompare(b.parked_at || '')
     })
-  }, [dossiers, readings, filter, q])
+  }, [dossiers, readings, filter, q, habille])
+  const [defautPose, setDefautPose] = useState(false)
+  useEffect(() => { if (!habille || defautPose || loading) return; setDefautPose(true); if (counts.danger > 0) setFilter('danger') }, [habille, defautPose, loading, counts.danger])
   const sendableNow = visible.filter(d => readings.get(d.id)!.canEstablish && !d.levee_date && !d.pending_action?.startsWith('cloture')).map(d => d.id)
 
   const TABS: { key: Filter; label: string; n: number; dot?: string; help: string }[] = [
@@ -301,10 +331,10 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 
   return (
     <AppShell title="États de frais Parquet" userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules}>
-      <div className="px-4 lg:px-8 py-6 max-w-5xl mx-auto space-y-4">
+      <div className={habille ? CONTENEUR_HABILLE : 'px-4 lg:px-8 py-6 max-w-5xl mx-auto space-y-4'}>
 
         {/* En-tête */}
-        <div className="flex items-end justify-between flex-wrap gap-3">
+        <div className={habille ? 'hidden' : 'flex items-end justify-between flex-wrap gap-3'}>
           <div>
             <h1 className="font-display text-2xl font-bold text-ink">⚖️ États de frais Parquet</h1>
             <p className="text-ink-muted text-sm mt-0.5">Véhicules saisis : ce qu'on doit faire, ce qu'on attend, ce qui dort.</p>
@@ -340,8 +370,41 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
           </div>
         </div>
 
+        {habille && (
+          <>
+            <Bandeau teinte="ambre" titre="États de frais Parquet"
+              sousTitre={<><b>{counts.eux}</b> chez le Parquet · <b>{counts.attente.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</b> TVA comprise en attente · {autoSend ? 'le robot établit et envoie seul' : 'envoi automatique coupé'}</>}
+              droite={<>
+                <div className="relative flex-1 min-w-0">
+                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, PV, n° d'état de frais…" className={RECHERCHE_BANDEAU} />
+                  {q && <button onClick={() => setQ('')} aria-label="Effacer" className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2">×</button>}
+                </div>
+                <button onClick={load} className={BOUTON_BANDEAU} title="Rafraîchir">↻</button>
+                <button onClick={() => setShowTools(s => !s)} className={BOUTON_BANDEAU} title="Outils">⋯</button>
+              </>} />
+            {showTools && (
+              <div className="bg-surface border rounded-2xl shadow-sm p-2 space-y-1 text-ink">
+                <button onClick={() => { setShowTools(false); setShowScan(true) }} className="w-full text-left px-3 py-2.5 min-h-[44px] rounded-xl hover:bg-surface-hover text-sm">📥 Scan groupé des retours signés</button>
+                {sendableNow.length > 0 && <button onClick={() => { setShowTools(false); sendAll(sendableNow) }} className="w-full text-left px-3 py-2.5 min-h-[44px] rounded-xl hover:bg-surface-hover text-sm">📧 Envoyer les {sendableNow.length} états de frais prêts</button>}
+                {isAdmin && !autoSend && <button onClick={() => { setShowTools(false); toggleMode() }} className="w-full text-left px-3 py-2.5 min-h-[44px] rounded-xl hover:bg-surface-hover text-sm">🤖 Réactiver l'envoi automatique</button>}
+                <div className="px-3 py-1.5 text-[11px] text-ink-faint border-t">{cronLast?.at ? `Robot du matin : dernier passage ${new Date(cronLast.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Robot du matin : aucun passage enregistré'}</div>
+              </div>
+            )}
+            <Tuiles colonnes={nonLus.length ? 4 : 7} actif={filter} onChoix={k => setFilter(k as Filter)} items={[
+              ...(nonLus.length ? [{ key: 'retours', label: 'Pages à attribuer', n: nonLus.length, cls: 'bg-orange-50 border-orange-300 text-orange-900', help: 'retours du Parquet que le robot n\'a pas su lire' }] : []),
+              { key: 'danger', label: 'Délai en danger', n: counts.danger, cls: 'bg-red-50 border-red-300 text-red-800', help: 'forclusion proche : à regarder en premier' },
+              { key: 'nous', label: 'À nous', n: counts.nous, dot: WHO.nous.dot, cls: 'bg-amber-50 border-amber-300 text-amber-900', help: 'une action à faire par le bureau' },
+              { key: 'eux', label: 'Chez le Parquet', n: counts.eux, dot: WHO.eux.dot, cls: 'bg-sky-50 border-sky-300 text-sky-900', help: 'on attend le Parquet, un policier, JustInvoice ou le Domaine' },
+              { key: 'pause', label: 'En pause', n: counts.pause, cls: 'bg-violet-50 border-violet-300 text-violet-900', help: 'sans réquisitoire, hors délai, huissier… le robot n\'envoie rien' },
+              { key: 'rien', label: 'En veille', n: Math.max(0, counts.rien - counts.pause), dot: WHO.rien.dot, cls: 'bg-slate-50 border-slate-200 text-slate-700', help: 'rien à faire avant une date connue' },
+              { key: 'closed', label: 'Clôturés', n: counts.closed },
+              { key: 'all', label: 'Tous', n: counts.all },
+            ]} />
+          </>
+        )}
+
         {/* Onglets = qui a la main */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className={habille ? 'hidden' : 'flex items-center gap-1.5 flex-wrap'}>
           {TABS.map(t => (
             <button key={t.key} onClick={() => setFilter(t.key)} title={t.help}
               className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
@@ -351,7 +414,7 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
           ))}
           {counts.forclusion > 0 && <span className="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-red-600 text-white">⏳ {counts.forclusion} forclusion proche</span>}
         </div>
-        <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />
+        {!habille && <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />}
 
         {msg && <div className="text-sm px-4 py-2.5 rounded-xl bg-surface-2 border text-ink">{msg}</div>}
 
@@ -374,8 +437,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
           </div>
         )}
 
+        {habille && filter === 'retours' && (
+          <RetoursNonLus items={nonLus} dossiers={dossiers} onFait={() => { chargerNonLus(); load() }} onMsg={setMsg} />
+        )}
+
         {/* Dossiers */}
-        {loading ? (
+        {habille && filter === 'retours' ? null : loading ? (
           <div className="text-center py-16 text-ink-faint text-sm">Chargement…</div>
         ) : visible.length === 0 ? (
           <div className="text-center py-16 text-ink-faint">
@@ -392,12 +459,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 onGenerate={() => setGen(d)}
                 onRecipient={(rc) => patch(d.id, { recipient: rc }, '✓ Destinataire mis à jour')}
                 onClose={() => patch(d.id, { state: 'clos' }, '✓ Dossier clôturé')}
-                onPause={() => { if (d.paused_at) patch(d.id, { paused: false }, '▶ Dossier repris'); else { const why = prompt('Mettre ce dossier en pause — pourquoi ? (le robot n\'enverra plus rien)'); if (why !== null) patch(d.id, { paused: true, paused_reason: why }, '⏸ Dossier en pause') } }}
+                onPause={async () => { if (d.paused_at) patch(d.id, { paused: false }, '▶ Dossier repris'); else if (habille) { const r = await demander('Mettre ce dossier en pause', 'Le robot n\'enverra plus rien. Pourquoi ?', 'Mettre en pause', { saisie: '' }); if (r.ok) patch(d.id, { paused: true, paused_reason: r.texte }, '⏸ Dossier en pause') } else { const why = prompt('Mettre ce dossier en pause — pourquoi ? (le robot n\'enverra plus rien)'); if (why !== null) patch(d.id, { paused: true, paused_reason: why }, '⏸ Dossier en pause') } }}
                 onRemove={() => remove(d.id, d.vehicle_plate || '—')}
                 onRelance={() => relanceReq(d.mission_id, d.id)}
                 onJustInvoice={(efId) => depotJustInvoice(d.id, efId, d.vehicle_plate || '—')}
                 onFacture={(efId) => factureOdoo(d.id, efId)}
-                onEfStatus={(efId, s) => efStatus(d.id, efId, s)}
+                onEfStatus={(efId, s) => { if ((s as string) === 'annule-confirmer') { ask('La note de crédit a été envoyée au Parquet ?', 'L\'état de frais passe en « annulé ».', 'Oui, envoyée').then(ok => { if (ok) efStatus(d.id, efId, 'annule') }) } else efStatus(d.id, efId, s) }}
                 onEfRelance={(efId, numero) => relanceEf(d.id, efId, numero)}
                 onEfResend={(efId, numero) => resendEf(d.id, efId, numero)}
                 onEfCorrection={(efId, numero, ref) => correctionJI(d.id, efId, numero, ref)} />
@@ -408,6 +475,20 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
 
       {gen && <GenerateModal d={gen} r={readings.get(gen.id)!} onClose={() => setGen(null)} onDone={() => { setGen(null); load() }} onMsg={setMsg} />}
       {showScan && <ScanModal onClose={() => setShowScan(false)} onDone={() => load()} />}
+      {dlg && (
+        <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center p-3" role="dialog" aria-modal="true">
+          <div className="bg-surface text-ink rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-3">
+            <div className="flex items-start gap-3"><h2 className="text-lg font-bold flex-1">{dlg.titre}</h2><button onClick={() => { dlg.res({ ok: false, texte: '', coche: false }); setDlg(null) }} aria-label="Fermer" className="min-h-[44px] min-w-[44px] -m-2 text-ink-muted hover:text-ink text-xl">✕</button></div>
+            <p className="text-sm text-ink-secondary">{dlg.texte}</p>
+            {dlg.saisie !== undefined && <textarea value={dlgTexte} onChange={e => setDlgTexte(e.target.value)} rows={3} className="w-full border rounded-xl p-3 text-sm bg-surface-2 text-ink" autoFocus />}
+            {dlg.coche && <label className="flex items-center gap-2 text-sm min-h-[44px]"><input type="checkbox" checked={dlgCoche} onChange={e => setDlgCoche(e.target.checked)} className="w-5 h-5" />{dlg.coche}</label>}
+            <div className="flex gap-2 justify-end flex-wrap">
+              <button onClick={() => { dlg.res({ ok: false, texte: '', coche: false }); setDlg(null) }} className="min-h-[44px] px-4 rounded-xl border bg-surface text-sm font-semibold">Annuler</button>
+              <button onClick={() => { dlg.res({ ok: true, texte: dlgTexte, coche: dlgCoche }); setDlg(null) }} className="min-h-[44px] px-4 rounded-xl bg-brand text-white text-sm font-bold">{dlg.ok}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }
@@ -446,6 +527,68 @@ function Timeline({ steps }: { steps: Step[] }) {
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
+// ── P2 : retours du Parquet non lus par le robot (préversion ma_journee, 11/11/2026) ──
+function RetoursNonLus({ items, dossiers, onFait, onMsg }: {
+  items: { id: string; subject: string | null; from_addr: string | null; received_at: string | null; outcome: string | null; nonLues: number }[]
+  dossiers: Dossier[]; onFait: () => void; onMsg: (m: string) => void
+}) {
+  const [pieces, setPieces] = useState<Record<string, { i: number; name: string }[] | 'chargement'>>({})
+  const [choix, setChoix] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+  const efs = useMemo(() => dossiers.flatMap(d => (d.etats || []).filter(e => e.status === 'envoye').map(e => ({ key: `${d.id}|${e.id}`, label: `${e.numero} · ${d.vehicle_plate || '—'} ${[d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' ')}` })))
+    .sort((a, b) => a.label.localeCompare(b.label)), [dossiers])
+  const voir = async (id: string) => {
+    setPieces(p => ({ ...p, [id]: 'chargement' }))
+    const j = await fetch(`/api/fourriere/saisies/retours-non-lus/${id}?liste=1`, { cache: 'no-store' }).then(r => r.json()).catch(() => null)
+    setPieces(p => ({ ...p, [id]: j?.pdfs || [] }))
+  }
+  const attribuer = async (id: string, i: number, refus: boolean) => {
+    const k = choix[`${id}:${i}`]; if (!k) { onMsg('⚠ Choisis l\'état de frais'); return }
+    const [dossier_id, ef_id] = k.split('|'); setBusy(`${id}:${i}`)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/retours-non-lus/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'attribuer', i, dossier_id, ef_id, refus }) })
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Erreur')
+      onMsg(`✓ ${j.numero || 'État de frais'} : ${refus ? 'refus' : 'accord'} enregistré${j.deposit?.ok ? ' et déposé sur JustInvoice' : ''}`); onFait()
+    } catch (e: any) { onMsg(`⚠ ${e.message}`) } finally { setBusy(null) }
+  }
+  const ecarter = async (id: string) => {
+    setBusy(id)
+    try { const r = await fetch(`/api/fourriere/saisies/retours-non-lus/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ecarter' }) }); if (!r.ok) throw new Error('Erreur'); onFait() }
+    catch (e: any) { onMsg(`⚠ ${e.message}`) } finally { setBusy(null) }
+  }
+  if (!items.length) return <div className="bg-surface border rounded-2xl p-8 text-center text-ink-muted">Aucune page en attente : le robot a tout lu.</div>
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-ink-secondary">Retours du Parquet arrivés par mail dont le robot n'a pas su lire le numéro d'état de frais. Ouvre la pièce, choisis l'état de frais, puis Accord ou Refus : c'est le même enregistrement que « Retour signé reçu ».</p>
+      {items.map(it => {
+        const ps = pieces[it.id]
+        return (
+          <div key={it.id} className="bg-surface border border-l-[8px] border-l-orange-500 rounded-2xl p-4 space-y-2">
+            <div className="flex items-start gap-3 flex-wrap">
+              <div className="flex-1 min-w-[220px]"><b className="text-ink">{it.subject || '(sans objet)'}</b><span className="block text-xs text-ink-muted">{it.from_addr || ''} · reçu le {fmt(it.received_at)} · {it.nonLues} page(s) non reconnue(s)</span></div>
+              {!ps && <button onClick={() => voir(it.id)} className="min-h-[44px] px-4 rounded-xl bg-brand text-white text-sm font-bold">Voir les pièces</button>}
+              <button disabled={busy === it.id} onClick={() => ecarter(it.id)} className="min-h-[44px] px-4 rounded-xl border bg-surface text-sm font-semibold text-ink disabled:opacity-40">C'est traité</button>
+            </div>
+            {ps === 'chargement' && <p className="text-sm text-ink-muted">Chargement des pièces…</p>}
+            {Array.isArray(ps) && ps.length === 0 && <p className="text-sm text-ink-muted">Plus de pièce jointe dans ce mail (déplacé ou supprimé ?).</p>}
+            {Array.isArray(ps) && ps.map(p => (
+              <div key={p.i} className="flex items-center gap-2 flex-wrap border-t pt-2">
+                <a href={`/api/fourriere/saisies/retours-non-lus/${it.id}?i=${p.i}`} target="_blank" rel="noreferrer" className="min-h-[44px] inline-flex items-center px-3 rounded-xl border bg-surface-2 text-sm font-semibold text-ink">📄 {p.name || `Pièce ${p.i + 1}`}</a>
+                <select aria-label="État de frais" value={choix[`${it.id}:${p.i}`] || ''} onChange={e => setChoix(c => ({ ...c, [`${it.id}:${p.i}`]: e.target.value }))} className="min-h-[44px] flex-1 min-w-[220px] border rounded-xl px-3 text-sm bg-surface text-ink">
+                  <option value="">État de frais concerné…</option>
+                  {efs.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
+                </select>
+                <button disabled={busy === `${it.id}:${p.i}`} onClick={() => attribuer(it.id, p.i, false)} className="min-h-[44px] px-4 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold disabled:opacity-40">Accord</button>
+                <button disabled={busy === `${it.id}:${p.i}`} onClick={() => attribuer(it.id, p.i, true)} className="min-h-[44px] px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-40">Refus</button>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient, onClose, onPause, onRemove, onRelance, onJustInvoice, onFacture, onEfStatus, onEfRelance, onEfResend, onEfCorrection }: {
   d: Dossier; r: Reading; busy: boolean
   onPrimary: () => void
@@ -590,7 +733,7 @@ function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient,
                             {ef.status === 'accepte' && <button disabled={busy} onClick={() => onJustInvoice(ef.id)} className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold">JustInvoice</button>}
                             {ef.status === 'depose' && <button disabled={busy} onClick={() => onFacture(ef.id)} title="Facturer sans attendre la liquidation" className="px-2 py-0.5 bg-surface hover:bg-surface-hover border text-ink-secondary rounded-md font-semibold">Facturer maintenant</button>}
                             {ef.status === 'liquide' && <button disabled={busy} onClick={() => onFacture(ef.id)} className="px-2 py-0.5 bg-teal-600 hover:bg-teal-700 text-white rounded-md font-semibold">Créer la facture</button>}
-                            {ef.status === 'a_annuler' && <button disabled={busy} onClick={() => { if (window.confirm('La note de crédit a été envoyée au Parquet pour cet état de frais ?')) onEfStatus(ef.id, 'annule') }} className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded-md font-semibold">Note de crédit envoyée</button>}
+                            {ef.status === 'a_annuler' && <button disabled={busy} onClick={() => onEfStatus(ef.id, 'annule-confirmer' as any)} className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded-md font-semibold">Note de crédit envoyée</button>}
                           </span>
                         </td>
                       </tr>

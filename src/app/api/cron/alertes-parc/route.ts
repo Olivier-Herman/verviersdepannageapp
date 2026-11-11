@@ -24,7 +24,28 @@ export async function GET(req: Request) {
   const { data: req0 } = await sb.from('requisitoire_intake').select('id, received_at, extracted').eq('status', 'pending').lt('received_at', il24).order('received_at')
   const reqs = (req0 || []).map(r => { const e = typeof r.extracted === 'string' ? JSON.parse(r.extracted) : (r.extracted || {}); return { ...r, e } })
 
-  if (!vieux.length && !reqs.length) return NextResponse.json({ ok: true, transit: 0, requisitoires: 0 })
+  // Rappel de contrôle du parc (P8, Olivier 11/11/2026) : réglable, coupé par défaut, au plus une fois par semaine.
+  let rappelControle: string | null = null
+  try {
+    const { getBusinessNumber } = await import('@/lib/settings/business')
+    const n = await getBusinessNumber('controle_parc_rappel_jours').catch(() => 0)
+    if (n > 0) {
+      const { data: last } = await sb.from('parc_controles').select('started_at').order('started_at', { ascending: false }).limit(1).maybeSingle()
+      const jours = last?.started_at ? Math.floor((Date.now() - new Date(last.started_at).getTime()) / 864e5) : null
+      const { data: dejaRow } = await sb.from('app_settings').select('value').eq('key', 'controle_parc_rappel_last').maybeSingle()
+      let deja: string | null = null; try { deja = dejaRow?.value ? JSON.parse(dejaRow.value) : null } catch {}
+      const ilYa7j = new Date(Date.now() - 7 * 864e5).toISOString()
+      if ((jours == null || jours > n) && (!deja || deja < ilYa7j)) {
+        rappelControle = jours == null ? 'Aucun contrôle du parc enregistré.' : `Dernier contrôle du parc il y a ${jours} jours (rappel réglé à ${n} jours).`
+        const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+        const chat = await getBusinessNumber('telegram_chat_mobi')
+        await notifierTelegram(chat, `🅿️ ${rappelControle} Écran : Fourrière › Parc › Contrôle.`)
+        await sb.from('app_settings').upsert({ key: 'controle_parc_rappel_last', value: JSON.stringify(new Date().toISOString()) }, { onConflict: 'key' })
+      }
+    }
+  } catch (e: any) { console.error('[alertes-parc] rappel contrôle', e?.message) }
+
+  if (!vieux.length && !reqs.length) return NextResponse.json({ ok: true, transit: 0, requisitoires: 0, rappelControle })
 
   const lignesT = vieux.map(m => `${m.vehicle_plate || '?'} (${m.vehicle_brand || m.source}) depuis le ${fr(m.parked_at || m.created_at)} — n° ${m.mission_number}`)
   const lignesR = reqs.map(r => `${r.e?.plaque || '?'} ${[r.e?.marque, r.e?.modele].filter(Boolean).join(' ')} — PV ${r.e?.pv_number || '?'}, reçu le ${fr(r.received_at)}`)

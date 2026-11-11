@@ -62,8 +62,12 @@ function fmtEur(n: number | null | undefined): string {
   return n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 
-export default function DestructionClient({ userRole, userName, userEmail, userModules, embedded = false }: Props & { embedded?: boolean }) {
+export default function DestructionClient({ userRole, userName, userEmail, userModules, embedded = false, releveCommune = false }: Props & { embedded?: boolean
+  /** Préversion ma_journee (Olivier 11/11/2026) : abandon signé = hors relevé ; AVP mis en épave ailleurs = à déclarer. */
+  releveCommune?: boolean }) {
   const [eligibles, setEligibles] = useState<Eligible[]>([])
+  const [pending, setPending] = useState<{ id: string; vehicle_plate: string | null; vehicle_brand: string | null; vehicle_model: string | null; vehicle_vin: string | null; entry_date: string | null; scratched_at: string | null }[]>([])
+  const [checkedPending, setCheckedPending] = useState<Set<string>>(new Set())
   // Olivier 10/09/2026 : les photos s'ouvrent dans la visionneuse in-app (‹ › /
   // swipe), plus dans un onglet du navigateur qui n'en montrait qu'une.
   const [gallery, setGallery] = useState<string[] | null>(null)
@@ -81,10 +85,11 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
     setLoading(true)
     setErr(null)
     try {
-      const res = await fetch('/api/fourriere/destruction')
+      const res = await fetch(releveCommune ? '/api/fourriere/destruction?regle=commune' : '/api/fourriere/destruction')
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Erreur')
       setEligibles(j.eligible || [])
+      if (releveCommune) { setPending(j.pending || []); setCheckedPending(new Set((j.pending || []).map((p: any) => p.id))) }
       setVilleEmail(j.ville_destruction_email || null)
     } catch (e: any) {
       setErr(e.message || 'Erreur de chargement')
@@ -144,7 +149,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
   }
 
   async function validateDestruction() {
-    if (checked.size === 0) return
+    if (checked.size === 0 && checkedPending.size === 0) return
     if (!confirming) { setConfirming(true); return }
 
     setSubmitting(true)
@@ -153,7 +158,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
       const res = await fetch('/api/fourriere/destruction', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ mission_ids: Array.from(checked), format }),
+        body:    JSON.stringify({ mission_ids: Array.from(checked), pending_ids: releveCommune ? Array.from(checkedPending) : [], format }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Erreur')
@@ -177,7 +182,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
       }
 
       setDone({ count: j.count, emailSent: Boolean(j.email_sent), emailTo: j.email_to })
-      setChecked(new Set())
+      setChecked(new Set()); setCheckedPending(new Set())
       // Refresh la liste (les véhicules sortis ont disparu)
       await load()
     } catch (e: any) {
@@ -240,6 +245,24 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
           {err && (
             <div className="bg-critical/10 border border-critical/40 rounded-2xl p-3 text-sm text-critical">
               {err}
+            </div>
+          )}
+
+          {/* Relevé commune : AVP déjà mis en épave par une autre porte (préversion) */}
+          {releveCommune && pending.length > 0 && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 space-y-2 text-amber-900">
+              <p className="text-sm font-bold">{pending.length} AVP déjà mis en épave, à déclarer dans le relevé de la commune</p>
+              <p className="text-xs">Sortis par un autre bouton (fiche, relevé sans étiquette). Ils partent dans le prochain relevé avec leur vraie date de sortie ; ils ne sont pas ressortis du parc.</p>
+              <div className="divide-y divide-amber-200">
+                {pending.map(p => (
+                  <label key={p.id} className="flex items-center gap-3 py-2 min-h-[44px] text-sm cursor-pointer">
+                    <input type="checkbox" className="w-5 h-5" checked={checkedPending.has(p.id)} onChange={() => setCheckedPending(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })} />
+                    <span className="font-mono font-bold">{p.vehicle_plate || 'SANS PLAQUE'}</span>
+                    <span className="flex-1 min-w-0 truncate">{[p.vehicle_brand, p.vehicle_model].filter(Boolean).join(' ') || '—'}</span>
+                    <span className="text-xs">entrée {fmtDate(p.entry_date)} · épave {fmtDate(p.scratched_at)}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 
@@ -360,7 +383,7 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
           )}
 
           {/* Footer : choix format + valider + envoi rapport */}
-          {eligibles.length > 0 && (
+          {(eligibles.length > 0 || (releveCommune && pending.length > 0)) && (
             <div className="sticky bottom-0 bg-surface border rounded-2xl p-3 shadow-lg space-y-2">
               {/* Choix du format de rapport */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -384,11 +407,11 @@ export default function DestructionClient({ userRole, userName, userEmail, userM
               {!confirming ? (
                 <button
                   onClick={validateDestruction}
-                  disabled={checked.size === 0 || submitting}
+                  disabled={(checked.size === 0 && checkedPending.size === 0) || submitting}
                   className="w-full py-3 bg-critical hover:bg-critical/90 text-white rounded-xl text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <Trash2 size={16} />
-                  Sortir {checked.size} véhicule{checked.size > 1 ? 's' : ''} (épave)
+                  {checked.size > 0 ? `Sortir ${checked.size} véhicule${checked.size > 1 ? 's' : ''} (épave)` : 'Envoyer le relevé'}{checkedPending.size > 0 ? ` + ${checkedPending.size} déjà en épave` : ''}
                 </button>
               ) : (
                 <>

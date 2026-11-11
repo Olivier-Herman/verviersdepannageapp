@@ -29,6 +29,7 @@ interface Zone {
   pool_capacity:   number | null
   depot_id:        string | null
   driver_allowed:  boolean
+  zone_attente?:   boolean
   zone_type:       string | null
 }
 
@@ -118,7 +119,7 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
     }
   }
 
-  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id' | 'driver_allowed' | 'active' | 'label' | 'zone_type'>>) {
+  async function toggleZoneOption(zoneKey: string, patch: Partial<Pick<Zone, 'slot_direction' | 'row_layout' | 'strict_capacity' | 'is_pool' | 'pool_capacity' | 'depot_id' | 'driver_allowed' | 'active' | 'label' | 'zone_type' | 'zone_attente'>>) {
     setBusy(true)
     setZones(zs => zs.map(z => z.key === zoneKey ? { ...z, ...patch } : z))
     try {
@@ -533,6 +534,19 @@ export default function ParcAdminClient({ initialZones, initialRows, initialDepo
                   >
                     <Truck size={11} />
                     {zone.driver_allowed ? 'Chauffeur OK' : 'Pas chauffeur'}
+                  </button>
+                  {/* Olivier 11/11/2026 : zone d'attente = les véhicules qui y sont restent « à ranger ». */}
+                  <button
+                    onClick={() => toggleZoneOption(zone.key, { zone_attente: !zone.zone_attente })}
+                    disabled={busy}
+                    className={`flex items-center gap-1 px-2 py-1 rounded border transition disabled:opacity-50 ${
+                      zone.zone_attente
+                        ? 'bg-amber-100 border-amber-300 text-amber-900'
+                        : 'bg-surface text-ink-secondary hover:text-ink'
+                    }`}
+                    title={zone.zone_attente ? 'Zone d\'attente : les véhicules y restent « à ranger »' : 'Vraie zone : un véhicule ici est rangé'}
+                  >
+                    {zone.zone_attente ? 'Zone d\'attente' : 'Zone de rangement'}
                   </button>
                 </div>
               </div>
@@ -971,7 +985,7 @@ function RefreshDatesBlock() {
         d intervention bidon (02h Bruxelles = 00h UTC, car <code className="bg-surface px-1 rounded">x_studio_date_dentree</code> Odoo
         ne contient que la date). Recupere l <strong>heure reelle</strong> depuis <code className="bg-surface px-1 rounded">helpdesk.ticket.create_date</code>.
         <br/>
-        <strong>Rapide</strong> : 1 batch Odoo (~5s, pas de Browserless). Ne touche que les missions a heure suspecte.
+        <strong>Rapide</strong> : 1 lot ERP (~5s, pas de Browserless). Ne touche que les missions a heure suspecte.
       </p>
       <button
         onClick={run}

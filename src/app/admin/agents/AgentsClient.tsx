@@ -2,6 +2,7 @@
 // Écran « Propositions des agents » (maquette validée par Olivier le 05/10/2026).
 
 import { useCallback, useEffect, useState } from 'react'
+import BandeauChiffres from '@/components/admin/BandeauChiffres'
 
 const COMPANY: Record<number, string> = { 1: 'Verviers Dépannage', 2: 'Dépannage Riga', 3: 'DGJ VHU' }
 const KIND: Record<string, string> = { lot_paiement: 'Lot de paiement', facture_achat: 'Facture d’achat', note_credit: 'Note de crédit / refacturation', envoi_comptable: 'Envoi au comptable', question_olivier: 'Question à Mobi' }
@@ -25,6 +26,9 @@ const FILTERS = [
 const eur = (n: any) => n == null ? '' : Number(n).toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })
 const fmt = (s?: string | null) => s ? new Date(s).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
 const initial = (n: string) => (n || '?').slice(0, 1).toUpperCase()
+// Habillage (Olivier 11/11/2026, maquette validée) : une couleur par agent.
+const DEGRADES_AGENT = ['from-violet-500 to-purple-600', 'from-sky-500 to-blue-600', 'from-emerald-500 to-teal-600', 'from-amber-400 to-orange-500', 'from-rose-500 to-red-600', 'from-orange-500 to-rose-500']
+const degradeAgent = (n: string) => DEGRADES_AGENT[[...(n || '?')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % DEGRADES_AGENT.length]
 
 export default function AgentsClient() {
   const [view, setView] = useState<'props' | 'agents' | 'journal'>('props')
@@ -68,16 +72,18 @@ export default function AgentsClient() {
   const validatorName = (id: string | null) => id ? (data?.validators || []).find((v: any) => v.id === id)?.name || 'désigné' : 'Mobi'
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5 w-full max-w-[1800px] px-4 py-4 lg:px-0">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Propositions des agents</h1>
           <p className="text-sm text-slate-600 mt-1 max-w-2xl">Les agents préparent, vous validez, VD Soft exécute. Chaque proposition garde qui l’a préparée, qui l’a validée et ce qui a été fait.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <div role="tablist" className="inline-flex p-1 rounded-full bg-surface-hover">
           {([['props', 'Propositions'], ['agents', 'Agents et droits'], ['journal', 'Journal']] as const).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setView(k)} className={`min-h-[44px] px-4 rounded-xl text-sm font-semibold ${view === k ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-800'}`}>{l}</button>
+            <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} className={`min-h-[42px] px-4 rounded-full text-sm font-semibold transition ${view === k ? 'bg-surface text-ink shadow-card' : 'text-ink-muted hover:text-ink'}`}>{l}</button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -86,17 +92,17 @@ export default function AgentsClient() {
 
       {data && view === 'props' && (
         <section className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="À valider" value={data.counts.to_validate} cls={data.counts.to_validate ? 'border-amber-300 text-amber-800' : 'border-slate-200 text-slate-900'} />
-            <Stat label="Exécutées (24 h)" value={data.counts.executed_24h} cls="border-slate-200 text-emerald-800" />
-            <Stat label="Envois directs (24 h)" value={data.counts.direct_24h} cls="border-slate-200 text-slate-900" />
-            <Stat label="En échec" value={data.counts.failed} cls={data.counts.failed ? 'border-red-200 text-red-700' : 'border-slate-200 text-slate-900'} />
-          </div>
+          <BandeauChiffres chiffres={[
+            { label: 'À valider', valeur: data.counts.to_validate },
+            { label: 'Exécutées (24 h)', valeur: data.counts.executed_24h },
+            { label: 'Envois directs (24 h)', valeur: data.counts.direct_24h },
+            { label: 'En échec', valeur: data.counts.failed },
+          ]} />
 
           <div className="flex flex-wrap gap-2 items-center text-sm">
             <span className="text-slate-600">Afficher :</span>
             {FILTERS.map(f => (
-              <button key={f.key} type="button" onClick={() => setFilter(f.key)} className={`px-3 min-h-[36px] rounded-full ${filter === f.key ? 'bg-amber-100 text-amber-900 font-semibold' : 'bg-white border border-slate-300 text-slate-700'}`}>
+              <button key={f.key} type="button" onClick={() => setFilter(f.key)} className={`px-4 min-h-[40px] rounded-full font-semibold transition ${filter === f.key ? 'text-white bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-purple-500/30' : 'bg-surface border border-strong text-ink-secondary hover:text-ink'}`}>
                 {f.label}{f.key === 'to_validate' && data.counts.to_validate ? ` (${data.counts.to_validate})` : ''}
               </button>
             ))}
@@ -109,25 +115,27 @@ export default function AgentsClient() {
             </select>
           </div>
 
-          {props.length === 0 && <p className="text-sm text-slate-600 bg-white border border-slate-200 rounded-xl px-4 py-6 text-center">{filter === 'to_validate' ? 'Rien à valider pour l’instant.' : 'Aucune proposition dans ce filtre.'}</p>}
+          {props.length === 0 && <p className="text-sm text-slate-600 bg-white border border-slate-200 rounded-3xl px-4 py-10 text-center">{filter === 'to_validate' ? 'Rien à valider pour l’instant.' : 'Aucune proposition dans ce filtre.'}</p>}
 
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
           {props.map(p => {
             const st = STATUS[p.status] || { label: p.status, cls: 'bg-slate-100 text-slate-800' }
             const decidable = (p.status === 'to_validate' || p.status === 'failed') && canDecide(p)
             const facts: any[] = p.payload?.factures || []
             return (
-              <article key={p.id} className={`rounded-xl bg-white border p-4 space-y-3 ${p.status === 'failed' ? 'border-red-300' : 'border-slate-200'}`}>
+              <article key={p.id} className={`relative overflow-hidden rounded-3xl bg-white border shadow-card p-5 space-y-3 ${p.status === 'failed' ? 'border-red-300' : 'border-slate-200'}`}>
+                {(p.status === 'to_validate' || p.status === 'failed') && <span aria-hidden className={`absolute left-0 inset-y-0 w-1.5 ${p.status === 'failed' ? 'bg-red-500' : 'bg-gradient-to-b from-amber-400 to-orange-500'}`} />}
                 <div className="flex items-start gap-3">
-                  <span className="w-10 h-10 shrink-0 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center" aria-hidden>{initial(p.agent_name)}</span>
+                  <span className={`w-11 h-11 shrink-0 rounded-2xl text-white font-bold text-lg flex items-center justify-center bg-gradient-to-br shadow-md ${degradeAgent(p.agent_name)}`} aria-hidden>{initial(p.agent_name)}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <b className="text-slate-900">{p.title}</b>
-                      <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">{COMPANY[p.company_id] || p.company_id}</span>
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${st.cls}`}>{p.direct ? `Envoi direct · ${st.label.toLowerCase()}` : st.label}</span>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800">{COMPANY[p.company_id] || p.company_id}</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${st.cls}`}>{p.direct ? `Envoi direct · ${st.label.toLowerCase()}` : st.label}</span>
                     </div>
                     <p className="text-xs text-slate-600">Préparé par <b>{p.agent_name}</b> · {fmt(p.created_at)}{p.status === 'to_validate' ? <> · à valider par <b>{validatorName(p.validator_user_id)}</b></> : null}{p.validated_by ? <> · {p.status === 'refused' ? 'refusé' : p.status === 'returned' ? 'renvoyé' : 'validé'} par <b>{p.validated_by}</b> {fmt(p.validated_at)}</> : null}</p>
                   </div>
-                  {p.amount != null && <p className="text-right text-xl font-bold text-slate-900 tabular-nums shrink-0">{eur(p.amount)}</p>}
+                  {p.amount != null && <p className="text-right font-display text-2xl font-bold text-slate-900 tabular-nums shrink-0">{eur(p.amount)}</p>}
                 </div>
                 {p.why && <p className="text-sm text-slate-800 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 whitespace-pre-line"><b>Pourquoi :</b> {p.why}</p>}
                 {p.kind === 'envoi_comptable' && <p className="text-sm text-slate-800">À <b>{p.payload?.a}</b> · « {p.payload?.objet} » · pièces : {(p.payload?.pieces || []).join(', ')}</p>}
@@ -188,7 +196,7 @@ export default function AgentsClient() {
                 )}
                 {decidable && p.kind !== 'question_olivier' && !open[p.id] && (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    <button type="button" disabled={busy === p.id} onClick={() => post({ op: 'decide', id: p.id, action: 'valider' }, p.id)} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50">{busy === p.id ? 'Exécution…' : p.status === 'failed' ? 'Réessayer' : ACTION_LABEL[p.kind] || 'Valider'}</button>
+                    <button type="button" disabled={busy === p.id} onClick={() => post({ op: 'decide', id: p.id, action: 'valider' }, p.id)} className="min-h-[46px] px-5 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/30 hover:brightness-105 disabled:opacity-50">{busy === p.id ? 'Exécution…' : p.status === 'failed' ? 'Réessayer' : ACTION_LABEL[p.kind] || 'Valider'}</button>
                     {p.status === 'to_validate' && <button type="button" onClick={() => setOpen(o => ({ ...o, [p.id]: 'corriger' }))} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-white border border-slate-300 text-slate-800">Corriger…</button>}
                     <button type="button" onClick={() => setOpen(o => ({ ...o, [p.id]: 'refuser' }))} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-white border border-red-300 text-red-700">Refuser…</button>
                   </div>
@@ -209,6 +217,7 @@ export default function AgentsClient() {
               </article>
             )
           })}
+          </div>
         </section>
       )}
 
@@ -295,6 +304,3 @@ const DIRECT_RULE: Record<string, string> = {
   refacturation_avance: 'Refacturation d’une avance de fonds (le jour)',
 }
 
-function Stat({ label, value, cls }: { label: string; value: number; cls: string }) {
-  return <div className={`rounded-xl bg-white border p-3 ${cls}`}><p className="text-xs text-slate-600">{label}</p><p className="text-2xl font-bold">{value}</p></div>
-}

@@ -95,16 +95,15 @@ export default function DispatcherOnDutyBadge({ userRole }: { userRole: string }
       </button>
 
       {modalOpen && typeof window !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-             onClick={() => !saving && setModalOpen(false)}>
-          <div className="bg-surface border rounded-2xl max-w-md w-full p-5 space-y-3"
-               onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          {/* Fermeture par ✕ uniquement (jamais au clic sur le fond). */}
+          <div className="bg-surface border rounded-2xl max-w-md w-full p-5 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-ink font-semibold flex items-center gap-2">
                 <Shield size={16} className="text-brand" /> Dispatcher de garde
               </h3>
-              <button onClick={() => setModalOpen(false)} disabled={saving}
-                className="text-ink-muted hover:text-ink"><X size={18} /></button>
+              <button onClick={() => setModalOpen(false)} disabled={saving} aria-label="Fermer"
+                className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-xl text-ink-muted hover:text-ink"><X size={18} /></button>
             </div>
             <p className="text-ink-muted text-xs">
               Le dispatcher de garde reçoit les escalades auto-dispatch (chauffeur sans réponse, appels police).

@@ -196,7 +196,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, status: 'assigned', driver_name: driver?.name })
 
   } else {
-    // Retirer l'assignation (retour à new)
+    // Retirer l'assignation (retour en attente : 'dispatching')
     // Olivier 2026-06-01 : on remet aussi truck_id a null pour eviter une
     // attribution erronee si la mission est ensuite reassignee a un autre
     // chauffeur avec un autre camion.
@@ -227,6 +227,6 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, status: 'new' })
+    return NextResponse.json({ ok: true, status: 'dispatching' })
   }
 }

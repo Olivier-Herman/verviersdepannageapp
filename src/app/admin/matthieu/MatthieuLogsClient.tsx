@@ -61,7 +61,7 @@ export default function MatthieuLogsClient() {
 
       {/* Fil */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setOpen(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-surface border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b">
               <Wrench size={16} className="text-indigo-500" />
@@ -69,7 +69,7 @@ export default function MatthieuLogsClient() {
                 <p className="font-semibold text-ink text-sm">{open.user_real || open.user_name} · {open.brand} {open.model}</p>
                 <p className="text-ink-muted text-[11px]">{open.user_email ? `${open.user_email} · ` : ''}{open.mission_number ? `Mission #${open.mission_number}` : 'Bureau'} · {open.count} messages</p>
               </div>
-              <button onClick={() => setOpen(null)} className="p-1.5 text-ink-muted hover:text-ink">✕</button>
+              <button onClick={() => setOpen(null)} aria-label="Fermer" className="w-11 h-11 flex items-center justify-center rounded-full text-ink-muted hover:text-ink hover:bg-surface-hover">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5 bg-surface-2">
               {tLoad ? <p className="text-ink-muted text-sm text-center">Chargement…</p> : thread.map((m, i) => (
