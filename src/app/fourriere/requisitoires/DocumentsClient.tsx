@@ -25,8 +25,8 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
 }) {
   const [tab, setTab] = useState<'recus' | 'manquants'>(pendingCount > 0 ? 'recus' : 'manquants')
   // S3 : dans la préversion, « Manquants » ne compte que les saisies de moins de 6 mois.
-  const missing = relanceItems.filter(i => !i.stop && (!habille || !estHorsDelai(i.saisie_at))).length
-  const noOfficer = relanceItems.filter(i => !i.stop && !i.officer_linked && (!habille || !estHorsDelai(i.saisie_at))).length
+  const missing = relanceItems.filter(i => !i.stop && (!habille || !estHorsDelai(i))).length
+  const noOfficer = relanceItems.filter(i => !i.stop && !i.officer_linked && (!habille || !estHorsDelai(i))).length
 
   return (
     <AppShell title="Documents" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>

@@ -11,6 +11,7 @@ import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 interface Item {
   id: string; ref: string | null; plate: string | null; vehicle: string | null
   location: string | null; saisie_at: string | null; zone: string | null
+  parked_at?: string | null
   zone_company_id: number | null
   officer_name: string | null; officer_email: string | null; officer_linked: boolean
   officer_partner_id: number | null
@@ -31,7 +32,8 @@ type Send = { at: string; email: string | null }
 
 // S3 (lot 4, Olivier 11/11/2026) : au-delà de 6 mois depuis la saisie, un réquisitoire ne sert plus à un état de frais.
 export const HORS_DELAI_JOURS = 183
-export const estHorsDelai = (saisieAt: string | null) => !!saisieAt && (Date.now() - Date.parse(saisieAt)) / 86_400_000 > HORS_DELAI_JOURS
+// Compté depuis l'ENTRÉE AU PARC (Olivier 11/11/2026), à défaut depuis la création de la fiche.
+export const estHorsDelai = (it: { parked_at?: string | null; saisie_at: string | null }) => { const d = it.parked_at || it.saisie_at; return !!d && (Date.now() - Date.parse(d)) / 86_400_000 > HORS_DELAI_JOURS }
 
 export default function RelanceRequisitoireClient({ initialItems, appUrl, embedded = false, trierDelai = false }: { initialItems: Item[]; appUrl: string; embedded?: boolean
   /** Préversion ma_journee : « À relancer » (moins de 6 mois) et « Hors délai », replié. */
@@ -50,8 +52,8 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
   const [hist, setHist]           = useState<Record<string, Send[] | 'loading'>>({})
 
   const [vueDelai, setVueDelai] = useState<'relancer' | 'hors'>('relancer')
-  const nHors = useMemo(() => items.filter(i => !i.stop && estHorsDelai(i.saisie_at)).length, [items])
-  const visible = useMemo(() => items.filter(i => (showStop || !i.stop) && (!trierDelai || (vueDelai === 'hors') === estHorsDelai(i.saisie_at))), [items, showStop, trierDelai, vueDelai])
+  const nHors = useMemo(() => items.filter(i => !i.stop && estHorsDelai(i)).length, [items])
+  const visible = useMemo(() => items.filter(i => (showStop || !i.stop) && (!trierDelai || (vueDelai === 'hors') === estHorsDelai(i))), [items, showStop, trierDelai, vueDelai])
   const stats = useMemo(() => ({
     total: items.filter(i => !i.stop).length,
     sansEmail: items.filter(i => !i.stop && !i.officer_email).length,
@@ -275,7 +277,7 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
         ) : (
           <div className="space-y-2">
             {visible.map(it => {
-              const d = daysSince(it.saisie_at)
+              const d = daysSince(it.parked_at || it.saisie_at)
               const lastD = daysSince(it.last_reminder_at)
               return (
                 <div key={it.id} className={`bg-surface-2 border border-app rounded-2xl p-3 ${it.stop ? 'opacity-60' : ''}`}>
