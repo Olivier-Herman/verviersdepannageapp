@@ -1300,14 +1300,14 @@ export default function NewMissionClient({
               )}
 
   </>)
-  const B_veh = (<>
-              {/* 6. Véhicule */}
-              <div
-                className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter relative"
-                style={showVehicleDrop ? { zIndex: 50 } : undefined}
-              >
+  // Mode rapide : la plaque seule en premier (la fiche véhicule complète est dans « Le reste »).
+  const B_plaque = (<>
+              <div className="bg-surface border rounded-2xl p-5">
+                <label className="block text-ink font-semibold text-sm mb-2" htmlFor="nm-plaque">Plaque <span className="text-ink-faint font-normal">· en premier</span></label>
+                <input id="nm-plaque" value={plate} onChange={e => setPlate(e.target.value.toUpperCase())} placeholder="1-ABC-123" autoComplete="off" autoCapitalize="characters"
+                  className="w-full min-h-[46px] bg-surface border rounded-xl px-3 text-ink font-mono font-bold tracking-wider focus:outline-none focus:border-brand" />
                 {rapide && dejaOuverte && dejaOuverte.length > 0 && (
-                  <div className="mb-4 rounded-xl bg-amber-100 text-amber-900 px-3 py-2.5 text-sm">
+                  <div className="mt-3 rounded-xl bg-amber-100 text-amber-900 px-3 py-2.5 text-sm">
                     <b>Cette plaque a déjà {dejaOuverte.length > 1 ? `${dejaOuverte.length} fiches ouvertes` : 'une fiche ouverte'}.</b>
                     {dejaOuverte.slice(0, 3).map((m: any) => (
                       <div key={m.id} className="flex items-center justify-between gap-2 mt-1.5">
@@ -1318,6 +1318,14 @@ export default function NewMissionClient({
                     <p className="mt-1.5 text-amber-800">Relivraison ou nouvelle mission ? Vous pouvez continuer si c'est bien une nouvelle intervention.</p>
                   </div>
                 )}
+              </div>
+  </>)
+  const B_veh = (<>
+              {/* 6. Véhicule */}
+              <div
+                className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter relative"
+                style={showVehicleDrop ? { zIndex: 50 } : undefined}
+              >
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-ink font-semibold text-sm">🚗 Véhicule</h2>
                   {/* Toggle Voiture/Moto : pilote la grille tarifaire Police Accident (PCD voiture vs PC moto). */}
@@ -1627,7 +1635,7 @@ export default function NewMissionClient({
           </Link>
           <span className="flex-1" />
           <button onClick={handleSubmit} disabled={saving || !canSubmit}
-            className={`hidden lg:flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-brand to-brand-dark hover:opacity-90 text-white rounded-xl font-semibold text-sm transition disabled:opacity-40 ${canSubmit && !saving ? 'nm-pulse' : ''}`}>
+            className={`${rapide ? 'flex min-h-[44px]' : 'hidden lg:flex'} items-center gap-2 px-5 py-2 bg-gradient-to-r from-brand to-brand-dark hover:opacity-90 text-white rounded-xl font-semibold text-sm transition disabled:opacity-40 ${canSubmit && !saving ? 'nm-pulse' : ''}`}>
             {saving ? '⏳ Création...' : '✓ Créer la mission'}
           </button>
         </div>
@@ -1642,8 +1650,9 @@ export default function NewMissionClient({
         </div>
 
         <div className="relative flex-1 px-4 lg:px-8 py-6 lg:py-8">
+          {rapide && <style>{`@media (max-width: 1023px) { [data-flottant="especes"], [data-flottant="max"] { display: none !important; } }`}</style>}
           {/* Hero header */}
-          <div className="max-w-6xl mb-6 nm-card-enter">
+          {!rapide && <div className="max-w-6xl mb-6 nm-card-enter">
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand/20 via-purple-500/15 to-info/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
                 <span className="nm-sparkle">✨</span>
@@ -1653,9 +1662,9 @@ export default function NewMissionClient({
                 <p className="text-ink-muted text-sm mt-1">Créer un nouveau dossier d'intervention.</p>
               </div>
             </div>
-          </div>
+          </div>}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl">
+          <div className={`grid lg:grid-cols-3 gap-6 max-w-6xl ${rapide ? 'grid-cols-[minmax(0,1fr)] [contain:inline-size]' : 'grid-cols-1'}`}>
 
             {/* ── Colonne principale ───────────────────────────────────────── */}
             <div className="lg:col-span-2 space-y-5">
@@ -1663,7 +1672,7 @@ export default function NewMissionClient({
               {rapide ? (<>
                 {/* Création rapide (préversion dispatch_v2, Olivier seul) : l'essentiel pendant l'appel,
                     le reste replié. Mêmes blocs, mêmes règles, même enregistrement. */}
-                {B_veh}
+                {B_plaque}
                 {B_source}
                 {B_type}
                 {B_adresses}
@@ -1671,10 +1680,11 @@ export default function NewMissionClient({
                 {B_paie}
                 <details className="bg-surface border rounded-2xl p-5 group" open={resteOuvert} onToggle={e => setResteOuvert((e.target as HTMLDetailsElement).open)}>
                   <summary className="cursor-pointer list-none flex items-center justify-between min-h-[44px] text-ink font-semibold text-sm">
-                    <span>Le reste, une fois raccroché <span className="text-ink-faint font-normal">· rendez-vous, dépôt, avertissements, tarif spécial, remarques</span></span>
+                    <span>Le reste, une fois raccroché <span className="text-ink-faint font-normal">· véhicule, rendez-vous, dépôt, avertissements, tarif spécial, remarques</span></span>
                     <span className="text-ink-faint group-open:rotate-90 transition">›</span>
                   </summary>
                   <div className="space-y-5 mt-4">
+                    {B_veh}
                     {B_rdv}
                     {B_depot}
                     {B_avert}
