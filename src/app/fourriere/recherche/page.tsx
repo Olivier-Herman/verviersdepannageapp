@@ -7,6 +7,7 @@ import { getServerSession }  from 'next-auth'
 import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import FourriereSearchClient from '../FourriereSearchClient'
+import { isPreviewOn } from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,5 +18,5 @@ export default async function FourriereRecherchePage() {
   const role = user.role || ''
   const modules: string[] = user.modules || []
   if (!(['admin', 'superadmin'].includes(role) || modules.includes('fourriere'))) redirect('/dashboard?error=access_denied')
-  return <FourriereSearchClient userRole={role} userName={user.name || ''} userEmail={user.email} userModules={modules} />
+  return <FourriereSearchClient userRole={role} userName={user.name || ''} userEmail={user.email} userModules={modules} historique={await isPreviewOn('ma_journee', role, user.id)} />
 }

@@ -18,6 +18,7 @@ interface ComexRow {
   montant: number; vd_montant: number | null; verdict: string; mission_id: string | null; km: number
 }
 interface Req { id: string; subject: string | null; received_at: string | null; status: string; confidence: string | null; matched_mission_id: string | null; pv: string | null; plaque: string | null; vehicule: string | null; candidates: number }
+interface Acc { id: string; plate: string | null; model: string; zone: string | null; parked_at: string | null; police: string; started: boolean; next_label: string | null; done: number; total: number }
 interface Mail { id: string; handler: string; subject: string | null; from_email: string | null; received_at: string | null; status: string; blocked_reason: string | null }
 
 const eur = (n: number | null | undefined) => n == null ? '—' : Number(n).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -64,6 +65,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
   const [comex, setComex] = useState<ComexRow[]>([])
   const [reqs, setReqs] = useState<Req[]>([]); const [reqRobot, setReqRobot] = useState(0)
   const [mails, setMails] = useState<Mail[]>([])
+  const [acc, setAcc] = useState<{ todo: Acc[]; stock: Acc[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -80,12 +82,14 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
 
   const load = useCallback(async () => {
     const j = (u: string) => fetch(u, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
-    const [a, p, c, m] = await Promise.all([
+    const [a, p, c, m, t] = await Promise.all([
       canFacturation ? j('/api/facturation/auto-eligible') : null,
       canFourriere ? j('/api/fourriere/parc') : null,
       canFacturation ? j('/api/touring/comex-bko/list') : null,
       j('/api/ma-journee'),
+      canFourriere ? j('/api/taches/vehicules') : null,
     ])
+    if (t?.todo) setAcc({ todo: t.todo || [], stock: t.stock || [] })
     if (a?.byMission) setAuto(a.byMission)
     if (p?.vehicles) setVehicles(p.vehicles)
     if (c?.rows) setComex(c.rows)
@@ -109,7 +113,8 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
   const tOk = comex.filter(r => r.verdict === 'ok'), tVerify = comex.filter(r => r.verdict === 'verify'), tNone = comex.filter(r => r.verdict !== 'ok' && r.verdict !== 'verify')
   const tOkTotal = tOk.reduce((s, r) => s + Number(r.montant || 0), 0)
 
-  const aToi = dNous.length + vNous.length + tOk.length + tVerify.length + reqs.length + mails.length
+  const accList = acc ? [...acc.todo, ...acc.stock].sort((x, y) => String(x.parked_at || '').localeCompare(String(y.parked_at || ''))) : []
+  const aToi = dNous.length + vNous.length + tOk.length + tVerify.length + reqs.length + mails.length + accList.length
   const totalDay = aToi + doneCount
 
   // ── Recherche (parc + dossiers à facturer chargés, sinon recherche générale) ──
@@ -264,6 +269,22 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
             ))}
             <More href="/fourriere/requisitoires" n={reqs.length} />
             {!loading && reqs.length === 0 && <Empty>Aucun document en attente.</Empty>}
+          </Card>
+        )}
+
+        {canFourriere && acc && (
+          <Card tone="bg-orange-700" n={loading ? '…' : accList.length} title="Accidentés à prendre en charge" sub="Les plus anciens en premier · une question à la fois" action={<Link href="/taches" className="inline-flex items-center min-h-[40px] px-3 rounded-xl border border-white/70 text-[13px] font-bold">Ouvrir</Link>}>
+            {accList.slice(0, SHOW).map(v => {
+              const jours = v.parked_at ? Math.floor((Date.now() - new Date(v.parked_at).getTime()) / 86400000) : null
+              return (
+                <Row key={v.id}>
+                  <div className="flex-1 min-w-[180px]"><Plate p={v.plate} /> {v.model}<small className="block text-ink-faint">{jours != null ? `au parc depuis ${jours} j` : ''}{v.zone ? ` · zone ${v.zone}` : ''}{v.started ? ` · ${v.done}/${v.total} · ${v.next_label || ''}` : ' · pas commencée'}</small></div>
+                  <Link href={`/taches?m=${v.id}`} className={v.started ? btnGhost : btnMain}>{v.started ? 'Continuer' : 'Prendre en charge'}</Link>
+                </Row>
+              )
+            })}
+            <More href="/taches" n={accList.length} />
+            {!loading && accList.length === 0 && <Empty>Tous les accidentés sont pris en charge.</Empty>}
           </Card>
         )}
 

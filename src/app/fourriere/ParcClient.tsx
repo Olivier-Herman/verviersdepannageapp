@@ -27,6 +27,8 @@ export interface V {
   zone: string | null; zone_label: string | null; row: number | null; slot: number | null
   /** Zone d'attente (Transit, J, K, K1, LABO… réglage de la zone) : le véhicule reste à ranger. */
   zone_waiting?: boolean
+  /** Remis au Domaine mais pas encore dans la zone Domaine (Q6). */
+  domaine_hors_zone?: boolean; zone_domaine?: string
   entered_at: string | null; nights: number; regime: string; storage_htva: number; storage_note: string
   client_name: string | null; officer_name: string | null; officer_partner_id: number | null; police_zone: string | null; pv: string | null
   motif: string | null; motif_code: string | null
@@ -106,6 +108,7 @@ export function readVehicle(v: V, opts: { zonesSeules?: boolean } = {}): Reading
   if (opts.zonesSeules && v.zone_waiting) return { ...base, who: 'nous', headline: `En ${v.zone_label || v.zone} (zone d'attente) depuis ${v.nights} j — à ranger`, detail: 'Déplace-le dans sa zone.', primary: { label: 'Changer de zone', kind: 'zone', tone: 'brand' } }
   if (legacy) return { ...base, who: 'nous', headline: 'Fiche d\'avant VD Soft — à qualifier', detail: `Entré le ${fmtY(v.entered_at)} (${v.nights} nuits). Saisie, AVP, épave, ou déjà sorti ? Le choix se fait sur la fiche (source), le véhicule entre alors dans son circuit.`, primary: { label: 'Qualifier', kind: 'qualify', href: `/dispatch/${v.id}`, tone: 'brand' } }
   if (v.destruction) return { ...base, who: 'nous', headline: `Dossier de destruction ${v.destruction.status ? `· ${v.destruction.status}` : 'ouvert'}`, detail: 'Présentation, frais à la date de présentation, épaviste.', primary: { label: 'Ouvrir le dossier', kind: 'destruction', href: '/fourriere/destruction/dossiers', tone: 'ghost' } }
+  if (opts.zonesSeules && v.domaine_remise_date && v.domaine_hors_zone) return { ...base, who: 'nous', headline: `Remis au Domaine le ${fmtY(v.domaine_remise_date)} — à mettre en zone ${v.zone_domaine || 'Domaine'}`, detail: 'Tous les véhicules remis se regroupent dans la zone Domaine. Écran Domaine › Remises : tous d\'un coup.', primary: { label: 'Changer de zone', kind: 'zone', tone: 'brand' } }
   if (v.domaine_remise_date) return { ...base, who: 'eux', headline: `Remis au Domaine le ${fmtY(v.domaine_remise_date)} — enlèvement attendu`, detail: v.domaine_enlevement_date ? `Enlèvement prévu le ${fmtY(v.domaine_enlevement_date)}.` : 'Date d\'enlèvement pas encore connue.', primary: { label: 'Domaine', kind: 'link', href: '/fourriere/domaine', tone: 'ghost' } }
   if (v.redelivery) return { ...base, who: 'veille', headline: `Relivraison programmée${v.redelivery.at ? ` le ${fmtY(v.redelivery.at)}` : ''}`, detail: v.redelivery_address ? `Vers ${v.redelivery_address}.` : undefined }
   if (v.abandon_at && !saisie) return { ...base, who: 'nous', headline: `Abandon signé le ${fmtY(v.abandon_at)} — épave ou vente ?`, detail: 'Le véhicule est à nous : destruction (dossier) ou mise en vente sur le site.', primary: { label: 'Mettre en vente', kind: 'sell', href: '/admin/ventes', tone: 'ghost' } }
@@ -191,6 +194,18 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
 
   const readings = useMemo(() => new Map(rows.map(v => [v.id, readVehicle(v, { zonesSeules: journee })] as const)), [rows, journee])
   const [zoneFor, setZoneFor] = useState<string | null>(null)
+  // Q2 (11/11/2026) : déplacer plusieurs véhicules d'un coup (préversion).
+  const [selZ, setSelZ] = useState<Set<string>>(new Set())
+  const [moving, setMoving] = useState(false)
+  const moveMany = async (key: string) => {
+    setMoving(true); let ok = 0; const ko: string[] = []
+    for (const id of [...selZ]) {
+      const v = rows.find(x => x.id === id); if (!v || v.zone === key) continue
+      try { const r = await fetch(`/api/missions/${id}/transfer-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone_key: key }) }); if (r.ok) ok++; else ko.push(v.plate || '?') } catch { ko.push(v.plate || '?') }
+    }
+    setMsg(`✓ ${ok} véhicule(s) déplacé(s) en ${zones.find(z => z.key === key)?.label || key}${ko.length ? ` · ⚠ échec : ${ko.join(', ')}` : ''}`)
+    setSelZ(new Set()); setMoving(false); await load()
+  }
   const moveZone = async (v: V, key: string) => {
     setBusy(v.id)
     try { const r = await fetch(`/api/missions/${v.id}/transfer-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone_key: key }) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Déplacement impossible'); setMsg(`✓ ${v.plate || 'Véhicule'} déplacé en ${zones.find(z => z.key === key)?.label || key}`); setZoneFor(null); await load() }
@@ -265,7 +280,9 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         {/* Vues du même parc */}
         <div className={journee ? 'flex max-w-full overflow-x-auto items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm whitespace-nowrap [&>*]:shrink-0' : 'inline-flex items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm'}>
           <span className="px-3 py-1.5 rounded-lg bg-surface text-ink font-semibold shadow-sm">Liste</span>
-          <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>
+          {journee
+            ? <Link href="/fourriere/zones" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Par zone</Link>
+            : <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>}
           {journee
             ? <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length} à retrouver` : ''}</Link>
             : <>
@@ -273,7 +290,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
                 <Link href="/fourriere/non-localises" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Non localisés{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length}` : ''}</Link>
               </>}
           {journee && <Link href="/taches" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Accident</Link>}
-          <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Recherche avancée</Link>
+          <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">{journee ? 'Historique' : 'Recherche avancée'}</Link>
         </div>
 
         {journee ? (
@@ -309,7 +326,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         <div className={journee ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>
         {loading ? <div className="text-center py-16 text-ink-faint text-sm">Chargement du parc…</div>
           : visible.length === 0 ? (
-            <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted"><p className="text-4xl mb-2">{filter === 'nous' ? '🎉' : '🚓'}</p><p className="font-medium text-ink">{filter === 'nous' ? 'Rien ne nous attend' : 'Aucun véhicule ici'}</p></div>
+            <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted"><p className="text-4xl mb-2">{filter === 'nous' ? '🎉' : '🚓'}</p><p className="font-medium text-ink">{q ? 'Aucun véhicule au parc pour cette recherche' : filter === 'nous' ? 'Rien ne nous attend' : 'Aucun véhicule ici'}</p>{journee && q && <Link href={`/fourriere/recherche?q=${encodeURIComponent(q)}`} className="inline-flex items-center mt-3 min-h-[44px] px-4 rounded-xl bg-brand text-white text-sm font-bold">Chercher aussi dans les véhicules sortis</Link>}</div>
           ) : visible.map(v => {
             const r = readings.get(v.id)!; const who = WHO[r.who]; const isOpen = open.has(v.id); const p = r.primary
             return (
@@ -317,6 +334,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
                 <div className="px-4 pt-3.5 pb-3 flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {journee && <input type="checkbox" checked={selZ.has(v.id)} onChange={() => setSelZ(p => { const n = new Set(p); n.has(v.id) ? n.delete(v.id) : n.add(v.id); return n })} aria-label={`Sélectionner ${v.plate || ''}`} className="w-5 h-5" />}
                       <span className="font-mono font-black text-ink text-xl tracking-wide">{v.plate || v.vin || '—'}</span>
                       <span className="text-ink-secondary text-sm">{[v.brand, v.model].filter(Boolean).join(' ') || '—'}</span>
                       {v.mission_number && <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-surface-2 border text-ink-muted">#{v.mission_number}</span>}
@@ -389,6 +407,14 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
           })}
         </div>
       </div>
+      {journee && selZ.size > 0 && (
+        <div className="fixed inset-x-0 z-40 px-3" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 76px)' }}>
+          <div className="max-w-3xl mx-auto bg-surface border rounded-2xl shadow-lg p-3 space-y-2">
+            <div className="flex items-center gap-2"><b className="text-sm">{selZ.size} véhicule(s) · déplacer vers :</b><button onClick={() => setSelZ(new Set())} className="ml-auto min-h-[40px] px-3 rounded-xl border text-sm">Annuler</button></div>
+            <div className="flex flex-wrap gap-2">{zones.map(z => <button key={z.key} disabled={moving} onClick={() => moveMany(z.key)} className={`min-h-[44px] min-w-[44px] px-3 rounded-xl border text-sm font-bold disabled:opacity-40 ${z.waiting ? 'bg-amber-50 text-amber-900 border-amber-300' : 'bg-surface text-ink'}`}>{z.label}</button>)}</div>
+          </div>
+        </div>
+      )}
       {fiche && <VehicleFicheSheet missionId={fiche} onClose={() => { setFiche(null); load() }} userModules={userModules} userRole={userRole} />}
     </AppShell>
   )

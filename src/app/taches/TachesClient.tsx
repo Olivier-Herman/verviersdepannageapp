@@ -42,6 +42,8 @@ export default function TachesClient({ gmKey }: { gmKey: string }) {
   const [showStock, setShowStock] = useState(false)
   const [keys, setKeys] = useState<{ todo: KeyTask[]; done: KeyTask[] }>({ todo: [], done: [] })
   const [cur, setCur] = useState<string | null>(null)
+  // Arrivée depuis « Ma journée » (Q3, 11/11/2026) : /taches?m=<id> ouvre directement la prise en charge du véhicule.
+  useEffect(() => { try { const m = new URLSearchParams(window.location.search).get('m'); if (m) setCur(m) } catch {} }, [])
   const [err, setErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {

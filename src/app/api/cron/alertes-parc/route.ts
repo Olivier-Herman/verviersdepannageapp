@@ -24,6 +24,21 @@ export async function GET(req: Request) {
   const { data: req0 } = await sb.from('requisitoire_intake').select('id, received_at, extracted').eq('status', 'pending').lt('received_at', il24).order('received_at')
   const reqs = (req0 || []).map(r => { const e = typeof r.extracted === 'string' ? JSON.parse(r.extracted) : (r.extracted || {}); return { ...r, e } })
 
+  // Prises en charge accident devenues sans objet (Q4, Olivier 11/11/2026) : le véhicule a quitté le parc
+  // → fermées (statut « done », la contrainte n'admet que todo / waiting_owner / done ; pas supprimées).
+  // Les tâches « clé en digibox » ne sont PAS touchées : la clé peut y être encore.
+  let pecFermees = 0
+  try {
+    const { data: runs } = await sb.from('process_runs').select('id, mission_id').eq('process_key', 'accident_police').in('status', ['todo', 'waiting_owner'])
+    const ids = (runs || []).map((r: any) => r.mission_id)
+    if (ids.length) {
+      const { data: ms } = await sb.from('incoming_missions').select('id, status').in('id', ids)
+      const present = new Set((ms || []).filter((m: any) => ['parked', 'unlocated', 'awaiting_payment'].includes(m.status)).map((m: any) => m.id))
+      const sortis = (runs || []).filter((r: any) => !present.has(r.mission_id)).map((r: any) => r.id)
+      if (sortis.length) { await sb.from('process_runs').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).in('id', sortis); pecFermees = sortis.length }
+    }
+  } catch (e: any) { console.error('[alertes-parc] prises en charge sorties', e?.message) }
+
   // Rappel de contrôle du parc (P8, Olivier 11/11/2026) : réglable, coupé par défaut, au plus une fois par semaine.
   let rappelControle: string | null = null
   try {
@@ -45,7 +60,7 @@ export async function GET(req: Request) {
     }
   } catch (e: any) { console.error('[alertes-parc] rappel contrôle', e?.message) }
 
-  if (!vieux.length && !reqs.length) return NextResponse.json({ ok: true, transit: 0, requisitoires: 0, rappelControle })
+  if (!vieux.length && !reqs.length) return NextResponse.json({ ok: true, transit: 0, requisitoires: 0, rappelControle, pecFermees })
 
   const lignesT = vieux.map(m => `${m.vehicle_plate || '?'} (${m.vehicle_brand || m.source}) depuis le ${fr(m.parked_at || m.created_at)} — n° ${m.mission_number}`)
   const lignesR = reqs.map(r => `${r.e?.plaque || '?'} ${[r.e?.marque, r.e?.modele].filter(Boolean).join(' ')} — PV ${r.e?.pv_number || '?'}, reçu le ${fr(r.received_at)}`)

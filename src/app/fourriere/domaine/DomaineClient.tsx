@@ -14,13 +14,16 @@ interface Row {
 interface Group { vente: string; firm: string; rows: Row[]; days: number; amount: number }
 const fmt = (ymd: string) => (ymd ? ymd.split('-').reverse().join('/') : '')
 
-export default function DomaineClient({ userRole, userName, userEmail, userModules, embedded = false, sortiesEnTete = false }: { embedded?: boolean;
+export default function DomaineClient({ userRole, userName, userEmail, userModules, embedded = false, sortiesEnTete = false, vue = 'tout' }: { embedded?: boolean;
+  /** Écran Domaine à onglets (Q5, préversion) : 'ventes' = registre et sorties ; 'facture' = facture du trimestre en un bouton (Q8). */
+  vue?: 'tout' | 'ventes' | 'facture'
   userRole: string; userName: string; userEmail: string; userModules: string[]
   /** Préversion ma_journee (P4, Olivier 11/11/2026) : les ventes sans date de sortie en tête, un geste par vente. */
   sortiesEnTete?: boolean
 }) {
   const [attente, setAttente] = useState<{ vente: string; firms: string[]; lines: number; auParc: number; plates: string[] }[]>([])
   const [dateSortie, setDateSortie] = useState<Record<string, string>>({})
+  const [poRef, setPoRef] = useState(''); const [armeFacture, setArmeFacture] = useState(false)
   const [sortant, setSortant] = useState<string | null>(null)
   const chargerAttente = () => { if (sortiesEnTete) fetch('/api/fourriere/domaine/sorties-attente', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j?.ventes) setAttente(j.ventes) }).catch(() => {}) }
   useEffect(() => { chargerAttente() }, [sortiesEnTete])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -146,8 +149,12 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
 
   async function invoiceQuarter() {
     if (!from || !to) { setMsg('⚠ Choisis la période'); return }
-    const ref = window.prompt('N° de bon de commande (PO) du SPF Finances — laisser vide si aucun :', '') ?? ''
-    if (!window.confirm(`Créer et comptabiliser la facture Domaine pour ${fmt(from)} → ${fmt(to)} (total ${total.toFixed(2)} €) ?\n\nLa facture NE sera PAS envoyée.`)) return
+    // Q8 (préversion) : bon de commande dans la page, confirmation au 2e appui, puis clôture des fiches dans la foulée.
+    const unBouton = vue === 'facture'
+    if (unBouton && !armeFacture) { setArmeFacture(true); return }
+    setArmeFacture(false)
+    const ref = unBouton ? poRef : (window.prompt('N° de bon de commande (PO) du SPF Finances — laisser vide si aucun :', '') ?? '')
+    if (!unBouton && !window.confirm(`Créer et comptabiliser la facture Domaine pour ${fmt(from)} → ${fmt(to)} (total ${total.toFixed(2)} €) ?\n\nLa facture NE sera PAS envoyée.`)) return
     setInvoicing(true); setMsg(null)
     try {
       const r = await fetch('/api/fourriere/domaine', {
@@ -158,6 +165,12 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
       if (!r.ok) { setMsg(`⚠ ${j.error || 'Échec facturation'}`); return }
       setMsg(`✓ Facture ${j.invoiceNumber || '(brouillon)'} créée — ${j.count} véhicule(s), ${(j.total || 0).toFixed(2)} € HTVA. À envoyer depuis Odoo.`)
       if (j.invoiceNumber) setInvoiceNumber(j.invoiceNumber)
+      if (unBouton && j.invoiceNumber) {
+        const r2 = await fetch('/api/fourriere/domaine/ventes-register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'complete_quarter', from, to, invoiceNumber: j.invoiceNumber }) })
+        const j2 = await r2.json().catch(() => ({}))
+        setMsg(r2.ok ? `✓ Facture ${j.invoiceNumber} créée (${j.count} véhicule(s), ${(j.total || 0).toFixed(2)} € HTVA) et ${j2.completed ?? 0} fiche(s) clôturée(s). À envoyer depuis Odoo.` : `✓ Facture ${j.invoiceNumber} créée · ⚠ clôture des fiches : ${j2.error || 'échec'} — utilise « Passer les fiches en Terminé ».`)
+        load()
+      }
     } catch { setMsg('⚠ Erreur réseau') } finally { setInvoicing(false) }
   }
 
@@ -192,7 +205,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
           <p className="text-ink-muted text-sm">Reflet fidèle des tableaux de Rosemarie (toutes les lignes, rapprochées ou non). Gardiennage = Date IN → Date OUT au tarif parc saisie. <span className="text-amber-600 font-semibold">Orange = non rapproché à une fiche VD Soft</span> (mais compté).</p>
         </div>
 
-        {sortiesEnTete && attente.length > 0 && (
+        {sortiesEnTete && vue !== 'facture' && attente.length > 0 && (
           <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-2 text-amber-900">
             <p className="font-bold">Ventes sans date de sortie : {attente.length} vente{attente.length > 1 ? 's' : ''}, {attente.reduce((s, v) => s + v.auParc, 0)} véhicule(s) encore au parc</p>
             <p className="text-xs">Indique le jour où l'acheteur est venu les chercher : tous les véhicules de la vente sortent du parc et passent « à facturer », comme dans le registre.</p>
@@ -248,13 +261,26 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
             <button type="button"
               onClick={() => { if (!from || !to) { setMsg('⚠ Choisis la période'); return } window.location.href = `/api/fourriere/domaine/export?from=${from}&to=${to}` }}
               className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold">⬇️ Export Excel</button>
-            {userRole === 'superadmin' && (
+            {userRole === 'superadmin' && vue !== 'ventes' && vue !== 'facture' && (
               <button type="button" onClick={invoiceQuarter} disabled={invoicing || !groups || groups.length === 0}
                 className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-50"
                 title="Créer + comptabiliser la facture trimestrielle Odoo">{invoicing ? '⏳…' : '🧾 Facturer ce trimestre'}</button>
             )}
           </div>
-          {userRole === 'superadmin' && (
+          {userRole === 'superadmin' && vue === 'facture' && (
+            <div className="flex items-end gap-2 flex-wrap border-t pt-3">
+              <div>
+                <label htmlFor="po-domaine" className="block text-ink-muted text-xs mb-1">N° de bon de commande du SPF Finances (facultatif)</label>
+                <input id="po-domaine" value={poRef} onChange={e => setPoRef(e.target.value)} className="w-56 min-h-[44px] bg-surface-2 border rounded-xl px-3 text-ink text-sm" />
+              </div>
+              <button type="button" onClick={invoiceQuarter} disabled={invoicing || !groups || groups.length === 0}
+                className={`min-h-[44px] px-4 rounded-xl text-white text-sm font-bold disabled:opacity-50 ${armeFacture ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                {invoicing ? '⏳…' : armeFacture ? `Confirmer : facturer ${total.toFixed(2)} € et clôturer les fiches` : '🧾 Facturer ce trimestre et clôturer les fiches'}</button>
+              {armeFacture && <button type="button" onClick={() => setArmeFacture(false)} className="min-h-[44px] px-3 rounded-xl border text-sm">Annuler</button>}
+              <p className="w-full text-xs text-ink-muted">La facture est créée et comptabilisée, pas envoyée. Les fiches « à facturer » du trimestre passent en Terminé avec son numéro.</p>
+            </div>
+          )}
+          {userRole === 'superadmin' && vue !== 'ventes' && (
             <div className="flex items-end gap-2 flex-wrap border-t pt-3">
               <div>
                 <label className="block text-ink-muted text-xs mb-1">N° facture Odoo du trimestre</label>
@@ -272,7 +298,7 @@ export default function DomaineClient({ userRole, userName, userEmail, userModul
           {msg && <p className="text-sm text-amber-600">{msg}</p>}
         </div>
 
-        {groups && (groups.length === 0 ? (
+        {vue !== 'facture' && groups && (groups.length === 0 ? (
           <p className="text-ink-muted py-8 text-center">Aucune vente Domaine sur cette période.</p>
         ) : (
           <div className="bg-surface border rounded-2xl overflow-x-auto">
