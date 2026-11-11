@@ -23,6 +23,7 @@ import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
 import NotifyDriverButton from './NotifyDriverButton'
 import { parseHighwayAddress } from '@/lib/highways/parse'
 import { isJudicialSaisie } from '@/lib/missions/judicial'
+import { isVhuSource } from '@/lib/missions/vhu'
 import { onMissionChanged } from '@/lib/missions/changed-event'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
 import {
@@ -164,8 +165,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
   const delai   = getDelai(m.intervention_date, m.status)
   const srcInfo = { label: getSourceLabel(m.source, sources), color: getSourceColor(m.source, sources) }
   const typeLbl = getTypeLabel(m)
-  const kind    = /reliv/i.test(typeLbl) ? 'REL' : /d[ée]pannage|sur place|trajet/i.test(typeLbl) ? 'DSP' : /dpr|protocol/i.test(typeLbl) ? 'DPR' : /vhu|épave/i.test(typeLbl) ? 'VHU' : /transport|rapatri/i.test(typeLbl) ? 'TRP' : 'REM'
-  const kindCls = kind === 'REL' ? 'bg-emerald-600' : kind === 'DSP' ? 'bg-green-700' : kind === 'DPR' ? 'bg-red-600' : kind === 'VHU' ? 'bg-violet-600' : kind === 'TRP' ? 'bg-sky-600' : 'bg-blue-600'
+  const { kind, cls: kindCls } = getMissionKind(m)
   const href    = dossierView ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
   const isParked = activeTab === 'parked'
   const showDelai = delai.urgency !== 'muted' && !isParked
@@ -359,6 +359,27 @@ function getTypeLabel(m: { mission_type?: string | null; incident_type?: string 
   if (m.incident_type === 'dpr')          return '📍 DPR'
   if (!m.mission_type) return '—'
   return TYPE_LABELS[m.mission_type] || m.mission_type
+}
+
+/**
+ * Pastille de type (liste téléphone + grille compacte), déduite des champs
+ * bruts de la mission — même logique que getTypeLabel / TYPE_LABELS — et non
+ * du libellé déjà abrégé (« 🚛 REL », « 🔧 DSP »… tombaient sur REM).
+ */
+type MissionKind = 'REL' | 'DSP' | 'DPR' | 'VHU' | 'TRP' | 'REM'
+const KIND_CLS: Record<MissionKind, string> = {
+  REL: 'bg-emerald-600', DSP: 'bg-green-700', DPR: 'bg-red-600',
+  VHU: 'bg-violet-600',  TRP: 'bg-sky-600',   REM: 'bg-blue-600',
+}
+function getMissionKind(m: { mission_type?: string | null; incident_type?: string | null; source?: string | null }): { kind: MissionKind; cls: string } {
+  const t = (m.mission_type || '').toLowerCase()
+  let kind: MissionKind = 'REM'
+  if (isVhuSource(m.source)) kind = 'VHU'
+  else if (m.incident_type === 'relivraison' || t === 'relivraison' || t === 'rel') kind = 'REL'
+  else if (m.incident_type === 'dpr' || t === 'dpr' || t === 'trajet_vide') kind = 'DPR'
+  else if (t === 'depannage' || t === 'dsp' || t === 'reparation_place') kind = 'DSP'
+  else if (t === 'transport') kind = 'TRP'
+  return { kind, cls: KIND_CLS[kind] }
 }
 
 // Picto compact roulant / non roulant / non défini pour la liste À Relivrer.
@@ -593,13 +614,13 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        alert(`Echec toggle garde : ${data?.error || `HTTP ${res.status}`}`)
+        alert(`Échec de la modification de la garde : ${data?.error || `HTTP ${res.status}`}`)
         return
       }
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] toggleSchedule reseau:', e?.message)
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     }
   }
 
@@ -645,10 +666,9 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
 
       {/* Modal d'édition rapide de la garde */}
       {editing && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setEditing(null)}>
-          <div className="bg-surface border border rounded-2xl max-w-sm w-full p-5"
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          {/* Fermeture par le bouton « Fermer » uniquement (jamais au clic sur le fond). */}
+          <div className="bg-surface border border rounded-2xl max-w-sm w-full p-5">
             <h3 className="text-ink font-bold text-base mb-1">{editing.name}</h3>
             <p className="text-ink-muted text-xs mb-4">Activer/désactiver la garde — le statut sera forcé pendant les heures.</p>
             <div className="grid grid-cols-2 gap-2">
@@ -680,7 +700,7 @@ function DriverStatusPanel({ statuses, onRefresh, userRole }: {
               </button>
             </div>
             <button type="button" onClick={() => setEditing(null)}
-              className="w-full mt-4 py-2.5 text-ink-muted hover:text-ink text-xs transition">Fermer</button>
+              className="w-full mt-4 min-h-[44px] py-2.5 text-ink-muted hover:text-ink text-sm transition">Fermer</button>
           </div>
         </div>
       )}
@@ -712,13 +732,13 @@ function AssignDropdown({ mission, drivers, driverStatuses, onAssigned }: {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(`Echec assignation : ${data?.error || `HTTP ${res.status}`}`)
+        alert(`Échec assignation : ${data?.error || `HTTP ${res.status}`}`)
         return
       }
       onAssigned()
     } catch (e: any) {
       console.error('[DispatchClient] assign reseau:', e?.message)
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     } finally { setLoading(false) }
   }
 
@@ -845,11 +865,11 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
         body:    JSON.stringify({ mission_id: mission.id, action: 'confirm' }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { alert(`Echec validation : ${data?.error || `HTTP ${res.status}`}`); return }
+      if (!res.ok) { alert(`Échec validation : ${data?.error || `HTTP ${res.status}`}`); return }
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] confirm reseau:', e?.message)
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     } finally {
       setConfirmLoading(false)
     }
@@ -872,13 +892,15 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(`Echec refus : ${data?.error || `HTTP ${res.status}`}`)
+        alert(`Échec refus : ${data?.error || `HTTP ${res.status}`}`)
         return
       }
+      // Refus chez l'assistance : dire ce qui reste à faire à la main.
+      if (data?.assistance && data.assistance.etat !== 'refuse') alert(data.assistance.message)
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] refuse reseau:', e?.message)
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     } finally {
       setRefuseLoading(false)
     }
@@ -899,14 +921,14 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(`Echec assignation : ${data?.error || `HTTP ${res.status}`}`)
+        alert(`Échec assignation : ${data?.error || `HTTP ${res.status}`}`)
         return
       }
       closeModal()
       onRefresh()
     } catch (e: any) {
       console.error('[DispatchClient] assign reseau:', e?.message)
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     } finally {
       setAssignLoading(false)
     }
@@ -1507,10 +1529,10 @@ export default function DispatchClient({
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offline: next }),
       })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(`Echec statut : ${d?.error || `HTTP ${res.status}`}`); return }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(`Échec statut : ${d?.error || `HTTP ${res.status}`}`); return }
       setMyOffline(next)
     } catch (e: any) {
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     } finally { setPresenceLoading(false) }
   }
 
@@ -1528,13 +1550,13 @@ export default function DispatchClient({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        alert(`Echec bascule mode dispatch : ${data?.error || `HTTP ${res.status}`}`)
+        alert(`Échec du changement de mode de dispatch : ${data?.error || `HTTP ${res.status}`}`)
         return
       }
       setDispatchMode(newMode)
     } catch (e: any) {
       console.error('[DispatchClient] toggleMode reseau:', e?.message)
-      alert(`Erreur reseau : ${e?.message || 'connexion impossible'}`)
+      alert(`Erreur réseau : ${e?.message || 'connexion impossible'}`)
     } finally { setModeLoading(false) }
   }
 
@@ -1968,8 +1990,7 @@ export default function DispatchClient({
                         const showDelai = delai.urgency !== 'muted' && activeTab !== 'parked'
                         const isGarage  = !!m.requested_by_garage_id
                         const typeLbl   = getTypeLabel(m)
-                        const kind      = /reliv/i.test(typeLbl) ? 'REL' : /d[ée]pannage|sur place|trajet/i.test(typeLbl) ? 'DSP' : /dpr|protocol/i.test(typeLbl) ? 'DPR' : /vhu|épave/i.test(typeLbl) ? 'VHU' : /transport/i.test(typeLbl) ? 'TRP' : 'REM'
-                        const kindCls   = kind === 'REL' ? 'bg-emerald-600' : kind === 'DSP' ? 'bg-green-700' : kind === 'DPR' ? 'bg-red-600' : kind === 'VHU' ? 'bg-violet-600' : kind === 'TRP' ? 'bg-sky-600' : 'bg-blue-600'
+                        const { kind, cls: kindCls } = getMissionKind(m)
                         const href = dossierView ? `/dispatch/dossier/${m.id}` : `/dispatch/${m.id}`
                         return (
                           <div key={m.id} className={`border-t first:border-t-0 ${expandedId === m.id ? 'ring-1 ring-brand/40' : ''}`}>

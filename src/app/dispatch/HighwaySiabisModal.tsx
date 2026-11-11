@@ -63,21 +63,25 @@ export function HighwaySiabisModal({
   return (
     <div
       className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"   /* au-dessus du sélecteur de chauffeur (z-9999) : la question doit toujours se voir */
-      onClick={() => { if (!loading && !blocking) onClose(false) }}
     >
-      <div
-        className="bg-surface border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl"
-        onClick={e => e.stopPropagation()}
-      >
+      {/* Fermeture par ✕ uniquement (jamais au clic sur le fond). */}
+      <div className="bg-surface border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
         <div className="flex items-start gap-3">
           <span className="text-2xl">🛣️</span>
-          <div>
+          <div className="flex-1">
             <h3 className="font-bold text-ink text-base">Intervention sur autoroute ?</h3>
             <p className="text-ink-secondary text-sm mt-1">
               Il me semble que cette intervention se situe sur l'autoroute
               {highwayRef ? ` (${highwayRef})` : ''}. Quelle tarification appliquer ?
             </p>
           </div>
+          {!blocking && (
+            <button
+              type="button" onClick={() => onClose(false)} disabled={!!loading} aria-label="Fermer"
+              className="shrink-0 min-w-[44px] min-h-[44px] -mt-2 -mr-2 flex items-center justify-center rounded-xl text-ink-muted hover:text-ink hover:bg-black/5 text-xl disabled:opacity-50">
+              ✕
+            </button>
+          )}
         </div>
 
         <div className="space-y-2">

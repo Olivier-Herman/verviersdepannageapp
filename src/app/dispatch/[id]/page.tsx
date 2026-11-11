@@ -65,14 +65,14 @@ export default async function MissionDetailPage({ params, searchParams }: { para
   const { data: logs } = await supabase
     .from('mission_logs')
     .select('*, actor:users!actor_id(name)')
-    .eq('mission_id', params.id)
+    .eq('mission_id', mission.id)   // params.id peut être un numéro de fiche
     .order('created_at', { ascending: false })
 
   // Auto-dispatch en cours (le plus recent attempt actif)
   const { data: activeAttempt } = await supabase
     .from('dispatch_attempts_log')
     .select('driver_id, status, attempt_order, created_at, driver:users!dispatch_attempts_log_driver_id_fkey(name)')
-    .eq('mission_id', params.id)
+    .eq('mission_id', mission.id)   // params.id peut être un numéro de fiche
     .in('status', ['pending', 'push_sent', 'call_1_sent', 'call_2_sent'])
     .order('attempt_order', { ascending: false })
     .limit(1)

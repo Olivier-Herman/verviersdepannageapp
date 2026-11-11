@@ -2189,11 +2189,14 @@ export default function MissionDetailClient({
   const handleRefuse = async () => {
     if (!confirm('Confirmer le refus de cette mission ?')) return
     setLoadingRefuse(true)
-    await fetch('/api/missions/confirm', {
+    const res = await fetch('/api/missions/confirm', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ mission_id: initialMission.id, action: 'refuse' })
     })
+    const data = await res.json().catch(() => ({} as any))
+    // Refus chez l'assistance : dire ce qui reste à faire à la main.
+    if (data?.assistance && data.assistance.etat !== 'refuse') alert(data.assistance.message)
     setStatus('ignored')
     setLoadingRefuse(false)
     // On reste sur la fiche pour voir le statut "ignored". UX Olivier 11/05.
@@ -3185,7 +3188,7 @@ export default function MissionDetailClient({
                   {/* Badge lien véhicule Odoo + lookup automatique par plaque */}
                   {odooVehicleId && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-success-soft border border-success rounded-xl mb-4">
-                      <span className="text-success text-xs">✓ Lié Odoo véhicule #{odooVehicleId}</span>
+                      <span className="text-success text-xs">✓ Véhicule lié · ERP #{odooVehicleId}</span>
                       <button type="button" onClick={clearOdooVehicle}
                         className="ml-auto text-ink-muted hover:text-critical text-xs">Délier ✕</button>
                     </div>
@@ -3963,7 +3966,7 @@ export default function MissionDetailClient({
                           📄 Voir la facture
                         </a>
                       ) : (
-                        <p className="text-ink-muted text-xs italic">Lien Odoo en cours de résolution (cron)…</p>
+                        <p className="text-ink-muted text-xs italic">Lien de la facture en cours de récupération…</p>
                       )}
                     </div>
                   ) : initialMission.invoice_method === 'auto' ? (
@@ -4615,7 +4618,7 @@ export default function MissionDetailClient({
                   <div className="flex-1 min-w-[200px]">
                     <p className="text-amber-900 text-sm font-bold">📋 Rapport d’intervention pour {reportClient}</p>
                     <p className="text-amber-800 text-xs">{((M as any).report_attached_move_ids || []).length
-                      ? 'Joint à la facture dans Odoo.'
+                      ? 'Joint à la facture.'
                       : 'Joint automatiquement à la facture : 4 photos, adresse(s), nom, prénom et signature du signataire.'}{(M as any).signer_last_name ? ` Signé par ${[(M as any).signer_first_name, (M as any).signer_last_name].filter(Boolean).join(' ')}.` : ''}</p>
                   </div>
                   <a href={`/api/missions/${M.id}/rapport-intervention`} target="_blank" rel="noreferrer"
@@ -4675,14 +4678,14 @@ export default function MissionDetailClient({
 
               {/* Bouton dossier Odoo FSM */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition md-card-enter">
-                <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Dossier Odoo</h3>
+                <h3 className="text-ink-muted text-xs font-medium uppercase tracking-wide mb-3">Dossier ERP</h3>
                 {odooTicketUrl ? (
                   <a href={odooTicketUrl} target="_blank" rel="noopener noreferrer"
                     className="block w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium text-center transition">
                     🔗 Ouvrir le dossier Odoo ↗
                   </a>
                 ) : loadingOdoo ? (
-                  <div className="text-ink-muted text-sm text-center py-2">⏳ Création dossier Odoo...</div>
+                  <div className="text-ink-muted text-sm text-center py-2">⏳ Création du dossier ERP…</div>
                 ) : odooError ? (
                   <div className="space-y-2">
                     <p className="text-critical text-xs">{odooError}</p>
@@ -4694,7 +4697,7 @@ export default function MissionDetailClient({
                 ) : (
                   <button onClick={createOdooFsmDossier}
                     className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium transition">
-                    📋 Créer dossier Odoo
+                    📋 Créer le dossier ERP
                   </button>
                 )}
               </div>

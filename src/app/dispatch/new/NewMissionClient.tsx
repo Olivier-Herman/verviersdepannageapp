@@ -209,7 +209,7 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
         </div>
       ))}
       <button onClick={addDest}
-        className="w-full py-2.5 border border-dashedrounded-xl text-ink-muted hover:text-ink hover:border-strong text-sm transition">
+        className="w-full py-2.5 border border-dashed rounded-xl text-ink-muted hover:text-ink hover:border-strong text-sm transition">
         + Ajouter une destination
       </button>
     </div>
@@ -864,24 +864,35 @@ export default function NewMissionClient({
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'Erreur création')
 
+      // Anti-doublon : la même mission vient d'être créée (double clic,
+      // nouvel essai réseau) → on ouvre la fiche existante, sans réattribuer.
+      if (data.duplicate_prevented && data.mission_id) {
+        router.push(`/dispatch/${data.mission_id}`)
+        return
+      }
+
       // Si un chauffeur a ete selectionne : on assigne dans la foulee. L API
       // assign fait passer la mission a status='assigned', notifie le chauffeur
       // par push et met a jour la task FSM Odoo. Best-effort : si l assign
       // echoue, la mission reste creee (status='new'), l erreur affichee.
       if (assignedDriverId) {
+        let assignOk = false
         try {
           const assignRes = await fetch('/api/missions/assign', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mission_id: data.mission_id, driver_id: assignedDriverId }),
           })
-          const assignData = await assignRes.json()
-          if (!assignRes.ok) {
-            console.error('[create+assign] assign failed:', assignData?.error)
-            // On n affiche pas d erreur bloquante : la mission est creee, le user
-            // pourra reassigner depuis la fiche.
-          }
+          const assignData = await assignRes.json().catch(() => ({}))
+          assignOk = assignRes.ok
+          if (!assignRes.ok) console.error('[create+assign] assign failed:', assignData?.error)
         } catch (e) {
           console.error('[create+assign] assign network error:', e)
+        }
+        // Attribution échouée : la mission est créée, la fiche ouvre
+        // directement le choix du chauffeur (?assign=1).
+        if (!assignOk) {
+          router.push(`/dispatch/${data.mission_id}?assign=1`)
+          return
         }
       }
 
@@ -969,7 +980,7 @@ export default function NewMissionClient({
               </div>
               <div>
                 <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Nouvelle mission</h1>
-                <p className="text-ink-muted text-sm mt-1">Créer un nouveau dossier d'intervention. Les champs en gras se synchronisent automatiquement avec Odoo si lié.</p>
+                <p className="text-ink-muted text-sm mt-1">Créer un nouveau dossier d'intervention.</p>
               </div>
             </div>
           </div>
