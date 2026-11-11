@@ -17,9 +17,11 @@ import RequisitoiresClient from './RequisitoiresClient'
 import RelanceRequisitoireClient from '../relance-requisitoire/RelanceRequisitoireClient'
 import type { RelanceItem } from '@/lib/requisitoire/relance-items'
 
-export default function DocumentsClient({ userRole, userName, userEmail, userModules, relanceItems, appUrl, pendingCount }: {
+export default function DocumentsClient({ userRole, userName, userEmail, userModules, relanceItems, appUrl, pendingCount, habille = false }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
   relanceItems: RelanceItem[]; appUrl: string; pendingCount: number
+  /** Nouvel habillage (préversion ma_journee, Olivier seul, 11/11/2026). */
+  habille?: boolean
 }) {
   const [tab, setTab] = useState<'recus' | 'manquants'>(pendingCount > 0 ? 'recus' : 'manquants')
   const missing = relanceItems.filter(i => !i.stop).length
@@ -27,12 +29,23 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
 
   return (
     <AppShell title="Documents" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
-      <div className="px-3 lg:px-6 pt-5 max-w-5xl mx-auto space-y-3">
-        <div>
-          <h1 className="text-ink text-2xl font-bold leading-tight">📄 Documents police</h1>
-          <p className="text-ink-muted text-sm mt-0.5">Réquisitoires et levées : ce qui est arrivé et attend une fiche, ce qui manque et attend un policier.</p>
+      <div className={habille ? 'px-3 lg:px-6 pt-5 max-w-[1800px] mx-auto space-y-3' : 'px-3 lg:px-6 pt-5 max-w-5xl mx-auto space-y-3'}>
+        <div className={habille ? 'rounded-3xl text-white shadow-md p-5 lg:p-7 bg-[radial-gradient(120%_160%_at_100%_0%,#4c1d95_0%,#17110f_62%)]' : ''}>
+          <h1 className={habille ? 'text-2xl lg:text-3xl font-extrabold tracking-tight' : 'text-ink text-2xl font-bold leading-tight'}>{habille ? 'Réquisitoires' : '📄 Documents police'}</h1>
+          <p className={habille ? 'text-white/75 text-sm mt-1' : 'text-ink-muted text-sm mt-0.5'}>Réquisitoires et levées : ce qui est arrivé et attend une fiche, ce qui manque et attend un policier.</p>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
+        {habille && (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <button onClick={() => setTab('recus')} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm bg-amber-50 border-amber-300 text-amber-900 ${tab === 'recus' ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
+              <b className="block text-3xl font-extrabold leading-none tabular-nums">{pendingCount}</b><span className="text-[13px] font-semibold">Reçus à rattacher</span>
+            </button>
+            <button onClick={() => setTab('manquants')} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm bg-sky-50 border-sky-300 text-sky-900 ${tab === 'manquants' ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
+              <b className="block text-3xl font-extrabold leading-none tabular-nums">{missing}</b><span className="text-[13px] font-semibold">Manquants</span>
+            </button>
+            {noOfficer > 0 && <div className="rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm bg-amber-100 border-amber-300 text-amber-900 col-span-2 lg:col-span-1"><b className="block text-3xl font-extrabold leading-none tabular-nums">{noOfficer}</b><span className="text-[13px] font-semibold">sans policier identifié</span></div>}
+          </div>
+        )}
+        <div className={habille ? 'hidden' : 'flex items-center gap-1.5 flex-wrap'}>
           <button onClick={() => setTab('recus')} title="Documents reçus sur fourriere@, à rattacher à leur fiche" className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${tab === 'recus' ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
             <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />Reçus à rattacher <span className={tab === 'recus' ? 'opacity-80' : 'text-ink-faint'}>{pendingCount}</span>
           </button>

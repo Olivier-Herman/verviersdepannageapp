@@ -33,7 +33,7 @@ export default async function RequisitoiresPage() {
       loadRelanceItems(sb),
       sb.from('requisitoire_intake').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     ])
-    return <DocumentsClient userRole={role} userName={user.name || ''} userEmail={user.email || ''} userModules={modules} relanceItems={relanceItems} pendingCount={pending.count || 0} appUrl={process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'} />
+    return <DocumentsClient userRole={role} userName={user.name || ''} userEmail={user.email || ''} userModules={modules} relanceItems={relanceItems} pendingCount={pending.count || 0} habille={await isPreviewOn('ma_journee', role, user.id)} appUrl={process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'} />
   }
   return (
     <RequisitoiresClient

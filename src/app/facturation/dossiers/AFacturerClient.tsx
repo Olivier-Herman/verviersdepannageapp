@@ -153,6 +153,8 @@ const WHO: Record<Who, { label: string; cls: string; dot: string }> = {
   veille: { label: 'Pas prêt', cls: 'bg-slate-50 border-slate-200 text-slate-700',   dot: 'bg-slate-400' },
   fini:   { label: 'Terminé',  cls: 'bg-slate-50 border-slate-200 text-slate-500',   dot: 'bg-slate-300' },
 }
+// Bande de couleur à gauche de la carte (habillage) : qui a la main.
+const BAND: Record<Who, string> = { nous: 'border-l-amber-500', robot: 'border-l-violet-500', eux: 'border-l-sky-500', client: 'border-l-teal-500', veille: 'border-l-slate-300', fini: 'border-l-slate-200' }
 const TONE = { brand: 'bg-brand hover:bg-brand-hover text-white', ghost: 'bg-surface hover:bg-surface-hover border text-ink', sky: 'bg-sky-600 hover:bg-sky-700 text-white' }
 const STEP: Record<StepState, { dot: string; text: string; line: string }> = {
   done: { dot: 'bg-green-500 border-green-500 text-white', text: 'text-ink', line: 'bg-green-400' },
@@ -185,8 +187,12 @@ function Timeline({ steps }: { steps: Step[] }) {
 }
 
 type Filter = 'all' | Who
-export default function AFacturerClient({ initial, autoById, comexById = {}, isSuperadmin, capped, billingGroups = {} }: {
+export default function AFacturerClient({ initial, autoById, comexById = {}, isSuperadmin, capped, billingGroups = {}, habille = false, afterHeader }: {
   initial: Dossier[]; autoById: Record<string, boolean>; comexById?: Record<string, ComexInfo>; isSuperadmin: boolean; capped: boolean; billingGroups?: Record<string, string[]>
+  /** Nouvel habillage (préversion ma_journee, Olivier seul, 11/11/2026) : mêmes données, mêmes boutons. */
+  habille?: boolean
+  /** Bloc affiché sous le bandeau (habillage : « Pourquoi ça bloque » d'Olivier). */
+  afterHeader?: React.ReactNode
 }) {
   const router = useRouter()
   const SOURCE_GROUPS = useMemo(() => buildGroups(billingGroups), [billingGroups])
@@ -325,26 +331,26 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   ]
 
   return (
-    <div className="px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto">
+    <div className={habille ? 'px-3 lg:px-6 py-5 space-y-4 max-w-[1800px] mx-auto' : 'px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto'}>
       {/* En-tête */}
-      <div className="flex items-end justify-between flex-wrap gap-3">
+      <div className={habille ? 'rounded-3xl text-white shadow-md p-5 lg:p-7 flex items-end justify-between flex-wrap gap-4 bg-[radial-gradient(120%_160%_at_100%_0%,#6d111c_0%,#17110f_62%)]' : 'flex items-end justify-between flex-wrap gap-3'}>
         <div>
-          <h1 className="text-ink text-2xl font-bold leading-tight">🧾 À facturer</h1>
-          <p className="text-ink-muted text-sm mt-0.5">
+          <h1 className={habille ? 'text-2xl lg:text-3xl font-extrabold tracking-tight' : 'text-ink text-2xl font-bold leading-tight'}>{habille ? 'À facturer' : '🧾 À facturer'}</h1>
+          <p className={habille ? 'text-white/75 text-sm mt-1 [&_b]:text-white' : 'text-ink-muted text-sm mt-0.5'}>
             <b className="text-ink">{counts.nous || 0}</b> dossier{(counts.nous || 0) > 1 ? 's' : ''} nous attend{(counts.nous || 0) > 1 ? 'ent' : ''}
             {counts.robot ? ` · ${counts.robot} au robot` : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''} · le montant s'affiche à l'ouverture du dossier
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Plaque, n°, client, dossier, facture…" className="w-56 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand" />
-            {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink">×</button>}
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Plaque, n°, client, dossier, facture…" className={habille ? 'w-64 lg:w-80 bg-white/10 border border-white/25 rounded-2xl pl-4 pr-9 min-h-[48px] text-base text-white placeholder:text-white/60 focus:outline-none focus:border-white' : 'w-56 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand'} />
+            {search && <button onClick={() => setSearch('')} className={`absolute right-2 top-1/2 -translate-y-1/2 ${habille ? 'text-white/70 hover:text-white p-2' : 'text-ink-faint hover:text-ink'}`}>×</button>}
           </div>
-          <button onClick={() => router.refresh()} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary" title="Rafraîchir">↻</button>
+          <button onClick={() => router.refresh()} className={habille ? 'min-h-[48px] min-w-[48px] bg-white/10 hover:bg-white/20 border border-white/25 rounded-2xl text-base' : 'px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary'} title="Rafraîchir">↻</button>
           <div className="relative">
-            <button onClick={() => setShowTools(s => !s)} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary" title="Outils">⋯</button>
+            <button onClick={() => setShowTools(s => !s)} className={habille ? 'min-h-[48px] min-w-[48px] bg-white/10 hover:bg-white/20 border border-white/25 rounded-2xl text-base' : 'px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary'} title="Outils">⋯</button>
             {showTools && (
-              <div className="absolute right-0 mt-1 w-80 bg-surface border rounded-2xl shadow-xl p-2 z-20 space-y-1">
+              <div className="absolute right-0 mt-1 w-80 bg-surface border rounded-2xl shadow-xl p-2 z-20 space-y-1 text-ink">
                 <button onClick={verifyAll} disabled={!!busy} className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink disabled:opacity-40">🔎 Vérifier les factures (numéros, liens)</button>
                 <button onClick={siabis} disabled={!!busy} className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink disabled:opacity-40">🇳🇱 Check Siabis / ANWB</button>
                 <Link href="/facturation/allianz" className="block px-3 py-2 rounded-xl hover:bg-surface-hover text-sm text-ink">🟦 Clôture Allianz (Hexalite)</Link>
@@ -358,7 +364,17 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
         </div>
       </div>
 
+      {afterHeader}
       {/* Onglets = qui a la main */}
+      {habille ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+          {TABS.map(t => { const w = t.key !== 'all' ? WHO[t.key as Who] : null; return (
+            <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${w ? w.cls : 'bg-surface text-ink'} ${filter === t.key ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
+              <b className="block text-3xl font-extrabold leading-none tabular-nums">{counts[t.key] || 0}</b>
+              <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold mt-1">{t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}{t.label}</span>
+            </button>) })}
+        </div>
+      ) : (
       <div className="flex items-center gap-1.5 flex-wrap">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
@@ -366,11 +382,12 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
           </button>
         ))}
       </div>
+      )}
       <TabLegend items={[...TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help })), { dot: 'bg-green-500', label: 'Payé', text: 'lu dans Odoo toutes les 2 h → le dossier passe « Terminé » seul ; le client est relancé à J+15 puis J+30 après l\'échéance (jamais le Parquet ni les assisteurs)' }]} />
       {/* Assisteurs */}
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
         {SOURCE_GROUPS.map(g => (
-          <button key={g.key} onClick={() => setGroup(g.key)} className={`px-2.5 py-1 rounded-full border ${group === g.key ? 'bg-surface-2 text-ink border-strong font-semibold' : 'bg-surface text-ink-muted hover:text-ink'}`}>{g.label} <span className="opacity-60">{groupCounts[g.key]}</span></button>
+          <button key={g.key} onClick={() => setGroup(g.key)} className={`${habille ? 'px-3.5 min-h-[40px] text-[13px]' : 'px-2.5 py-1'} rounded-full border ${group === g.key ? (habille ? 'bg-ink text-surface border-ink font-semibold' : 'bg-surface-2 text-ink border-strong font-semibold') : 'bg-surface text-ink-muted hover:text-ink'}`}>{g.label} <span className="opacity-60">{groupCounts[g.key]}</span></button>
         ))}
       </div>
 
@@ -388,13 +405,14 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
         </div>
       )}
 
+      <div className={habille ? 'grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start' : 'space-y-4'}>
       {visible.map(d => {
         const r = readings.get(d.root_id)!
         const who = WHO[r.who]
         const isOpen = open.has(d.root_id)
         const p = r.primary
         return (
-          <div key={d.root_id} className="bg-surface border rounded-2xl overflow-hidden">
+          <div key={d.root_id} className={habille ? `bg-surface border border-l-[8px] ${BAND[r.who]} rounded-2xl overflow-hidden shadow-sm` : 'bg-surface border rounded-2xl overflow-hidden'}>
             <div className="px-4 pt-3.5 pb-3 flex items-start justify-between gap-3 flex-wrap">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -424,7 +442,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
             <div className="px-4 pb-3"><Timeline steps={r.steps} /></div>
             <div className={`mx-4 mb-3 rounded-xl border px-3.5 py-2.5 flex items-center justify-between gap-3 flex-wrap ${who.cls}`}>
               <div className="min-w-0"><div className="text-sm font-bold">{r.headline}</div>{r.detail && <div className="text-xs opacity-80 mt-0.5">{r.detail}</div>}</div>
-              {p && <button disabled={!!busy || loadingBill === d.root_id} onClick={() => primary(d, r)} className={`px-3.5 py-2 rounded-xl text-sm font-bold shrink-0 disabled:opacity-50 ${TONE[p.tone || 'brand']}`}>{loadingBill === d.root_id ? '…' : p.label}{p.kind === 'bill' ? ' →' : p.kind === 'odoo' || p.kind === 'link' ? ' ↗' : ''}</button>}
+              {p && <button disabled={!!busy || loadingBill === d.root_id} onClick={() => primary(d, r)} className={`${habille ? 'min-h-[44px] px-4' : 'px-3.5 py-2'} rounded-xl text-sm font-bold shrink-0 disabled:opacity-50 ${TONE[p.tone || 'brand']}`}>{loadingBill === d.root_id ? '…' : p.label}{p.kind === 'bill' ? ' →' : p.kind === 'odoo' || p.kind === 'link' ? ' ↗' : ''}</button>}
             </div>
             <div className="px-4 py-2 border-t bg-surface-2/60 flex items-center gap-3 text-xs">
               <button onClick={() => setOpen(s => { const n = new Set(s); n.has(d.root_id) ? n.delete(d.root_id) : n.add(d.root_id); return n })} className="text-ink-secondary hover:text-ink font-semibold">{isOpen ? '▾' : '▸'} Détails · {d.legs.length} groupe{d.legs.length > 1 ? 's' : ''}{d.invoices.length ? ` · ${d.invoices.length} facture${d.invoices.length > 1 ? 's' : ''}` : ''}</button>
@@ -472,6 +490,8 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
           </div>
         )
       })}
+
+      </div>
 
       {capped && <p className="text-[11px] text-ink-faint px-1">Liste limitée aux 80 dossiers les plus récents — pour une autre fiche, passe par Recherche.</p>}
       {billing && <BillingModal d={billing} onClose={() => setBilling(null)} onDone={async (res) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setReport(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`); setReportLinks((res.invoices || []).filter((i: any) => i.url).map((i: any) => ({ label: `${billing.ref} → ${i.client_name}`, url: i.url }))) } await refreshOne(id) }} />}
