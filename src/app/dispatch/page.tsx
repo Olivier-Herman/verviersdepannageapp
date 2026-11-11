@@ -62,7 +62,7 @@ export default async function DispatchPage({ searchParams }: { searchParams?: { 
   return (
     <DispatchV2Garde ancien={ancien}>
       <DispatchV2Client userName={user.name || ''} userEmail={user.email || undefined} userId={user.id || undefined}
-        userRole={user.role || ''} userModules={user.modules || []} />
+        userRole={user.role || ''} userModules={user.modules || []} sources={catalogSources || []} />
     </DispatchV2Garde>
   )
 }
