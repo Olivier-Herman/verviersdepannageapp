@@ -421,6 +421,8 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
 
   return (
     <AppShell title="Dispatch" userName={userName} userEmail={userEmail} userId={userId} userRole={userRole} userModules={userModules}>
+      {/* Téléphone : le rappel des espèces et la pastille de Max passaient par-dessus les cartes (Olivier 11/11). Masqués ici seulement. */}
+      <style>{`@media (max-width: 1023px) { [data-flottant="especes"], [data-flottant="max"] { display: none !important; } }`}</style>
       <div className="p-2.5 lg:p-3 flex flex-col gap-2.5 min-w-0 max-w-full [contain:inline-size]">
         {/* Repères du jour */}
         <div className="flex flex-wrap gap-2 items-center rounded-2xl px-3 py-2.5 text-white" style={{ background: 'linear-gradient(135deg,#1b1220 0%,#4a1230 55%,#E11D2E 100%)' }}>

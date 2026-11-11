@@ -179,7 +179,7 @@ export default function MaxPastille({ userName }: { userName: string }) {
   return (
     <>
       {!open && (
-        <div className="fixed z-40 right-4 lg:right-6 flex items-end gap-2" style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
+        <div data-flottant="max" className="fixed z-40 right-4 lg:right-6 flex items-end gap-2" style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
           {hint && fiche && (
             <div className="hidden sm:block max-w-[240px] bg-surface text-ink border rounded-2xl rounded-br-sm px-3 py-2 text-[13px] shadow-lg max-pop">
               J’ai vu la fiche <b>{fiche.plaque || `#${fiche.numero}`}</b>. Un souci dessus ? 👀

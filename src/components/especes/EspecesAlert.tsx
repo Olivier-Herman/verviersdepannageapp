@@ -78,7 +78,7 @@ export default function EspecesAlert() {
     const total = todo.reduce((s, x) => s + Number(x.amount), 0)
     if (!open) return (
       // Au-dessus du bouton du talkie (même coin, bas à droite) — 06/10/2026 : il le cachait à moitié.
-      <button type="button" onClick={() => setOpen(true)} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)' }} className="fixed right-3 z-40 min-h-[44px] px-4 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg">
+      <button type="button" data-flottant="especes" onClick={() => setOpen(true)} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)' }} className="fixed right-3 z-40 min-h-[44px] px-4 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg">
         Espèces · {todo.length}
       </button>
     )
