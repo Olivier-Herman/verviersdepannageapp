@@ -33,7 +33,7 @@ export default async function DispatchPage({ searchParams }: { searchParams?: { 
       .order('name'),
     supabase
       .from('mission_source_catalog')
-      .select('key, label, display_color, group_key')
+      .select('key, label, display_color, display_color_hex, group_key')
       .eq('active', true)
       .order('label'),
     // Vue dossier + nouvelle liste : superadmin, pilotes nommés, ou tout le monde (flag).

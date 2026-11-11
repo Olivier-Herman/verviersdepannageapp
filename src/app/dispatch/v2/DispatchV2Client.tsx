@@ -15,9 +15,11 @@ import { createClient } from '@supabase/supabase-js'
 import AppShell from '@/components/layout/AppShell'
 import DriverPickerModal from '@/components/DriverPickerModal'
 import { HighwaySiabisModal, shouldOfferSiabis } from '../HighwaySiabisModal'
-import { getSourceLabel, getSourceColor, type SourceDisplay } from '@/lib/missions/source-display'
+import { getSourceLabel, getSourceColor, getSourceColorHex, type SourceDisplay } from '@/lib/missions/source-display'
 import { pollWhenVisible } from '@/lib/client/poll'
 import FicheComplete from './FicheComplete'
+import dynamic from 'next/dynamic'
+const CarteDispatch = dynamic(() => import('./CarteDispatch'), { ssr: false, loading: () => <p className="text-stone-500 text-sm">Chargement de la carte…</p> })
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -219,7 +221,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [erreur, setErreur] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [filtre, setFiltre] = useState<'cours' | 'rdv' | 'vhu' | 'parked' | 'all'>('cours')
-  const [vueCentre, setVueCentre] = useState<'liste' | 'planning'>('liste')
+  const [vueCentre, setVueCentre] = useState<'liste' | 'planning' | 'carte'>('liste')
   const [autres, setAutres] = useState<M[] | null>(null)
   const [q, setQ] = useState('')
   const [occupe, setOccupe] = useState<string | null>(null)
@@ -230,7 +232,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [ongletTel, setOngletTel] = useState<'traiter' | 'cours' | 'chauffeurs'>('traiter')
   const [etatsChauffeurs, setEtatsChauffeurs] = useState<any[] | null>(null)
   useEffect(() => {
-    if (ongletTel !== 'chauffeurs' && vueCentre !== 'planning') return
+    if (ongletTel !== 'chauffeurs' && vueCentre === 'liste') return
     fetch('/api/users/driver-status', { cache: 'no-store' }).then(r => r.json()).then(d => setEtatsChauffeurs(Array.isArray(d) ? d : (d?.drivers || []))).catch(() => setEtatsChauffeurs([]))
   }, [ongletTel, vueCentre, board])
   const [complete, setComplete] = useState<{ id: string; titre: string } | null>(null)   // fiche complète embarquée (indépendante de la sélection)
@@ -458,18 +460,32 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'cours' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="px-3 pt-3 pb-2 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <b className="text-[16px] text-ink">{vueCentre === 'planning' ? 'La journée des chauffeurs' : 'Missions'}</b>
+                <b className="text-[16px] text-ink">{vueCentre === 'planning' ? 'La journée des chauffeurs' : vueCentre === 'carte' ? 'Carte' : 'Missions'}</b>
                 <span className="hidden lg:inline-flex bg-stone-100 rounded-xl p-1">
-                  {([['liste', 'Liste'], ['planning', 'Planning']] as const).map(([k, l]) => (
+                  {([['liste', 'Liste'], ['planning', 'Planning'], ['carte', 'Carte']] as const).map(([k, l]) => (
                     <button key={k} type="button" onClick={() => setVueCentre(k)} className={`min-h-[36px] px-3.5 rounded-lg font-bold text-sm ${vueCentre === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}`}>{l}</button>
                   ))}
                 </span>
               </div>
               {vueCentre === 'planning' && board && <div className="hidden lg:block"><Planning missions={board.planning || []} chauffeurs={drivers} etats={etatsChauffeurs} sources={sources} now={now} selId={selId}
                 onSel={choisir} onDepot={(missionId, driverId) => { const m = [...board.cmd, ...board.att].find(x => x.id === missionId); if (m) affecter(m, driverId) }} /></div>}
+              {vueCentre === 'carte' && board && (() => {
+                const urgents = new Set([...board.cmd, ...board.att].map(m => m.id).concat(board.alertes.map(a => a.mission.id)))
+                const missionsCarte = [...board.cmd, ...board.att, ...board.lances].filter(m => m.incident_lat != null && m.incident_lng != null)
+                  .map(m => ({ id: m.id, lat: Number(m.incident_lat), lng: Number(m.incident_lng), couleur: getSourceColorHex(m.source, sources), texte: typeCourt(m), titre: `${getSourceLabel(m.source, sources)} ${typeCourt(m)} · ${m.vehicle_plate || ''} · ${etat(m).txt}`, urgent: urgents.has(m.id) }))
+                const chauffeursCarte = (etatsChauffeurs || []).filter((d: any) => d.lat != null && d.lng != null && !d.on_conge)
+                  .map((d: any) => ({ id: d.id, lat: Number(d.lat), lng: Number(d.lng), initiales: String(d.name || '?').split(' ').map((x: string) => x[0]).join('').slice(0, 2).toUpperCase(), titre: `${d.name} · ${d.status === 'en_mission' ? 'en mission' : d.status === 'en_service' ? 'libre' : 'hors service'}`, occupe: d.status === 'en_mission' }))
+                const sansPosition = [...board.cmd, ...board.att, ...board.lances].length - missionsCarte.length
+                return (
+                  <div className="hidden lg:flex flex-col gap-1.5">
+                    <CarteDispatch missions={missionsCarte} chauffeurs={chauffeursCarte} onMission={id => setSelId(id)} />
+                    <p className="text-stone-500 text-[12.5px]">Missions à la couleur de l'assistance, cerclées de rouge quand elles attendent un geste · chauffeurs : vert libre, orange en mission (position relevée seulement pendant une mission).{sansPosition > 0 ? ` ${sansPosition} mission${sansPosition > 1 ? 's' : ''} sans adresse localisée : ouvrez-les pour la vérifier.` : ''}</p>
+                  </div>
+                )
+              })()}
               <input value={q} onChange={e => setQ(e.target.value)} type="search" placeholder="Plaque, client, adresse, n° de fiche…" aria-label="Chercher une mission"
-                className={`min-h-[44px] rounded-xl border border-stone-300 bg-stone-50 px-3 text-stone-900 ${vueCentre === 'planning' ? 'lg:hidden' : ''}`} />
-              <div className={`flex gap-1.5 flex-wrap ${vueCentre === 'planning' ? 'lg:hidden' : ''}`}>
+                className={`min-h-[44px] rounded-xl border border-stone-300 bg-stone-50 px-3 text-stone-900 ${vueCentre !== 'liste' ? 'lg:hidden' : ''}`} />
+              <div className={`flex gap-1.5 flex-wrap ${vueCentre !== 'liste' ? 'lg:hidden' : ''}`}>
                 {([['cours', `En cours · ${board?.lances.length ?? 0}`], ['rdv', 'Rendez-vous'], ['vhu', 'VHU'], ['parked', 'À relivrer'], ['all', 'Toutes']] as const).map(([k, l]) => (
                   <button key={k} type="button" onClick={() => setFiltre(k)}
                     className={`min-h-[40px] px-3.5 rounded-full border font-semibold text-sm ${filtre === k ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-900 border-stone-200'}`}>{l}</button>
@@ -477,7 +493,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 <Link href="/missions-terminees" className="min-h-[40px] px-3.5 rounded-full border border-stone-200 bg-white text-stone-900 font-semibold text-sm inline-flex items-center">Terminées ↗</Link>
               </div>
             </header>
-            <div className={`overflow-auto min-h-0 px-1 ${vueCentre === 'planning' ? 'lg:hidden' : ''}`}>
+            <div className={`overflow-auto min-h-0 px-1 ${vueCentre !== 'liste' ? 'lg:hidden' : ''}`}>
               {!liste ? <p className="px-3 py-2 text-stone-500">Chargement…</p> : liste.length === 0 ? <p className="px-3 py-2 text-stone-500">{q ? 'Aucune mission ne correspond.' : filtre === 'cours' ? 'Aucune mission lancée pour l\'instant.' : 'Rien dans cette vue.'}</p> : (
                 <>
                 <div className="lg:hidden flex flex-col gap-2 px-2 pb-2">
