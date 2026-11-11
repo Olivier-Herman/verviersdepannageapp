@@ -115,6 +115,8 @@ export default function AppShell({
         if (Array.isArray(c.now)) setNavNow(c.now)
         if (Array.isArray(c.favorites)) setNavFavs(c.favorites)
         if (c.work?.available) setWork(c.work)
+        // Flags du menu en cache aussi : sans eux, le 1er affichage montre l'ancien menu (Facturation → À facturer) jusqu'à la réponse.
+        if (c.flags && typeof c.flags === 'object') { const f = { ...c.flags }; try { if (f.ma_journee && localStorage.getItem('vd_ma_journee_off') === '1') f.ma_journee = false } catch {}; setNavFlags(f); if (typeof f.nav_menu_v2 === 'boolean') setNavV2Flag(f.nav_menu_v2); if (typeof f.nav_espaces === 'boolean') setNavEspacesFlag(f.nav_espaces) }
       }
     } catch { /* stockage indisponible : on attend le fetch */ }
   }, [])
@@ -141,7 +143,7 @@ export default function AppShell({
         if (d.work) setWork(d.work)
         if (Array.isArray(d.nav?.now)) setNavNow(d.nav.now)
         if (Array.isArray(d.nav?.favorites)) setNavFavs(d.nav.favorites)
-        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [], work: d.work })) } catch {}
+        try { window.localStorage.setItem('vd_nav_cache', JSON.stringify({ badges: d.badges || {}, now: d.nav?.now || [], favorites: d.nav?.favorites || [], work: d.work, flags: d.flags || {} })) } catch {}
       }).catch(() => {})
     load()
     const stop = pollWhenVisible(load, 60000, { immediate: false })   // toutes les minutes, onglet visible seulement

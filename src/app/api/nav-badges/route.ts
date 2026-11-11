@@ -171,6 +171,8 @@ export async function GET() {
   } catch (e: any) {
     console.warn('[nav-badges] réglage « Maintenant » manquant :', e?.message || e)
   }
+  // Préversion « Ma journée » (Olivier, 11/11/2026) : elle passe en tête des raccourcis du menu.
+  if (flags.ma_journee) now = ['/ma-journee', ...now.filter(h => h !== '/ma-journee')]
   let favorites: string[] = []
   try {
     const { data: me } = await sb.from('users').select('nav_favorites').eq('id', u.id).maybeSingle()
