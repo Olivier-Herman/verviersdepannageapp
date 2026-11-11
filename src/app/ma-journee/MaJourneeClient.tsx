@@ -328,7 +328,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
         <button onClick={toggleMenu} className="ml-auto inline-flex items-center gap-1 border rounded-full px-3 py-1.5 bg-surface hover:text-ink"><Minus size={13} />{menuOff ? 'Remettre le nouveau menu' : 'Revenir à l’ancien menu'}</button>
       </div>
 
-      {billing && <BillingModal d={billing} onClose={() => setBilling(null)} onDone={async (res: any) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setDoneCount(c => c + 1); setMsg(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`) } await refreshDossier(id) }} />}
+      {billing && <BillingModal valider d={billing} onClose={() => setBilling(null)} onDone={async (res: any) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setDoneCount(c => c + 1); setMsg(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`) } await refreshDossier(id) }} />}
     </main>
   )
 }

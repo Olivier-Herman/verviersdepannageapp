@@ -13,6 +13,35 @@ import { sessionAccess }       from '@/lib/access'
 import { authOptions }         from '@/lib/auth'
 import { isPreviewOn }         from '@/lib/feature-flags'
 import { invoiceDossierGroups } from '@/lib/dossier/invoice'
+import { createAdminClient }   from '@/lib/supabase'
+import { odooRpc, withOdooActor } from '@/lib/odoo'
+
+async function lireBande(): Promise<{ min: number; max: number }> {
+  let band = { min: 50, max: 300 }
+  try {
+    const { data } = await createAdminClient().from('app_settings').select('value').eq('key', 'auto_invoice_autopost_band').maybeSingle()
+    const v = data?.value ? (typeof data.value === 'string' ? JSON.parse(data.value) : data.value) : null
+    if (v && typeof v.min === 'number' && typeof v.max === 'number') band = v
+  } catch { /* défaut */ }
+  return band
+}
+
+async function validerDansFourchette(ids: number[], band: { min: number; max: number }, userId: string | null) {
+  const valides: { odoo_id: number; name: string | null }[] = [], nonValides: { odoo_id: number; raison: string }[] = []
+  for (const id of ids) {
+    try {
+      const mv = (await withOdooActor(userId, () => odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['amount_untaxed', 'state', 'partner_id'] })))?.[0]
+      const amt = Number(mv?.amount_untaxed || 0)
+      if (!mv || mv.state !== 'draft') { nonValides.push({ odoo_id: id, raison: 'déjà validée ou introuvable' }); continue }
+      if (!mv.partner_id) { nonValides.push({ odoo_id: id, raison: 'client manquant' }); continue }
+      if (amt < band.min || amt > band.max) { nonValides.push({ odoo_id: id, raison: `${amt.toFixed(2)} € HTVA hors fourchette (${band.min}–${band.max} €)` }); continue }
+      await withOdooActor(userId, () => odooRpc('account.move', 'action_post', [[id]]))
+      const after = (await withOdooActor(userId, () => odooRpc<any[]>('account.move', 'read', [[id]], { fields: ['name'] })))?.[0]
+      valides.push({ odoo_id: id, name: after?.name || null })
+    } catch (e: any) { nonValides.push({ odoo_id: id, raison: `validation refusée : ${String(e?.message || e).slice(0, 140)}` }) }
+  }
+  return { valides, nonValides }
+}
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -38,7 +67,21 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
     const linesOverride: Record<string, any[]> | undefined = body.lines_override && typeof body.lines_override === 'object' ? body.lines_override : undefined
     const result = await invoiceDossierGroups({ anyMissionId: params.id, missionIds, actorUserId: user.id || null, dryRun: body.dry_run === true, periodTo, linesOverride, asQuote: body.quote === true })
     invalidateDossierCache()   // la liste (cache 90 s) doit refléter la facture
-    return NextResponse.json({ ok: true, ...result })
+    // R3 (préversion ma_journee, Olivier 11/11/2026) : « Créer et valider ». Même règle que le robot :
+    // facture validée d'un coup si son montant HTVA est dans la fourchette auto_invoice_autopost_band
+    // et que le client est connu ; sinon elle reste en brouillon (dit dans la réponse).
+    const band = await lireBande()
+    let valides: { odoo_id: number; name: string | null }[] = [], nonValides: { odoo_id: number; raison: string }[] = []
+    if (body.valider === true && body.dry_run !== true && body.quote !== true && Array.isArray((result as any).invoices) && (result as any).invoices.length
+        && await isPreviewOn('ma_journee', role, user.id)) {
+      const r = await validerDansFourchette((result as any).invoices.map((i: any) => Number(i.odoo_id)).filter(Boolean), band, user.id || null)
+      valides = r.valides; nonValides = r.nonValides
+      if (valides.length) {
+        try { const { syncDraftInvoiceNumbers } = await import('@/lib/odoo-invoice'); const sb = createAdminClient(); await syncDraftInvoiceNumbers(sb, valides.map(v => v.odoo_id)); const { settleRootIfDone } = await import('@/lib/dossier/settle'); await settleRootIfDone(sb, params.id, null) } catch (e: any) { console.warn('[dossier/invoice] numéros après validation KO:', e?.message) }
+        invalidateDossierCache()
+      }
+    }
+    return NextResponse.json({ ok: true, ...result, band, valides, nonValides })
   } catch (e: any) {
     const msg = String(e?.message || e)
     const status = /Odoo|introuvable \(default_code\)/i.test(msg) ? 502 : 400

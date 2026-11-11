@@ -520,7 +520,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
       </div>
 
       {capped && <p className="text-[11px] text-ink-faint px-1">Liste limitée aux 80 dossiers les plus récents — pour une autre fiche, passe par Recherche.</p>}
-      {billing && <BillingModal d={billing} onClose={() => setBilling(null)} onDone={async (res) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setReport(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`); setReportLinks((res.invoices || []).filter((i: any) => i.url).map((i: any) => ({ label: `${billing.ref} → ${i.client_name}`, url: i.url }))) } await refreshOne(id) }} />}
+      {billing && <BillingModal valider={habille} d={billing} onClose={() => setBilling(null)} onDone={async (res) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setReport(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`); setReportLinks((res.invoices || []).filter((i: any) => i.url).map((i: any) => ({ label: `${billing.ref} → ${i.client_name}`, url: i.url }))) } await refreshOne(id) }} />}
     </div>
   )
 }
