@@ -104,10 +104,12 @@ export async function GET() {
       alertes.push({ type: 'annulee_ima', depuis: null, mission: carte })
   }
 
-  // Le plus pressé en haut : délai d'assistance d'abord, puis le plus ancien.
+  // Le plus récent en haut (Olivier 11/11). Seule exception : une mission Touring dont le
+  // délai d'acceptation (7 min) court encore reste en tête — passé ce délai, elle est annulée.
   const t = (x: string | null | undefined) => (x ? new Date(x).getTime() : maintenant)
-  cmd.sort((a, b) => (a.limite ? t(a.limite) - 7 * 60_000 : t(a.received_at)) - (b.limite ? t(b.limite) - 7 * 60_000 : t(b.received_at)))
-  att.sort((a, b) => t(a.intervention_date || a.received_at) - t(b.intervention_date || b.received_at))
+  const delaiCourt = (m: any) => !!m.limite && t(m.limite) > maintenant
+  cmd.sort((a, b) => (Number(delaiCourt(b)) - Number(delaiCourt(a))) || (delaiCourt(a) ? t(a.limite) - t(b.limite) : t(b.received_at) - t(a.received_at)))
+  att.sort((a, b) => t(b.received_at) - t(a.received_at))
   const poids: Record<string, number> = { autoroute: 0, adresse: 1, pas_acceptee: 2, derogation: 3, pause_depassee: 4, annulee_ima: 5 }
   alertes.sort((a, b) => (poids[a.type] - poids[b.type]) || (t(a.depuis) - t(b.depuis)))
   lances.sort((a, b) => t(a.assigned_at || a.received_at) - t(b.assigned_at || b.received_at))

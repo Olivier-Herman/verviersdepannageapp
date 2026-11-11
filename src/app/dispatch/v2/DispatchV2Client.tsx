@@ -446,7 +446,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
         <div className={`grid grid-cols-[minmax(0,1fr)] gap-2.5 min-w-0 lg:h-[calc(100vh-170px)] ${sel ? 'lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]' : 'lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)]'}`}>
           {/* Colonne « À traiter » */}
           <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
-            <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2"><b className="text-[16px] text-ink whitespace-nowrap">À traiter · {n}</b><span className="text-stone-500 text-[13px] truncate hidden sm:inline">le plus pressé en haut</span></header>
+            <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2"><b className="text-[16px] text-ink whitespace-nowrap">À traiter · {n}</b><span className="text-stone-500 text-[13px] truncate hidden sm:inline">le plus récent en haut</span></header>
             {!board ? <p className="px-3 pb-3 text-stone-500">Chargement…</p> : <>
               <div className="px-3 pb-2 flex flex-col gap-2 lg:max-h-[66%] lg:overflow-y-auto lg:flex-none lg:border-b-2 lg:border-dashed lg:border-stone-200">
                 <Section titre="En commande" sous="à valider" nb={board.cmd.length} vide="Rien à valider.">{board.cmd.map(carteCmd)}</Section>
