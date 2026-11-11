@@ -86,14 +86,36 @@ export default function MailAgentClient({
   const [busy, setBusy]       = useState<string | null>(null)
   const [flash, setFlash]     = useState<string | null>(null)
 
+  // Lot 4 (préversion, 11/11/2026) : « En retard » (plus de 3 jours), âge sur chaque mail, décision groupée.
+  const ACTIONNABLES = ['to_decide', 'ready', 'blocked', 'to_verify']
+  const ageJ = (iso?: string | null) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000) : 0
+  const enRetard = (it: any) => ACTIONNABLES.includes(it.status) && ageJ(it.received_at) > 3
+  const [nRetard, setNRetard] = useState(0)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [consigneOuverte, setConsigneOuverte] = useState<Record<string, boolean>>({})
+  const [classerLot, setClasserLot] = useState(false)
   const load = async (t = tab) => {
     setLoading(true)
-    const res = await fetch(`/api/mail-agent/items?status=${t}`, { cache: 'no-store' })
+    const res = await fetch(`/api/mail-agent/items?status=${t === 'retard' ? 'all' : t}`, { cache: 'no-store' })
     const j   = await res.json()
+    if (habille) { const tous = (j.items || []); if (t === 'all' || t === 'retard') setNRetard(tous.filter(enRetard).length) }
+    if (t === 'retard') j.items = (j.items || []).filter(enRetard).sort((a: any, b: any) => String(a.received_at).localeCompare(String(b.received_at)))
+    setSel(new Set())
     setItems(j.items || []); setCounts(j.counts || {}); setMode(j.mode || 'draft'); setRules(Object.fromEntries((j.rules || []).map((r: any) => [r.sender_email, r.instruction])))
     setLoading(false)
   }
   useEffect(() => { load(tab) /* eslint-disable-next-line */ }, [tab])
+  useEffect(() => { if (habille) fetch('/api/mail-agent/items?status=all', { cache: 'no-store' }).then(r => r.json()).then(j => setNRetard((j.items || []).filter(enRetard).length)).catch(() => {}) /* eslint-disable-next-line */ }, [habille])
+  const decideLot = async (action: 'laisser' | 'classer', folder?: string) => {
+    const ids = [...sel]; if (!ids.length) return
+    setBusy('lot'); setFlash(null); let ok = 0; const ko: string[] = []
+    for (const id of ids) {
+      try { const r = await (await fetch(`/api/mail-agent/${id}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, folder }) })).json(); if (r.ok) ok++; else ko.push(r.error || '?') } catch { ko.push('réseau') }
+    }
+    setBusy(null); setClasserLot(false)
+    setFlash(`✓ ${ok} mail(s) ${action === 'laisser' ? 'laissé(s)' : `classé(s) dans « ${folder} »`}${ko.length ? ` · ⚠ ${ko.length} refusé(s) : ${ko.slice(0, 2).join(' ; ')}` : ''}`)
+    load()
+  }
 
   const scan = async () => {
     setBusy('scan'); setFlash(null)
@@ -227,7 +249,11 @@ export default function MailAgentClient({
         )}
 
         {habille ? (
-          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] sm:grid-cols-[repeat(4,minmax(0,1fr))] xl:grid-cols-[repeat(7,minmax(0,1fr))] gap-3">
+          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] sm:grid-cols-[repeat(4,minmax(0,1fr))] xl:grid-cols-[repeat(8,minmax(0,1fr))] gap-3">
+            <button onClick={() => setTab('retard')} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${nRetard ? 'bg-red-50 border-red-300 text-red-800' : 'bg-white border-slate-200 text-slate-800'} ${tab === 'retard' ? 'ring-2 ring-current ring-offset-2' : ''}`}>
+              <b className="block text-3xl font-extrabold leading-none tabular-nums">{nRetard}</b>
+              <span className="text-[13px] font-semibold">En retard (plus de 3 jours)</span>
+            </button>
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${t.key === 'to_decide' || t.key === 'ready' ? 'bg-amber-50 border-amber-300 text-amber-900' : t.key === 'blocked' ? 'bg-red-50 border-red-300 text-red-800' : 'bg-white border-slate-200 text-slate-800'} ${tab === t.key ? 'ring-2 ring-current ring-offset-2' : ''}`}>
@@ -279,15 +305,16 @@ export default function MailAgentClient({
           <p className="text-sm text-slate-500 py-8 text-center">
             Rien dans cette file. Clique sur « Analyser les mails » pour relire le dossier.
           </p>
-        ) : items.map(it => {
+        ) : <div className={habille ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>{items.map(it => {
           const x = it.extracted || {}
           return (
-            <div key={it.id} className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
+            <div key={it.id} className={habille ? `border border-slate-200 border-l-[8px] ${enRetard(it) ? 'border-l-red-500' : it.status === 'to_decide' || it.status === 'ready' ? 'border-l-amber-500' : it.status === 'applied' ? 'border-l-green-500' : 'border-l-slate-300'} rounded-2xl p-4 bg-white space-y-3 shadow-sm min-w-0` : 'border border-slate-200 rounded-xl p-4 bg-white space-y-3'}>
 
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+                {habille && it.status === 'to_decide' && <input type="checkbox" checked={sel.has(it.id)} onChange={() => setSel(p => { const n = new Set(p); n.has(it.id) ? n.delete(it.id) : n.add(it.id); return n })} aria-label="Sélectionner ce mail" className="w-5 h-5 mt-1 shrink-0" />}
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-slate-900 truncate">{it.subject || '(sans objet)'}</p>
-                  <p className="text-xs text-slate-500">{it.from_email} · {fmt(it.received_at)}</p>
+                  <p className="text-xs text-slate-500">{it.from_email} · {fmt(it.received_at)}{habille && ACTIONNABLES.includes(it.status) && <span className={`ml-1 font-semibold ${enRetard(it) ? 'text-red-700' : 'text-slate-600'}`}>· depuis {ageJ(it.received_at)} jour{ageJ(it.received_at) > 1 ? 's' : ''}</span>}</p>
                 </div>
                 <span className={`shrink-0 px-2 py-1 rounded text-xs font-medium ${BADGE[it.status] || BADGE.pending}`}>
                   {LABEL[it.status] || it.status}
@@ -351,7 +378,12 @@ export default function MailAgentClient({
                       ))}
                     </div>
                   )}
-                  {it.status === 'to_decide' && (() => {
+                  {habille && it.status === 'to_decide' && !consigneOuverte[it.id] && (
+                    <button type="button" onClick={() => setConsigneOuverte(p => ({ ...p, [it.id]: true }))} className="min-h-[40px] text-sm font-semibold text-sky-800 hover:underline">
+                      Donner une consigne à l’agent{rules[String(it.from_email || '').trim().toLowerCase()] ? ' (une consigne existe pour cet expéditeur)' : ''}
+                    </button>
+                  )}
+                  {it.status === 'to_decide' && (!habille || consigneOuverte[it.id]) && (() => {
                     const rule = rules[String(it.from_email || '').trim().toLowerCase()]
                     const plan = planFor[it.id]
                     return (
@@ -472,7 +504,18 @@ export default function MailAgentClient({
               )}
             </div>
           )
-        })}
+        })}</div>}
+        {habille && sel.size > 0 && (
+          <div className="sticky z-40 bg-white border border-slate-200 rounded-2xl shadow-lg p-3 space-y-2" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <b className="text-sm text-slate-900">{sel.size} mail{sel.size > 1 ? 's' : ''} sélectionné{sel.size > 1 ? 's' : ''}</b>
+              <button disabled={busy === 'lot'} onClick={() => decideLot('laisser')} className="min-h-[44px] px-4 rounded-xl bg-slate-100 text-slate-800 text-sm font-semibold disabled:opacity-40">Laisser les {sel.size}</button>
+              <button disabled={busy === 'lot'} onClick={() => setClasserLot(v => !v)} className="min-h-[44px] px-4 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-40">Classer les {sel.size}…</button>
+              <button onClick={() => setSel(new Set())} className="ml-auto min-h-[44px] px-3 rounded-xl border border-slate-200 text-sm text-slate-700">Annuler</button>
+            </div>
+            {classerLot && <div className="flex flex-wrap gap-2">{FILE_FOLDERS.map(f => <button key={f} disabled={busy === 'lot'} onClick={() => decideLot('classer', f)} className="min-h-[44px] px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 disabled:opacity-40">{f}</button>)}</div>}
+          </div>
+        )}
       </div>
     </AppShell>
   )
