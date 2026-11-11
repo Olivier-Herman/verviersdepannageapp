@@ -14,6 +14,8 @@ export const PARC_STATUSES = ['parked', 'delivering', 'unlocated', 'awaiting_pay
 export interface RelanceItem {
   id: string; ref: string | null; plate: string | null; vehicle: string | null
   location: string | null; saisie_at: string | null; zone: string | null
+  /** Entrée au parc (S3, 11/11/2026) : le « hors délai » se compte d'ici — les fiches reprises de l'ancien logiciel ont une date de création récente. */
+  parked_at?: string | null
   zone_company_id: number | null
   officer_name: string | null; officer_email: string | null; officer_linked: boolean
   officer_partner_id: number | null
@@ -22,7 +24,7 @@ export interface RelanceItem {
 
 export async function loadRelanceItems(sb: any): Promise<RelanceItem[]> {
   const { data: rows } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, saisie_motif_label, police_pv_number, police_zone, officer_name, officer_partner_id, requisitoire_token, requisitoire_stop, requisitoire_reminder_count, requisitoire_last_reminder_at')
+    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, created_at, parked_at, saisie_motif_label, police_pv_number, police_zone, officer_name, officer_partner_id, requisitoire_token, requisitoire_stop, requisitoire_reminder_count, requisitoire_last_reminder_at')
     .in('source', await sourcesWithTag('requisitoire'))
     .is('requisitoire_at', null)
     .in('status', PARC_STATUSES)
@@ -55,6 +57,7 @@ export async function loadRelanceItems(sb: any): Promise<RelanceItem[]> {
     vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ') || null,
     location: m.incident_address || null,
     saisie_at: m.created_at,
+    parked_at: (m as any).parked_at || null,
     zone: m.police_zone,
     zone_company_id: m.police_zone ? (zoneCompany[m.police_zone] ?? null) : null,
     officer_name: m.officer_name,

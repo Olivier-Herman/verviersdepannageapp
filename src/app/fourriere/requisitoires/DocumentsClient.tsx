@@ -14,7 +14,7 @@ import { useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import TabLegend from '@/components/ui/TabLegend'
 import RequisitoiresClient from './RequisitoiresClient'
-import RelanceRequisitoireClient from '../relance-requisitoire/RelanceRequisitoireClient'
+import RelanceRequisitoireClient, { estHorsDelai } from '../relance-requisitoire/RelanceRequisitoireClient'
 import type { RelanceItem } from '@/lib/requisitoire/relance-items'
 
 export default function DocumentsClient({ userRole, userName, userEmail, userModules, relanceItems, appUrl, pendingCount, habille = false }: {
@@ -24,8 +24,9 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
   habille?: boolean
 }) {
   const [tab, setTab] = useState<'recus' | 'manquants'>(pendingCount > 0 ? 'recus' : 'manquants')
-  const missing = relanceItems.filter(i => !i.stop).length
-  const noOfficer = relanceItems.filter(i => !i.stop && !i.officer_linked).length
+  // S3 : dans la préversion, « Manquants » ne compte que les saisies de moins de 6 mois.
+  const missing = relanceItems.filter(i => !i.stop && (!habille || !estHorsDelai(i))).length
+  const noOfficer = relanceItems.filter(i => !i.stop && !i.officer_linked && (!habille || !estHorsDelai(i))).length
 
   return (
     <AppShell title="Documents" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
@@ -61,8 +62,8 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
       </div>
       <div className={habille ? '[contain:inline-size]' : undefined}>
       {tab === 'recus'
-        ? <RequisitoiresClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded />
-        : <RelanceRequisitoireClient initialItems={relanceItems} appUrl={appUrl} embedded />}
+        ? <RequisitoiresClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded habille={habille} />
+        : <RelanceRequisitoireClient initialItems={relanceItems} appUrl={appUrl} embedded trierDelai={habille} />}
       </div>
     </AppShell>
   )
