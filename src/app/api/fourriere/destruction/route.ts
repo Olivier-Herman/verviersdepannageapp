@@ -321,9 +321,7 @@ export async function POST(req: Request) {
         </table>
         <p style="margin-top:16px">Total : <strong>${vehicles.length}</strong> véhicule${vehicles.length > 1 ? 's' : ''}.
         Le détail complet (avec frais arrêtés) est joint à cet email au format ${format.toUpperCase()}.</p>
-        <p style="color:#999;font-size:11px;margin-top:24px">
-          Cet email est envoyé automatiquement depuis VD Soft (Verviers Dépannage).
-        </p>
+        <p style="margin-top:16px">Bien à vous,<br/>Verviers Dépannage</p>
       `
 
       await sendEmail(

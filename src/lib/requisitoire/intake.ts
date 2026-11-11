@@ -90,7 +90,7 @@ function buildMailCaptureHtml(body: GraphMessageBody): string {
   <div style="font-size:18px;font-weight:bold;margin-bottom:10px">${toAsciiHtml(body.subject) || '(sans objet)'}</div>
   <div style="color:#333;font-size:13px"><strong>De&nbsp;:</strong> ${toAsciiHtml(body.from)}</div>
   <div style="color:#333;font-size:13px"><strong>Re&#231;u&nbsp;:</strong> ${toAsciiHtml(fmtReceived(body.receivedDateTime))}</div>
-  <div style="color:#888;font-size:11px;margin-top:10px">Capture automatique du mail (aucun document joint) &#8212; preuve annex&#233;e par VD Soft.</div>
+  <div style="color:#888;font-size:11px;margin-top:10px">Copie du mail re&#231;u (aucun document joint).</div>
 </div>
 <div style="white-space:pre-wrap;font-size:14px">${toAsciiHtml(text)}</div>
 </body></html>`
