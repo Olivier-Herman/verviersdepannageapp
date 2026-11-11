@@ -43,7 +43,16 @@ export async function GET() {
     else if (r.verdict === 'verify') counts.verify++
     else counts.noMatch++
   }
-  return NextResponse.json({ rows: rows || [], counts, lastSync: ls || null })
+  // R2 (Olivier 11/11/2026) : connexion à Touring coupée → l'écran le dit au lieu d'afficher « 0 en attente ».
+  // Coupée = au dernier passage, aucun compte n'a pu se connecter. « Depuis » = dernière fois qu'un dossier a été vu.
+  let coupure: { depuis: string | null; erreur: string; prochainEssai?: string | null } | null = null
+  if (ls && Array.isArray(ls.errors) && ls.errors.length > 0 && !ls.accounts) {
+    const { data: last } = await sb.from('touring_comex_dossiers').select('last_seen_at').order('last_seen_at', { ascending: false }).limit(1).maybeSingle()
+    const { etatConnexionBko } = await import('@/lib/touring/comex-bko')
+    const etat = await etatConnexionBko().catch(() => null)
+    coupure = { depuis: etat?.depuis || (last as any)?.last_seen_at || null, erreur: String(ls.errors[0]?.error || 'connexion refusée').slice(0, 160), prochainEssai: etat?.prochainEssai || null } as any
+  }
+  return NextResponse.json({ rows: rows || [], counts, lastSync: ls || null, coupure })
 }
 
 export async function POST(req: Request) {
@@ -52,7 +61,7 @@ export async function POST(req: Request) {
   if (body?.action !== 'sync') return NextResponse.json({ error: 'action inconnue' }, { status: 400 })
   const sb = createAdminClient()
   try {
-    const summary = await syncComexBko(sb)
+    const summary = await syncComexBko(sb, { force: true })   // bouton « Synchroniser » : essaie même pendant la pause
     await sb.from('app_settings').upsert(
       { key: 'comex_bko_last_sync', value: { at: new Date().toISOString(), ...summary } },
       { onConflict: 'key' },

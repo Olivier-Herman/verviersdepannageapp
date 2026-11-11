@@ -2,6 +2,7 @@
 // src/app/dispatch/DispatchClient.tsx
 // P6 — toggle liste/carte + panel statut chauffeurs + cartes colorées par urgence
 
+import RaisonForcage from '@/components/missions/RaisonForcage'
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import Link        from 'next/link'
@@ -174,18 +175,20 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
 
   // Audit dispatch B1 (08/09/2026) : « Clôturer sans pointage » = à facturer, comme
   // sur la fiche — jamais « terminé » (la fiche sortirait de la file de facturation).
-  const force = async (status: 'dispatching' | 'to_invoice', question: string) => {
-    if (!confirm(question)) return
+  const [raisonOpen, setRaisonOpen] = useState(false)
+  const force = async (status: 'dispatching' | 'to_invoice', question: string, raison?: string) => {
+    // R6 (11/11/2026) : « à facturer » demande la raison dans la page (pas de confirmation du navigateur).
+    if (!raison && !confirm(question)) return
     setForcing(true)
     try {
-      const r = await fetch(`/api/missions/${m.id}/force-status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+      const r = await fetch(`/api/missions/${m.id}/force-status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, ...(raison ? { raison } : {}) }) })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) {
         // Siabis sans scénario : la fiche propose le choix dans « Forcer la clôture » (01/11/2026).
         if (j.scenario_required) { if (confirm(`${j.error}\n\nOuvrir la fiche pour choisir le scénario et forcer la clôture ?`)) window.location.href = `/dispatch/${m.id}`; return }
         alert(j.error || `Erreur ${r.status}`); return
       }
-      setForceOpen(false); onRefresh()
+      setForceOpen(false); setRaisonOpen(false); onRefresh()
     } finally { setForcing(false) }
   }
 
@@ -272,7 +275,8 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
                     className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">↩ Réinitialiser en attente <span className="text-ink-muted text-xs">(désassigne le chauffeur)</span></button>
                 )}
                 {!['completed', 'to_invoice', 'parked'].includes(m.status) && (
-                  <button disabled={forcing} onClick={() => force('to_invoice', 'Clôturer cette fiche sans pointage ni photos du chauffeur ? Elle passe « à facturer ».')}
+                  raisonOpen ? <RaisonForcage busy={forcing} onAnnuler={() => setRaisonOpen(false)} onChoix={r => force('to_invoice', '', r)} /> :
+                  <button disabled={forcing} onClick={() => setRaisonOpen(true)}
                     className="px-3 py-2 rounded-lg border bg-surface text-ink text-sm text-left disabled:opacity-50">✓ Clôturer sans pointage <span className="text-ink-muted text-xs">(→ à facturer)</span></button>
                 )}
                 {!isParked && (

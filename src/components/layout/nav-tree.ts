@@ -112,10 +112,10 @@ export const NAV_TREE_ESPACES: NavModule[] = [
       { href: '/facturation/touring',  label: 'Touring',                  icon: Shield,       requires: '/facturation', heading: 'Assisteurs', hiddenWhenFlag: 'ma_journee' },
       { href: '/facturation/allianz',  label: 'Clôture Allianz',          icon: ShieldCheck,  requires: '/facturation', hiddenWhenFlag: 'ma_journee' },   // préversion : menu ⋯ de À facturer
       // Préversion : repli « Plus » (rien ne disparaît, l'entrée descend).
-      { href: '/facturation/touring',  label: 'Liste Touring (ancienne)', icon: Shield,       requires: '/facturation', heading: 'Plus', onlyWhenFlag: 'ma_journee' },
-      { href: '/services/tgr',         label: 'TGR Touring',              icon: Shield,       i18nKey: 'nav.services_tgr', requires: '/services/tgr' },
-      { href: '/admin/tgr',            label: 'TGR Gestion',              icon: ClipboardList, requires: '/admin/tgr' },
-      { href: '/stats/touring',        label: 'Stats Touring',            icon: BarChart3,    requires: '/stats' },
+      // R7 (Olivier 11/11/2026) : Liste Touring ancienne et TGR rangés dans Réglages › Rangé ; Stats Touring avec les Statistiques (préversion).
+      { href: '/services/tgr',         label: 'TGR Touring',              icon: Shield,       i18nKey: 'nav.services_tgr', requires: '/services/tgr', hiddenWhenFlag: 'ma_journee' },
+      { href: '/admin/tgr',            label: 'TGR Gestion',              icon: ClipboardList, requires: '/admin/tgr', hiddenWhenFlag: 'ma_journee' },
+      { href: '/stats/touring',        label: 'Stats Touring',            icon: BarChart3,    requires: '/stats', hiddenWhenFlag: 'ma_journee' },
     ],
   },
   {
@@ -123,6 +123,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     sections: [
       { href: '/finance',                label: 'Vue d\'ensemble', icon: LayoutGrid, requires: '/finance' },
       { href: '/stats',                  label: 'Statistiques',    icon: BarChart3,  requires: '/stats' },
+      { href: '/stats/touring',          label: 'Stats Touring',   icon: BarChart3,  requires: '/stats', onlyWhenFlag: 'ma_journee' },
       { href: '/encaissement',           label: 'Encaisser',       icon: CreditCard, requires: '/finance', requiresModules: ['encaissement'], heading: 'Caisse' },
       { href: '/encaissements',          label: 'Mouvements',      icon: BarChart3,  requires: '/finance', requiresModules: ['encaissements'] },
       { href: '/caisse',                 label: 'Ma caisse',       icon: Wallet,     requires: '/finance', requiresModules: ['caisse'] },

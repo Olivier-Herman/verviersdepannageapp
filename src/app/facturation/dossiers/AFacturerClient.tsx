@@ -283,10 +283,30 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   // Clôture Hexalite depuis la carte (Olivier 16/09 : « autant qu'en cliquant
   // dessus, la clôture se fasse »). Même appel que la page Clôture Allianz :
   // rapprochement Hexalite → km de la fiche → POST close (heures réelles côté serveur).
+  // R5 (préversion, Olivier 11/11/2026) : connexion Allianz expirée → reconnexion SUR PLACE (code envoyé par
+  // Allianz, lu automatiquement dans les mails), puis la clôture reprend, sans changer d'écran.
+  const [allianzCoupe, setAllianzCoupe] = useState<null | 'expiree' | 'reconnexion'>(null)
+  const listerAllianz = () => fetch('/api/facturation/allianz/list', { cache: 'no-store' }).then(async r => ({ ok: r.ok, j: await r.json().catch(() => ({})) }))
+  const reconnecterAllianz = async (): Promise<boolean> => {
+    setAllianzCoupe('reconnexion')
+    const r = await fetch('/api/facturation/allianz/reconnect', { method: 'POST' }).catch(() => null)
+    if (!r?.ok) { setAllianzCoupe('expiree'); return false }
+    for (let i = 0; i < 9; i++) {   // ~90 s : le code arrive par mail et se vérifie seul
+      await new Promise(res => setTimeout(res, 10_000))
+      const l = await listerAllianz()
+      if (l.ok) { setAllianzCoupe(null); return true }
+    }
+    setAllianzCoupe('expiree'); return false
+  }
   const closeAllianz = async (d: Dossier) => {
     setBusy(d.root_id); setReport(null)
     try {
-      const lst = await fetch('/api/facturation/allianz/list', { cache: 'no-store' }).then(async r => ({ ok: r.ok, j: await r.json().catch(() => ({})) }))
+      let lst = await listerAllianz()
+      if (!lst.ok && lst.j?.needsAuth && habille) {
+        setReport('⏳ Connexion Allianz expirée : reconnexion en cours (environ une minute)…')
+        if (await reconnecterAllianz()) lst = await listerAllianz()
+        else { setReport('⚠ La reconnexion Allianz n\'a pas abouti. Réessaie dans quelques minutes, ou ouvre Clôture Allianz (menu ⋯).'); return }
+      }
       if (!lst.ok) { if (lst.j?.needsAuth) { setReport('⚠ Connexion Allianz à refaire (OTP) — ouvre Clôture Allianz.'); router.push('/facturation/allianz') } else setReport(`⚠ ${lst.j?.error || 'Listing Allianz impossible'}`); return }
       const row = (lst.j.rows || []).find((r: any) => r.vdsoft?.id === d.root_id)
       if (!row) { setReport(`⚠ ${d.ref} n'est pas (ou plus) dans la liste Hexalite à clôturer — vérifie dans Clôture Allianz.`); return }
@@ -364,6 +384,12 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
         </div>
       </div>
 
+      {habille && allianzCoupe && (
+        <div role="alert" className="rounded-2xl border border-sky-300 bg-sky-50 text-sky-900 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <span className="flex-1 min-w-[220px] text-sm"><b>{allianzCoupe === 'reconnexion' ? 'Reconnexion Allianz en cours…' : 'Connexion Allianz expirée.'}</b> {allianzCoupe === 'reconnexion' ? 'Le code envoyé par Allianz est lu automatiquement ; la clôture reprend ensuite.' : 'Les clôtures Allianz (à la main et par le robot) sont bloquées tant qu\'elle n\'est pas refaite.'}</span>
+          {allianzCoupe === 'expiree' && <button onClick={() => reconnecterAllianz()} className="min-h-[44px] px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold">Se reconnecter</button>}
+        </div>
+      )}
       {afterHeader}
       {/* Onglets = qui a la main */}
       {habille ? (
@@ -494,7 +520,7 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
       </div>
 
       {capped && <p className="text-[11px] text-ink-faint px-1">Liste limitée aux 80 dossiers les plus récents — pour une autre fiche, passe par Recherche.</p>}
-      {billing && <BillingModal d={billing} onClose={() => setBilling(null)} onDone={async (res) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setReport(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`); setReportLinks((res.invoices || []).filter((i: any) => i.url).map((i: any) => ({ label: `${billing.ref} → ${i.client_name}`, url: i.url }))) } await refreshOne(id) }} />}
+      {billing && <BillingModal valider={habille} d={billing} onClose={() => setBilling(null)} onDone={async (res) => { const id = billing.root_id; if (res?.invoices?.length) { setBilling(null); setReport(`✓ ${res.invoices.length} facture(s) brouillon créée(s)`); setReportLinks((res.invoices || []).filter((i: any) => i.url).map((i: any) => ({ label: `${billing.ref} → ${i.client_name}`, url: i.url }))) } await refreshOne(id) }} />}
     </div>
   )
 }

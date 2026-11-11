@@ -27,7 +27,9 @@ const resteHt = (l: DossierLeg) => Math.max(0, Math.round((l.amount_htva - (l.bi
 export const canPickLeg  = (l: DossierLeg) => !l.nothing_to_bill && !isLegBilled(l) && l.amount_htva > 0
   && ((l.channel || 'odoo') === 'odoo' || (!!l.billed_to_id && !/parquet|frais de justice|fdj\b/i.test(String(l.billed_to_name || ''))))
 
-export default function BillingModal({ d, onClose, onDone, initialSelection }: { d: Dossier; onClose: () => void; onDone: (result?: { invoices: any[]; warnings: string[] }) => Promise<void> | void; initialSelection?: string[] }) {
+export default function BillingModal({ d, onClose, onDone, initialSelection, valider = false }: { d: Dossier; onClose: () => void; onDone: (result?: { invoices: any[]; warnings: string[] }) => Promise<void> | void;
+  /** R3 (préversion ma_journee) : propose « Créer et valider » quand chaque facture est dans la fourchette du robot. */
+  valider?: boolean; initialSelection?: string[] }) {
   // Olivier 08/09/2026 : TOUT coché par défaut, gardiennage en cours compris ;
   // on décoche ce qu'on ne veut pas facturer. Pour un gardiennage en cours, on
   // choisit le dernier jour facturé : la période se ferme là et une nouvelle
@@ -54,6 +56,8 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
   type PSection = { section_label?: string; lines: PLine[]; mission_id?: string }
   type PInvoice = { client_id: number; client_name: string; covers: string[]; total_htva: number; sections?: PSection[] }
   const [preview, setPreview] = useState<{ invoices: PInvoice[]; warnings: string[] } | null>(null)
+  const [band, setBand] = useState<{ min: number; max: number } | null>(null)
+  const [validerChoisi, setValiderChoisi] = useState(false)
   const [edited, setEdited] = useState<Record<string, PLine[]>>({})
   const [savingDraft, setSavingDraft] = useState(false)
   const KINDS: [string, string][] = [['SERV-PEC', 'Prise en charge'], ['SERV-KM', 'Kilomètres'], ['SERV-PARC', 'Gardiennage'], ['SERV-MAJ', 'Majoration'], ['SERV-DIV', 'Divers']]
@@ -67,7 +71,7 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
       const ed: Record<string, PLine[]> = {}
       for (const inv of j.invoices || []) for (const sec of inv.sections || []) if (sec.mission_id) ed[sec.mission_id] = (sec.lines || []).map((l: any) => ({ kind: l.kind, name: l.name, qty: Number(l.qty), price_unit: Number(l.price_unit) }))
-      setEdited(ed); setPreview({ invoices: j.invoices || [], warnings: j.warnings || [] })
+      setEdited(ed); setPreview({ invoices: j.invoices || [], warnings: j.warnings || [] }); if (j.band) setBand(j.band)
     } catch (e: any) { setError(String(e.message || e)) } finally { setBusy(false) }
   }
   const setLine = (mid: string, i: number, patch: Partial<PLine>) => setEdited(p => ({ ...p, [mid]: (p[mid] || []).map((l, k) => k === i ? { ...l, ...patch } : l) }))
@@ -122,7 +126,7 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
     if (remarksOfChosen().length || (openGard?.billing_remarks || []).length) setRemarkGate(true); else submit(true)
   }
   const [asQuote, setAsQuote] = useState(false)
-  const submit = async (close = closeMode, quote = false) => {
+  const submit = async (close = closeMode, quote = false, avecValidation = validerChoisi) => {
     setRemarkGate(false)
     setBusy(true); setError(null)
     // Les factures s'ouvrent d'elles-mêmes dans un nouvel onglet (Olivier
@@ -130,13 +134,14 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
     // un onglet qu'au moment du clic : on les ouvre vides tout de suite, une par
     // client, puis on y met l'URL Odoo à la réponse.
     const nTabs = close ? new Set([...chosen, ...(openGard ? [openGard] : [])].map(l => l.billed_to_id ?? 'none')).size : nInv
-    const tabs: (Window | null)[] = Array.from({ length: Math.max(1, nTabs) }, () => { try { return window.open('', '_blank') } catch { return null } })
+    // « Créer et valider » : pas d'onglet Odoo à ouvrir, le numéro revient ici.
+    const tabs: (Window | null)[] = avecValidation && !close && !quote ? [] : Array.from({ length: Math.max(1, nTabs) }, () => { try { return window.open('', '_blank') } catch { return null } })
     try {
       const ids = close ? Array.from(new Set([...chosen.map(l => l.mission_id), ...(openGard ? [openGard.mission_id] : [])])) : chosen.map(l => l.mission_id)
-      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission_ids: ids, period_to: close ? undefined : periodTo, lines_override: preview ? edited : undefined, quote: quote || undefined }) })
+      const r = await fetch(`/api/dossier/${d.root_id}/${close ? 'close-and-invoice' : 'invoice'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(avecValidation && !close && !quote ? { valider: true } : {}), mission_ids: ids, period_to: close ? undefined : periodTo, lines_override: preview ? edited : undefined, quote: quote || undefined }) })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`)
-      ;(j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
+      if (!(avecValidation && !close && !quote)) (j.invoices || []).forEach((inv: any, i: number) => { const t = tabs[i]; if (t && inv.url) { try { t.location.href = inv.url } catch {} } else if (inv.url) { try { window.open(inv.url, '_blank') } catch {} } })
       tabs.slice((j.invoices || []).length).forEach(t => { try { t?.close() } catch {} })
       setResult(j); await onDone(j)
     } catch (e: any) { tabs.forEach(t => { try { t?.close() } catch {} }); setError(String(e.message || e)) } finally { setBusy(false) }
@@ -192,7 +197,14 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
               <span className="flex items-center gap-1.5">
                 <button disabled={busy || savingDraft} onClick={saveDrafts} title="Garde ces lignes pour plus tard sans créer la facture" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">{savingDraft ? '⏳…' : '💾 Sauver en brouillon'}</button>
                 {!closeMode && <button disabled={busy} onClick={() => submit(false, true)} title="Un devis Odoo par client, sans rien marquer facturé ; la facture partira du devis dans Odoo ou d'ici plus tard" className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border bg-surface text-ink-secondary hover:text-ink">📄 Devis</button>}
-                <button disabled={busy} onClick={closeMode ? askClose : askOrSubmit} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : closeMode ? '🏁 Clôturer et créer la facture' : `Créer ${preview.invoices.length > 1 ? 'les factures' : 'la facture'}`}</button>
+                {valider && !closeMode && (() => {
+                  const tot = (inv: PInvoice) => (inv.sections || []).reduce((s, sec) => s + ((sec.mission_id && edited[sec.mission_id]) || sec.lines).reduce((x, l) => x + Number(l.qty) * Number(l.price_unit), 0), 0)
+                  const ok = !!band && preview.invoices.length > 0 && preview.invoices.every(inv => inv.client_id && tot(inv) >= band.min && tot(inv) <= band.max)
+                  return ok
+                    ? <button disabled={busy} onClick={() => { setValiderChoisi(true); if (remarksOfChosen().length) setRemarkGate(true); else submit(false, false, true) }} title={`Facture validée d'un coup : chaque montant est entre ${band!.min} et ${band!.max} € HTVA`} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40">{busy ? '⏳ Création…' : '✓ Créer et valider'}</button>
+                    : band ? <span className="text-[11px] text-ink-muted" title="Validation directe seulement entre les bornes du robot">Hors fourchette {band.min}–{band.max} € : brouillon</span> : null
+                })()}
+                <button disabled={busy} onClick={closeMode ? askClose : () => { setValiderChoisi(false); askOrSubmit() }} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-40">{busy ? '⏳ Création…' : closeMode ? '🏁 Clôturer et créer la facture' : `Créer ${preview.invoices.length > 1 ? 'les factures' : 'la facture'}`}</button>
               </span>
             </div>
           </div>
@@ -287,7 +299,9 @@ export default function BillingModal({ d, onClose, onDone, initialSelection }: {
 
         {result && (
           <div className="space-y-2">
-            {result.invoices.length > 0
+            {(result as any).valides?.length > 0 && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ Validée{(result as any).valides.length > 1 ? 's' : ''} : {(result as any).valides.map((v: any) => v.name || v.odoo_id).join(', ')}. Le numéro est déjà sur le dossier.</div>}
+            {(result as any).nonValides?.length > 0 && <div className={`rounded-lg px-3 py-2 text-xs ${TONE.warn}`}>Restée{(result as any).nonValides.length > 1 ? 's' : ''} en brouillon : {(result as any).nonValides.map((v: any) => v.raison).join(' ; ')}. À valider dans Odoo.</div>}
+            {result.invoices.length > 0 && !((result as any).valides?.length)
               ? <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ {result.invoices.length} facture{result.invoices.length > 1 ? 's' : ''} Odoo créée{result.invoices.length > 1 ? 's' : ''} en brouillon et ouverte{result.invoices.length > 1 ? 's' : ''} dans un nouvel onglet. Les groupes couverts sont reliés ; le numéro définitif arrivera quand la facture sera postée dans Odoo.</div>
               : <div className={`rounded-lg px-3 py-2 text-xs ${TONE.ok}`}>✓ Enregistré.</div>}
             {result.invoices.map((i: any) => (

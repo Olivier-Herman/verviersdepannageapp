@@ -24,8 +24,8 @@ export function tariffVerdict(comex: number, vd: number | null): 'ok' | 'verify'
 
 interface SyncResult { accounts: number; comex: number; matched: number; okCount: number; verifyCount: number; noMatchCount: number; left: number; errors: any[] }
 
-export async function syncComexBko(sb: any): Promise<SyncResult> {
-  const { dossiers, errors } = await listAllComexBko()
+export async function syncComexBko(sb: any, opts: { force?: boolean } = {}): Promise<SyncResult> {
+  const { dossiers, errors } = await listAllComexBko(opts)
 
   // Rapprochement VD Soft : un dossier COMEX peut couvrir PLUSIEURS fiches
   // (chaîne REM parent + REL enfant « <dossier>-REL »). On les regroupe par
