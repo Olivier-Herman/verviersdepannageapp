@@ -202,6 +202,28 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
       {Array.isArray(m.warnings) && m.warnings.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold" title={m.warnings.join(', ')}>⚠ {m.warnings.length}</span>}
       <span className="text-stone-600 text-[13px] truncate min-w-0">{detail ?? trajetCourt(m)}</span>
     </div>
+    {/* Téléphone : pas de volet à côté, la carte porte le détail utile (Olivier 11/11 : « les infos sont trop limitées »). Sur PC, il est dans le volet de droite. */}
+    {!detail && (
+      <dl className="lg:hidden grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
+        {([
+          ['Lieu', court(m.incident_address) || m.incident_city],
+          ['Vers', m.destination_name || m.destination_address ? [court(m.destination_name), court(m.destination_address)].filter(Boolean).join(', ') : ''],
+          ['Panne', m.incident_description],
+          ['Véhicule', vehicule(m)],
+          ['Reçue', m.received_at ? new Date(m.received_at).toLocaleString('fr-BE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''],
+        ] as const).filter(([, v]) => v).map(([k, v]) => (
+          <div key={k} className="contents"><dt className="text-stone-500">{k}</dt><dd className={`text-stone-900 break-words ${k === 'Panne' ? 'line-clamp-2' : ''}`}>{v}</dd></div>
+        ))}
+        {(m.client_name || m.assisted_name) && (
+          <div className="contents"><dt className="text-stone-500">Client</dt>
+            <dd className="text-stone-900 break-words">{m.assisted_name && m.assisted_name !== m.client_name ? m.assisted_name : m.client_name}
+              {(m.assisted_phone || m.client_phone) && <> · <a href={`tel:${m.assisted_phone || m.client_phone}`} onClick={e => e.stopPropagation()} className="font-semibold underline">{m.assisted_phone || m.client_phone}</a></>}</dd></div>
+        )}
+      </dl>
+    )}
+    {!detail && Array.isArray(m.warnings) && m.warnings.length > 0 && (
+      <div className="lg:hidden flex flex-wrap gap-1">{m.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[12px] font-bold">⚠ {w}</span>)}</div>
+    )}
     {children && <div className="flex gap-1.5 flex-wrap">{children}</div>}
   </div>
 )
