@@ -67,15 +67,17 @@ export default async function FacturationDossiersPage() {
   // main — pilote Olivier + Jona (flag facturation_v2). Les autres gardent la
   // liste par dossier telle quelle.
   const v2 = await isPreviewOn('facturation_v2', role, u.id)
+  const habille = v2 && await isPreviewOn('ma_journee', role, u.id)
+  const blocages = (await peutBasculer(u.id)) ? <BlocagesAFacturer /> : null
   const groups = await billingGroups()
   return (
     <AppShell title={v2 ? 'À facturer' : 'Facturation par dossier'} userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={role} userModules={modules}>
       <SuspensionBanner />
       <AutoInvoiceAlert />
       {/* Olivier seul (28/10/2026) : les raisons de blocage en plus de la liste de l'équipe. */}
-      {(await peutBasculer(u.id)) && <BlocagesAFacturer />}
+      {!habille && blocages}
       {v2
-        ? <AFacturerClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} />
+        ? <AFacturerClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} habille={habille} afterHeader={habille ? blocages : null} />
         : <DossiersClient initial={dossiers} autoById={autoById} comexById={comexById} isSuperadmin={role === 'superadmin'} billingGroups={groups} capped={roots.length >= MAX_DOSSIERS} />}
     </AppShell>
   )

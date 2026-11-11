@@ -121,6 +121,8 @@ export function readVehicle(v: V): Reading {
   return { ...base, who: 'veille', headline: `${srcLabel(v.source)} — ${v.nights} nuits au parc`, detail: v.storage_note ? `${v.storage_note} (${eur(v.storage_htva)} HTVA).` : undefined, primary: { label: 'Fiche', kind: 'fiche', tone: 'ghost' } }
 }
 
+// Bande de couleur à gauche de la carte (habillage, préversion ma_journee) : qui a la main.
+const BAND: Record<Who, string> = { nous: 'border-l-amber-500', robot: 'border-l-violet-500', eux: 'border-l-sky-500', veille: 'border-l-slate-300' }
 const WHO: Record<Who, { label: string; cls: string; dot: string }> = {
   nous:   { label: 'À nous',   cls: 'bg-amber-50 border-amber-300 text-amber-900',   dot: 'bg-amber-500' },
   robot:  { label: 'Robot',    cls: 'bg-violet-50 border-violet-300 text-violet-900', dot: 'bg-violet-500' },
@@ -231,18 +233,18 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
 
   return (
     <AppShell title="Parc" userRole={userRole} userName={userName} userEmail={userEmail || undefined} userModules={userModules}>
-      <div className="px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto">
-        <div className="flex items-end justify-between flex-wrap gap-3">
+      <div className={journee ? 'px-3 lg:px-6 py-5 space-y-4 max-w-[1800px] mx-auto' : 'px-3 lg:px-6 py-5 space-y-4 max-w-5xl mx-auto'}>
+        <div className={journee ? 'rounded-3xl text-white shadow-md p-5 lg:p-7 flex items-end justify-between flex-wrap gap-4 bg-[radial-gradient(120%_160%_at_100%_0%,#0f5953_0%,#10181a_62%)]' : 'flex items-end justify-between flex-wrap gap-3'}>
           <div>
-            <h1 className="text-ink text-2xl font-bold leading-tight">🚓 Parc</h1>
-            <p className="text-ink-muted text-sm mt-0.5"><b className="text-ink">{rows.length}</b> véhicules · <b className="text-ink">{counts.nous || 0}</b> nous attend{(counts.nous || 0) > 1 ? 'ent' : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''}{counts.robot ? ` · ${counts.robot} au robot` : ''}{over60 ? ` · ${over60} depuis plus de 60 j` : ''}</p>
+            <h1 className={journee ? 'text-2xl lg:text-3xl font-extrabold tracking-tight' : 'text-ink text-2xl font-bold leading-tight'}>{journee ? 'Parc' : '🚓 Parc'}</h1>
+            <p className={journee ? 'text-white/75 text-sm mt-1 [&_b]:text-white' : 'text-ink-muted text-sm mt-0.5'}><b className="text-ink">{rows.length}</b> véhicules · <b className="text-ink">{counts.nous || 0}</b> nous attend{(counts.nous || 0) > 1 ? 'ent' : ''}{counts.eux ? ` · ${counts.eux} chez eux` : ''}{counts.robot ? ` · ${counts.robot} au robot` : ''}{over60 ? ` · ${over60} depuis plus de 60 j` : ''}</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, VIN, PV, policier, client…" className="w-64 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand" />
-              {q && <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink">×</button>}
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Plaque, VIN, PV, policier, client…" className={journee ? 'w-64 lg:w-80 bg-white/10 border border-white/25 rounded-2xl pl-4 pr-9 min-h-[48px] text-base text-white placeholder:text-white/60 focus:outline-none focus:border-white' : 'w-64 bg-surface-2 border rounded-xl pl-3 pr-8 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand'} />
+              {q && <button onClick={() => setQ('')} className={`absolute right-2 top-1/2 -translate-y-1/2 ${journee ? 'text-white/70 hover:text-white p-2' : 'text-ink-faint hover:text-ink'}`}>×</button>}
             </div>
-            <button onClick={load} className="px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary" title="Rafraîchir">↻</button>
+            <button onClick={load} className={journee ? 'min-h-[48px] min-w-[48px] bg-white/10 hover:bg-white/20 border border-white/25 rounded-2xl text-base' : 'px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-sm text-ink-secondary'} title="Rafraîchir">↻</button>
           </div>
         </div>
 
@@ -258,6 +260,15 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
           <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Recherche avancée</Link>
         </div>
 
+        {journee ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {TABS.map(t => { const w = t.key !== 'all' ? WHO[t.key as Who] : null; return (
+              <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm ${w ? w.cls : 'bg-surface text-ink'} ${filter === t.key ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
+                <b className="block text-3xl font-extrabold leading-none tabular-nums">{counts[t.key] || 0}</b>
+                <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold mt-1">{t.dot && <span className={`inline-block w-2 h-2 rounded-full ${t.dot}`} />}{t.label}</span>
+              </button>) })}
+          </div>
+        ) : (
         <div className="flex items-center gap-1.5 flex-wrap">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setFilter(t.key)} title={t.help} className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${filter === t.key ? 'bg-ink text-surface border-ink' : 'bg-surface-2 text-ink-secondary hover:bg-surface-hover'}`}>
@@ -265,6 +276,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
             </button>
           ))}
         </div>
+        )}
         <TabLegend items={TABS.filter(t => t.dot).map(t => ({ dot: t.dot, label: t.label, text: t.help }))} />
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           <button onClick={() => setFam('all')} className={`px-2.5 py-1 rounded-full border ${fam === 'all' ? 'bg-surface-2 text-ink border-strong font-semibold' : 'bg-surface text-ink-muted hover:text-ink'}`}>Toutes <span className="opacity-60">{famCounts.all}</span></button>
@@ -278,13 +290,14 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
 
         {msg && <div className="text-sm px-4 py-2.5 rounded-xl bg-surface-2 border text-ink">{msg}</div>}
 
+        <div className={journee ? 'grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start' : 'space-y-4'}>
         {loading ? <div className="text-center py-16 text-ink-faint text-sm">Chargement du parc…</div>
           : visible.length === 0 ? (
             <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted"><p className="text-4xl mb-2">{filter === 'nous' ? '🎉' : '🚓'}</p><p className="font-medium text-ink">{filter === 'nous' ? 'Rien ne nous attend' : 'Aucun véhicule ici'}</p></div>
           ) : visible.map(v => {
             const r = readings.get(v.id)!; const who = WHO[r.who]; const isOpen = open.has(v.id); const p = r.primary
             return (
-              <div key={v.id} className="bg-surface border rounded-2xl overflow-hidden">
+              <div key={v.id} className={journee ? `bg-surface border border-l-[8px] ${BAND[r.who]} rounded-2xl overflow-hidden shadow-sm` : 'bg-surface border rounded-2xl overflow-hidden'}>
                 <div className="px-4 pt-3.5 pb-3 flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -346,6 +359,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
               </div>
             )
           })}
+        </div>
       </div>
       {fiche && <VehicleFicheSheet missionId={fiche} onClose={() => { setFiche(null); load() }} userModules={userModules} userRole={userRole} />}
     </AppShell>
