@@ -203,8 +203,15 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
       <span className="text-stone-600 text-[13px] truncate min-w-0">{detail ?? trajetCourt(m)}</span>
     </div>
     {/* Téléphone : pas de volet à côté, la carte porte le détail utile (Olivier 11/11 : « les infos sont trop limitées »). Sur PC, il est dans le volet de droite. */}
-    {!detail && (
-      <dl className="lg:hidden grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
+    {!detail && <DetailTel m={m} />}
+    {children && <div className="flex gap-1.5 flex-wrap">{children}</div>}
+  </div>
+)
+// Détail d'une mission sur téléphone (pas de volet à côté) : adresse, destination, panne, véhicule,
+// réception, client et téléphone, avertissements. Sur PC, ce détail est dans le volet de droite.
+const DetailTel = ({ m }: { m: M }) => (
+  <>
+    <dl className="lg:hidden grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
         {([
           ['Lieu', court(m.incident_address) || m.incident_city],
           ['Vers', m.destination_name || m.destination_address ? [court(m.destination_name), court(m.destination_address)].filter(Boolean).join(', ') : ''],
@@ -220,12 +227,10 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
               {(m.assisted_phone || m.client_phone) && <> · <a href={`tel:${m.assisted_phone || m.client_phone}`} onClick={e => e.stopPropagation()} className="font-semibold underline">{m.assisted_phone || m.client_phone}</a></>}</dd></div>
         )}
       </dl>
-    )}
-    {!detail && Array.isArray(m.warnings) && m.warnings.length > 0 && (
+    {Array.isArray(m.warnings) && m.warnings.length > 0 && (
       <div className="lg:hidden flex flex-wrap gap-1">{m.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[12px] font-bold">⚠ {w}</span>)}</div>
     )}
-    {children && <div className="flex gap-1.5 flex-wrap">{children}</div>}
-  </div>
+  </>
 )
 const Section = ({ titre, sous, nb, vide, children }: { titre: string; sous: string; nb: number; vide: string; children: React.ReactNode }) => (
   <>
@@ -522,11 +527,16 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 <>
                 <div className="lg:hidden flex flex-col gap-2 px-2 pb-2">
                   {liste.map(m => { const e = etat(m); return (
-                    <button key={m.id} type="button" onClick={() => choisir(m)} className="text-left rounded-xl border border-stone-200 bg-white p-2.5 flex flex-col gap-1.5">
+                    <div key={m.id} role="button" tabIndex={0} onClick={() => choisir(m)} onKeyDown={ev => { if (ev.key === 'Enter') choisir(m) }} className="cursor-pointer text-left rounded-xl border border-stone-200 bg-white p-2.5 flex flex-col gap-1.5 min-w-0">
                       <div className="flex items-center justify-between gap-2"><b className="text-stone-900 text-[14px]">{m.assigned_user?.name || 'Sans chauffeur'}</b><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${e.cls}`}>{e.txt}</span></div>
                       <div className="flex items-center gap-1.5 min-w-0"><Source m={m} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(m)}</span><Plaque m={m} /><span className="text-stone-600 text-[13px] truncate">{trajetCourt(m)}</span></div>
                       {m.status === 'assigned' && m.assigned_at && <span className={`text-[12.5px] font-bold ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>pas encore acceptée · {duree(minutesDepuis(m.assigned_at, now))}</span>}
-                    </button>) })}
+                      <DetailTel m={m} />
+                      {(m.accepted_at || m.on_way_at || m.on_site_at) && <Avancement m={m} />}
+                      {m.assigned_user?.phone && (
+                        <a href={`tel:${m.assigned_user.phone}`} onClick={ev => ev.stopPropagation()} className="min-h-[44px] rounded-xl border border-stone-300 bg-white font-bold text-sm text-stone-900 inline-flex items-center justify-center">Appeler {String(m.assigned_user.name || '').split(' ')[0]}</a>
+                      )}
+                    </div>) })}
                 </div>
                 <table className="hidden lg:table w-full min-w-[520px] text-[13.5px]">
                   <thead><tr className="text-left text-[11.5px] uppercase tracking-wide text-stone-500"><th className="px-2 py-2">État</th><th className="px-2 py-2">Mission</th><th className="px-2 py-2">Trajet</th><th className="px-2 py-2">Chauffeur</th></tr></thead>
