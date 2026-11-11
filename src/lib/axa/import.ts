@@ -88,6 +88,13 @@ async function linkAndEnrich(sb: ReturnType<typeof createAdminClient>, fiche: an
     notes: `Liée à go&assist (${missionOrderId})${enriched.length ? ' + enrichie (' + enriched.join(', ') + ')' : ''}`,
     metadata: { mission_order_id: missionOrderId, filled: enriched },
   }).then(() => {}, () => {})
+  // Chauffeur déjà désigné AVANT le lien (fiche créée par le mail) : l'affectation
+  // AXA, normalement faite à la désignation, n'a pas pu partir (pas encore de lien).
+  // On la fait maintenant, sinon AXA refusera nos étapes (Olivier 11/11/2026).
+  if (fiche.assigned_to && (d?.status === 'New' || d?.status === 'AwaitingDispatch')) {
+    const { affectAxaBg } = await import('@/lib/axa/affect-bg')
+    await affectAxaBg(fiche.id, missionOrderId, null, sb as any)
+  }
 }
 
 function mapServiceToType(serviceCode: string): string {
@@ -117,7 +124,7 @@ export async function runAxaImport({ mode = 'preview' }: { mode?: ImportMode } =
   // ⚠️ La réf VD Soft peut CONTENIR le n° AXA sans y être égale : un accident
   // repris par AXA a une réf combinée « ACC-4347 / 0126551053-REL ». → match
   // « CONTIENT le numéro » (ilike), pas égalité stricte. (Olivier 2026-08-13)
-  const ENRICH_COLS = 'id, dossier_number, axa_mission_order_id, billed_to_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_lat, destination_lat, incident_address, incident_city, destination_name, destination_address'
+  const ENRICH_COLS = 'id, assigned_to, dossier_number, axa_mission_order_id, billed_to_id, received_at, intervention_date, vehicle_plate, vehicle_brand, vehicle_model, vehicle_vin, client_name, client_phone, incident_lat, destination_lat, incident_address, incident_city, destination_name, destination_address'
   const caseIds = Array.from(new Set<string>(awaiting.map(m => m.case?.caseId).filter(Boolean)))
   const fichesByCaseId = new Map<string, any[]>() // caseId → fiches VD Soft ouvertes portant ce n°
   if (caseIds.length) {
