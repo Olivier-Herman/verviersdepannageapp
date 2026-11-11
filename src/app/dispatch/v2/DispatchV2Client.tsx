@@ -80,21 +80,28 @@ const Btn = ({ children, onClick, ton = 'o', disabled, grand }: { children: Reac
     {children}
   </button>
 )
-const Carte = ({ m, sources, occupe, titre, delai, delaiCls, niveau, detail, children }: { m: M; sources: SourceDisplay[]; occupe: string | null; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode }) => (
-  <div className={`rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600 bg-red-50/60' : niveau === 'a' ? 'border-l-amber-500 bg-white' : 'border-l-blue-600 bg-white'} ${occupe === m.id ? 'opacity-60' : ''}`}>
+// Commune seule (pour la ligne courte de la carte) : « Rue X 12, 4800 Verviers » → « Verviers ».
+const commune = (adr?: string | null, ville?: string | null) => {
+  if (ville) return ville
+  const parts = court(adr).split(',').map(x => x.trim()).filter(Boolean)
+  const last = parts[parts.length - 1] || ''
+  return last.replace(/^\d{4,5}\s+/, '') || court(adr)
+}
+const trajetCourt = (m: M) => [commune(m.incident_address, m.incident_city), m.destination_name || m.destination_address ? commune(m.destination_name ? null : m.destination_address, null) || court(m.destination_name) : ''].filter(Boolean).join(' → ')
+
+// Carte de la file : juste de quoi reconnaître la mission et agir. Le détail est dans le volet de droite.
+const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau, detail, children }: { m: M; sources: SourceDisplay[]; occupe: string | null; sel: boolean; onSel: (m: M) => void; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode }) => (
+  <div role="button" tabIndex={0} onClick={() => onSel(m)} onKeyDown={e => { if (e.key === 'Enter') onSel(m) }}
+    className={`cursor-pointer rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600 bg-red-50/60' : niveau === 'a' ? 'border-l-amber-500 bg-white' : 'border-l-blue-600 bg-white'} ${sel ? 'ring-2 ring-stone-900' : ''} ${occupe === m.id ? 'opacity-60' : ''}`}>
     <div className="flex items-start justify-between gap-2">
-      <Link href={`/dispatch/${m.id}?fiche=1`} className="font-bold text-[14px] text-stone-900 hover:underline">{titre}</Link>
+      <b className="text-[14px] text-stone-900">{titre}</b>
       {delai && <span className={`font-extrabold text-[13px] tabular-nums whitespace-nowrap ${delaiCls || ''}`}>{delai}</span>}
     </div>
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1.5 min-w-0">
       <Source m={m} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(m)}</span><Plaque m={m} />
-      <span className="text-stone-600 text-[13px]">{vehicule(m)}</span>
+      {Array.isArray(m.warnings) && m.warnings.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold" title={m.warnings.join(', ')}>⚠ {m.warnings.length}</span>}
+      <span className="text-stone-600 text-[13px] truncate min-w-0">{detail ?? trajetCourt(m)}</span>
     </div>
-    <div className="text-stone-700 text-[13px] truncate" title={detail ? undefined : trajet(m)}>{detail ?? trajet(m)}</div>
-    {m.incident_description && !detail && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{m.incident_description}</div>}
-    {Array.isArray(m.warnings) && m.warnings.length > 0 && (
-      <div className="flex flex-wrap gap-1">{m.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold">⚠ {w}</span>)}</div>
-    )}
     {children && <div className="flex gap-1.5 flex-wrap">{children}</div>}
   </div>
 )
@@ -119,6 +126,8 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [occupe, setOccupe] = useState<string | null>(null)
   const [message, setMessage] = useState<{ txt: string; ton: 'ok' | 'info' | 'err' } | null>(null)
   const [picker, setPicker] = useState<M | null>(null)
+  const [selId, setSelId] = useState<string | null>(null)
+  const choisir = (m: M) => setSelId(m.id)   // fermeture par le ✕ du volet
   const [siabis, setSiabis] = useState<{ m: M; next: (() => void) | null } | null>(null)
   const [refus, setRefus] = useState<M | null>(null)
   const modalOuverte = useRef(false)
@@ -213,6 +222,8 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const n = board ? board.cmd.length + board.att.length + board.alertes.length : 0
   const enRetard = board ? [...board.cmd.filter(m => m.limite ? new Date(m.limite).getTime() < now + 2 * 60_000 : minutesDepuis(m.received_at, now) >= 15),
     ...board.att.filter(m => minutesDepuis(m.intervention_date && new Date(m.intervention_date).getTime() < now ? m.intervention_date : m.received_at, now) >= 15)].length : 0
+  const sel = selId ? ([...(board?.cmd || []), ...(board?.att || []), ...(board?.lances || []), ...(autres || [])].find(m => m.id === selId) || null) : null
+  const alertesSel = sel && board ? board.alertes.filter(a => a.mission.id === sel.id) : []
   const listeBrute = filtre === 'cours' ? (board?.lances || null) : autres
   const liste = useMemo(() => {
     if (!listeBrute) return null
@@ -226,7 +237,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const reste = m.limite ? Math.round((new Date(m.limite).getTime() - now) / 1000) : null
     const min = minutesDepuis(m.received_at, now)
     return (
-      <Carte sources={sources} occupe={occupe} key={m.id} m={m} niveau="r"
+      <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
         titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : 'À valider'}
         delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${duree(min)}`}
         delaiCls={reste != null ? (reste < 180 ? 'text-red-800' : 'text-amber-800') : couleurAnciennete(min)}>
@@ -240,7 +251,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const prevue = m.intervention_date && new Date(m.intervention_date).getTime() > now
     const min = minutesDepuis(prevue ? null : (m.intervention_date || m.received_at), now)
     return (
-      <Carte sources={sources} occupe={occupe} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre="Sans chauffeur"
+      <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre="Sans chauffeur"
         delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${duree(min)}`}
         delaiCls={prevue ? 'text-blue-800' : couleurAnciennete(min)}>
         <Btn ton="p" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Affecter un chauffeur</Btn>
@@ -252,31 +263,31 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const prenom = (m.assigned_user?.name || 'le chauffeur').split(' ')[0]
     switch (a.type) {
       case 'autoroute': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="r" titre="Autoroute : tarification à trancher">
+        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="r" titre="Autoroute : tarification à trancher">
           <Btn ton="p" grand onClick={() => setSiabis({ m, next: null })}>Trancher</Btn>
         </Carte>)
       case 'adresse': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre={`Adresse modifiée par ${getSourceLabel(m.source, sources)}`} delai={a.depuis ? `depuis ${duree(min)}` : undefined} delaiCls="text-amber-800"
-          detail={<>{a.ancienne || '—'} → <b className="text-stone-900">{a.nouveau_nom ? a.nouveau_nom + ', ' : ''}{a.nouvelle}</b></>}>
+        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre={`Adresse modifiée par ${getSourceLabel(m.source, sources)}`} delai={a.depuis ? `depuis ${duree(min)}` : undefined} delaiCls="text-amber-800"
+          detail={<>nouvelle : <b className="text-stone-900">{commune(a.nouvelle, null)}</b></>}>
           <Btn ton="p" grand disabled={occupe === m.id} onClick={() => adresse(a, 'apply')}>Appliquer</Btn>
           <Btn grand disabled={occupe === m.id} onClick={() => adresse(a, 'keep')}>Garder l'actuelle</Btn>
         </Carte>)
       case 'pas_acceptee': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre={`Pas encore acceptée par ${prenom}`}
+        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre={`Pas encore acceptée par ${prenom}`}
           delai={`${duree(min)} · ${a.appel_fait ? 'appel automatique fait' : 'appel à 10'}`} delaiCls={min >= 10 ? 'text-red-800' : 'text-amber-800'}>
           {m.assigned_user?.phone && <a href={`tel:${m.assigned_user.phone}`} onClick={e => e.stopPropagation()} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Appeler {prenom}</a>}
           <Btn grand onClick={() => setPicker(m)}>Réaffecter</Btn>
         </Carte>)
       case 'derogation': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="b" titre="Dérogation de paiement" detail={a.motif || 'Le chauffeur demande une dérogation.'} delai={`depuis ${duree(min)}`} delaiCls={couleurAnciennete(min)}>
+        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Dérogation de paiement" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls={couleurAnciennete(min)}>
           <Btn ton="p" grand onClick={fiche}>Décider</Btn>
         </Carte>)
       case 'pause_depassee': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls="text-red-800">
+        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls="text-red-800">
           <Btn grand onClick={fiche}>Ouvrir la fiche</Btn>
         </Carte>)
       case 'annulee_ima': return (
-        <Carte sources={sources} occupe={occupe} key={a.type + m.id} m={m} niveau="b" titre="Annulée par IMA après acceptation" detail="Elle devient un trajet à vide.">
+        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Annulée par IMA après acceptation" detail="devient un trajet à vide">
           <Btn grand onClick={fiche}>Ouvrir la fiche</Btn>
         </Carte>)
     }
@@ -299,7 +310,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
         {erreur && <div className="rounded-xl bg-red-100 text-red-900 px-4 py-2.5 text-sm font-semibold">Les données n'ont pas pu être relues ({erreur}). Nouvel essai dans quelques secondes.</div>}
         {message && <div className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${message.ton === 'err' ? 'bg-red-100 text-red-900' : message.ton === 'info' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{message.txt}</div>}
 
-        <div className="grid gap-2.5 lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)] lg:h-[calc(100vh-170px)]">
+        <div className={`grid gap-2.5 lg:h-[calc(100vh-170px)] ${sel ? 'lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]' : 'lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)]'}`}>
           {/* Colonne « À traiter » */}
           <section className="rounded-2xl border bg-surface flex flex-col min-h-0">
             <header className="flex items-center justify-between px-3 pt-3 pb-2"><b className="text-[16px] text-ink">À traiter · {n}</b><span className="text-stone-500 text-[13px]">le plus pressé en haut</span></header>
@@ -336,7 +347,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     {liste.map(m => {
                       const e = etat(m)
                       return (
-                        <tr key={m.id} className="border-t border-stone-200 hover:bg-stone-50 cursor-pointer align-top" onClick={() => { window.location.href = `/dispatch/${m.id}?fiche=1` }}>
+                        <tr key={m.id} className="border-t border-stone-200 hover:bg-stone-50 cursor-pointer align-top" onClick={() => choisir(m)} style={selId === m.id ? { background: '#f5f5f4', boxShadow: 'inset 3px 0 0 #1c1917' } : undefined}>
                           <td className="px-2 py-2"><span className={`inline-block px-2 py-0.5 rounded-full text-[12px] font-bold whitespace-nowrap ${e.cls}`}>{e.txt}</span>
                             {m.status === 'assigned' && m.assigned_at && <div className={`mt-1 text-[12.5px] font-bold tabular-nums ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>{duree(minutesDepuis(m.assigned_at, now))}</div>}
                             {m.intervention_date && new Date(m.intervention_date).getTime() > now && <div className="mt-1 text-[12.5px] text-stone-600">{new Date(m.intervention_date).toLocaleString('fr-BE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })}</div>}
@@ -353,6 +364,45 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               )}
             </div>
           </section>
+
+          {/* Volet de droite : le détail de la mission choisie (première version ; complète à l'étape 2). */}
+          {sel && (
+            <aside className="rounded-2xl border bg-surface flex flex-col min-h-0 fixed inset-0 z-40 lg:inset-y-0 lg:left-auto lg:w-[420px] xl:static xl:w-auto xl:z-auto shadow-2xl xl:shadow-none">
+              <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
+                <b className="text-[16px] text-ink">{sel.mission_number ? `#${sel.mission_number}` : 'Mission'}</b>
+                <button type="button" onClick={() => setSelId(null)} aria-label="Fermer le détail" className="w-11 h-11 rounded-xl border border-stone-200 bg-white text-stone-900 text-lg">✕</button>
+              </header>
+              <div className="overflow-y-auto px-3 pb-3 flex flex-col gap-3 min-h-0">
+                <div className="flex items-center gap-1.5 flex-wrap"><Plaque m={sel} /><Source m={sel} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(sel)}</span><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${etat(sel).cls}`}>{etat(sel).txt}</span></div>
+                <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-[13.5px]">
+                  {([
+                    ['Client', [sel.client_name, sel.client_phone].filter(Boolean).join(' · ')],
+                    ['Sur place', sel.assisted_name && sel.assisted_name !== sel.client_name ? [sel.assisted_name, sel.assisted_phone].filter(Boolean).join(' · ') : ''],
+                    ['Véhicule', vehicule(sel)],
+                    ['Lieu', court(sel.incident_address) || sel.incident_city],
+                    ['Vers', sel.destination_name || sel.destination_address ? [court(sel.destination_name), court(sel.destination_address)].filter(Boolean).join(', ') : ''],
+                    ['Panne', sel.incident_description],
+                    ['Délai', sel.limite ? `accepter chez ${getSourceLabel(sel.source, sources)} avant ${hm(new Date(sel.limite))}` : sel.intervention_date && new Date(sel.intervention_date).getTime() > now ? `prévue à ${hm(new Date(sel.intervention_date))}` : ''],
+                    ['Chauffeur', sel.assigned_user?.name || 'Aucun'],
+                    ['Dossier', sel.dossier_number || sel.external_id],
+                  ] as const).filter(([, v]) => v).map(([k, v]) => (
+                    <div key={k} className="contents"><dt className="text-stone-500">{k}</dt><dd className="text-stone-900 font-semibold break-words">{v}</dd></div>
+                  ))}
+                </dl>
+                {Array.isArray(sel.warnings) && sel.warnings.length > 0 && <div className="flex flex-wrap gap-1">{sel.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[12px] font-bold">⚠ {w}</span>)}</div>}
+                {alertesSel.map(a => <div key={a.type}>{carteAlerte(a)}</div>)}
+                <div className="flex gap-1.5 flex-wrap">
+                  {sel.status === 'new' && <><Btn ton="g" grand disabled={occupe === sel.id} onClick={() => setPicker(sel)}>Valider et affecter</Btn><Btn disabled={occupe === sel.id} onClick={() => valider(sel)}>Valider</Btn><Btn ton="d" disabled={occupe === sel.id} onClick={() => setRefus(sel)}>Refuser</Btn></>}
+                  {sel.status === 'dispatching' && <Btn ton="p" grand disabled={occupe === sel.id} onClick={() => setPicker(sel)}>Affecter un chauffeur</Btn>}
+                  {['assigned', 'accepted', 'in_progress', 'delivering'].includes(sel.status) && <Btn grand onClick={() => setPicker(sel)}>Réaffecter</Btn>}
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  <Link href={`/dispatch/${sel.id}?fiche=1`} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Fiche complète</Link>
+                  <Link href={`/dispatch/dossier/${sel.id}`} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Dossier</Link>
+                </div>
+              </div>
+            </aside>
+          )}
         </div>
       </div>
 
