@@ -219,10 +219,14 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function NewMissionClient({
-  drivers, warnings, sources, userName, userRole, userModules = [], userEmail, userId, googleMapsKey
+  drivers, warnings, sources, userName, userRole, userModules = [], userEmail, userId, googleMapsKey, rapide = false, raccourcis = []
 }: {
   drivers: Driver[]; warnings: Warning[]; sources: Array<{ key: string; label: string; display_color?: string | null; group_key?: string | null }>;
   userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
+  /** Création rapide (préversion dispatch_v2, Olivier seul) : même formulaire, autre ordre. */
+  rapide?: boolean
+  /** Sources les plus utilisées ces 3 derniers mois (raccourcis du mode rapide). */
+  raccourcis?: string[]
 }) {
   const gardiennageLabels = useGardiennageRegimeLabels(false)
   // Sub-types Police : sources du catalog avec group_key='police'.
@@ -315,6 +319,13 @@ export default function NewMissionClient({
   const [showClients,        setShowClients]        = useState(false)
   const [showAddresses,      setShowAddresses]      = useState(false)
   const [showRest,           setShowRest]           = useState(false)
+  // Mode rapide : tout l'essentiel visible d'emblée (pas de dévoilement progressif).
+  useEffect(() => { if (rapide) { setShowType(true); setShowClients(true); setShowAddresses(true); setShowRest(true) } }, [rapide])
+  const [resteOuvert, setResteOuvert] = useState(false)
+  const [rechSource, setRechSource] = useState('')
+  const [listeSources, setListeSources] = useState(false)
+  // Plaque déjà connue : mission ouverte ou véhicule au parc (mode rapide).
+  const [dejaOuverte, setDejaOuverte] = useState<any[] | null>(null)
   const [description,  setDescription]  = useState('')
 
   // ── Chauffeur assigne (optionnel) ─────────────────────────────────────────
@@ -415,6 +426,16 @@ export default function NewMissionClient({
   const [brands,        setBrands]        = useState<Brand[]>([])
   const [models,        setModels]        = useState<Model[]>([])
   const [loadingBrands, setLoadingBrands] = useState(false)
+  useEffect(() => {
+    if (!rapide) return
+    const p = (plate || vehicleSearch.query || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (p.length < 5) { setDejaOuverte(null); return }
+    const t = setTimeout(() => {
+      fetch(`/api/missions/open-by-plate?plate=${encodeURIComponent(p)}`, { cache: 'no-store' }).then(r => r.json())
+        .then(d => setDejaOuverte(d?.found ? (d.missions || [d.mission]) : null)).catch(() => setDejaOuverte(null))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [rapide, plate, vehicleSearch.query])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Destinations ──────────────────────────────────────────────────────────
   const [destinations, setDestinations] = useState<Destination[]>([
@@ -896,7 +917,8 @@ export default function NewMissionClient({
         }
       }
 
-      router.push(`/dispatch/${data.mission_id}`)
+      // Mode rapide : retour au Dispatch, la nouvelle mission ouverte dans le volet.
+      router.push(rapide ? `/dispatch?ouvrir=${data.mission_id}` : `/dispatch/${data.mission_id}`)
     } catch (err: any) {
       setError(err.message); setSaving(false)
     }
@@ -909,87 +931,9 @@ export default function NewMissionClient({
     blue: 'border-blue-500/50 bg-blue-500/10 text-blue-400',
   }
 
-  return (
-    <AppShell
-      title="Nouvelle mission"
-      userName={userName}
-      userEmail={userEmail}
-      userId={userId}
-      userRole={userRole}
-      userModules={userModules}
-    >
-      <style>{`
-        @keyframes nm-fade-up {
-          /* Olivier 2026-05-28 : on finit sur transform: none (pas translateY(0))
-             pour ne PAS laisser un stacking context permanent sur la card. Sinon
-             les dropdowns z-50 (recherche client / vehicule) restent prisonniers
-             de la card et les cards suivantes leur passent par dessus. */
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: none; }
-        }
-        @keyframes nm-pulse-glow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 46, 0.0); }
-          50%      { box-shadow: 0 0 0 6px rgba(225, 29, 46, 0.15); }
-        }
-        @keyframes nm-sparkle {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%      { opacity: 0.6; transform: scale(0.92); }
-        }
-        .nm-card-enter { animation: nm-fade-up 320ms ease-out both; }
-        .nm-stagger-1  { animation-delay: 30ms;  }
-        .nm-stagger-2  { animation-delay: 70ms;  }
-        .nm-stagger-3  { animation-delay: 120ms; }
-        .nm-stagger-4  { animation-delay: 180ms; }
-        .nm-stagger-5  { animation-delay: 240ms; }
-        .nm-stagger-6  { animation-delay: 300ms; }
-        .nm-stagger-7  { animation-delay: 360ms; }
-        .nm-stagger-8  { animation-delay: 420ms; }
-        .nm-stagger-9  { animation-delay: 480ms; }
-        .nm-pulse      { animation: nm-pulse-glow 2s ease-in-out infinite; }
-        .nm-sparkle    { animation: nm-sparkle    1.6s ease-in-out infinite; }
-      `}</style>
 
-      {/* Sticky compact bar : retour + CTA principal (toujours accessible scroll) */}
-      <div className="bg-surface/90 backdrop-blur-md border-b px-4 lg:px-8 py-3 sticky top-0 z-20">
-        <div className="flex items-center gap-3 max-w-6xl">
-          <Link href="/dispatch" className="text-ink-secondary hover:text-ink text-lg flex items-center gap-1.5 transition" title="Retour à la liste dispatch">
-            ← <span className="hidden sm:inline text-sm">Dispatch</span>
-          </Link>
-          <span className="flex-1" />
-          <button onClick={handleSubmit} disabled={saving || !canSubmit}
-            className={`hidden lg:flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-brand to-brand-dark hover:opacity-90 text-white rounded-xl font-semibold text-sm transition disabled:opacity-40 ${canSubmit && !saving ? 'nm-pulse' : ''}`}>
-            {saving ? '⏳ Création...' : '✓ Créer la mission'}
-          </button>
-        </div>
-      </div>
-
-      <div className="relative min-h-[calc(100vh-4rem)]">
-        {/* Ambient gradient blobs — purement decoratif, pas d'interaction */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-50">
-          <div className="absolute -top-32 -left-20 w-[420px] h-[420px] rounded-full bg-gradient-to-br from-brand/15 to-purple-500/10 blur-3xl" />
-          <div className="absolute top-1/3 -right-32 w-[480px] h-[480px] rounded-full bg-gradient-to-br from-info/15 to-success/10 blur-3xl" />
-          <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
-        </div>
-
-        <div className="relative flex-1 px-4 lg:px-8 py-6 lg:py-8">
-          {/* Hero header */}
-          <div className="max-w-6xl mb-6 nm-card-enter">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand/20 via-purple-500/15 to-info/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
-                <span className="nm-sparkle">✨</span>
-              </div>
-              <div>
-                <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Nouvelle mission</h1>
-                <p className="text-ink-muted text-sm mt-1">Créer un nouveau dossier d'intervention.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl">
-
-            {/* ── Colonne principale ───────────────────────────────────────── */}
-            <div className="lg:col-span-2 space-y-5">
-
+  // ── Blocs du formulaire (même contenu dans les deux présentations) ────────
+  const B_rdv = (<>
               {/* 1. Date / Heure RDV */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🕐 Date / Heure de rendez-vous</h2>
@@ -1007,6 +951,8 @@ export default function NewMissionClient({
                 </div>
               </div>
 
+  </>)
+  const B_depot = (<>
               {/* 2. Depot de depart */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🏭 Dépôt de départ</h2>
@@ -1023,6 +969,8 @@ export default function NewMissionClient({
                 <p className="text-ink-faint text-xs mt-2">Dépôt depuis lequel le camion part. Modifiable si le chauffeur démarre d'un autre site.</p>
               </div>
 
+  </>)
+  const B_source = (<>
               {/* 3. Source + numero dossier + sous-type Police / Siabis */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
                 <h2 className="text-ink font-semibold text-sm mb-4">🎯 Source du dossier</h2>
@@ -1032,11 +980,48 @@ export default function NewMissionClient({
                       Source <span className="text-red-400">*</span>
                       {sourceFromOdoo ? <span className="text-ink-faint"> (memorisée pour ce client)</span> : ''}
                     </label>
+                    {rapide ? (
+                      // Mode rapide : on tape les premières lettres, ou un raccourci (sources les plus utilisées).
+                      source && !listeSources ? (
+                        <div className="flex items-center gap-2 border rounded-xl px-3 min-h-[44px]">
+                          <b className="flex-1 text-ink text-sm">{dropdownSources.find(s => s.key === source)?.label || source}</b>
+                          <button type="button" onClick={() => { setListeSources(true); setRechSource('') }} className="min-h-[36px] px-3 rounded-lg border text-sm font-semibold text-ink">Changer</button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <input value={rechSource} onChange={e => { setRechSource(e.target.value); setListeSources(true) }} onFocus={() => setListeSources(true)}
+                            placeholder="Tapez les premières lettres : tou, sais, centra…" aria-label="Chercher une source" autoComplete="off"
+                            className={`w-full min-h-[44px] bg-surface border rounded-xl px-3 text-ink text-sm focus:outline-none focus:border-brand ${!source ? 'border-amber-500/50' : ''}`} />
+                          {!rechSource && raccourcis.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {raccourcis.filter(k => dropdownSources.some(s => s.key === k)).map(k => (
+                                <button key={k} type="button" onClick={() => { changeSource(k); setListeSources(false); setRechSource('') }}
+                                  className="min-h-[36px] px-3 rounded-full border text-sm font-semibold text-ink hover:border-brand">{dropdownSources.find(s => s.key === k)?.label}</button>
+                              ))}
+                            </div>
+                          )}
+                          {listeSources && (() => {
+                            const q = rechSource.trim().toLowerCase()
+                            const r = dropdownSources.filter(s => !q || s.label.toLowerCase().includes(q) || s.key.toLowerCase().includes(q))
+                            return (
+                              <div className="border rounded-xl max-h-64 overflow-y-auto bg-surface">
+                                {r.length === 0 ? <p className="px-3 py-2.5 text-ink-muted text-sm">Aucune source à ce nom.</p>
+                                  : r.map(s => (
+                                    <button key={s.key} type="button" onClick={() => { changeSource(s.key); setListeSources(false); setRechSource('') }}
+                                      className="w-full text-left min-h-[44px] px-3 border-t first:border-t-0 text-sm text-ink hover:bg-surface-hover">{s.label}</button>
+                                  ))}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )
+                    ) : (
                     <select value={source} onChange={e => changeSource(e.target.value)}
                       className={`w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand ${!source ? 'border-amber-500/50' : ''}`}>
                       <option value="">— Sélectionner une source —</option>
                       {dropdownSources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                     </select>
+                    )}
                   </div>
                   <div>
                     <label className="block text-ink-muted text-xs mb-1.5">Numéro de dossier <span className="text-ink-faint">(optionnel)</span></label>
@@ -1092,6 +1077,8 @@ export default function NewMissionClient({
                 )}
               </div>
 
+  </>)
+  const B_type = (<>
               {/* 3. Type d'intervention (apparait apres choix de la source).
                   Boutons explicites avec descriptions contextuelles selon
                   la source choisie. Inspire de PoliceClient.tsx cote
@@ -1167,14 +1154,25 @@ export default function NewMissionClient({
                   )
                 })()}
                 <div className="mt-4">
-                  <label className="block text-ink-muted text-xs mb-1.5">Description / Détails</label>
+                  <label className="block text-ink-muted text-xs mb-1.5">{rapide ? 'Panne ou demande' : 'Description / Détails'}</label>
                   <textarea value={description} onChange={e => setDescription(e.target.value)}
                     rows={2} placeholder="Détails de l'intervention..."
                     className="w-full bg-surface border rounded-xl px-3 py-2.5 text-ink text-sm focus:outline-none focus:border-brand resize-none placeholder:text-ink-faint" />
+                  {rapide && (
+                    // Raccourcis de panne (mode rapide) : un appui ajoute le mot au texte libre.
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {['Batterie', 'Ne démarre pas', 'Crevaison', 'Accident', 'Clés enfermées', 'Panne de carburant', 'Embourbé'].map(k => (
+                        <button key={k} type="button" onClick={() => setDescription(d => d.trim() ? `${d.trim()}, ${k.toLowerCase()}` : k)}
+                          className="min-h-[36px] px-3 rounded-full border text-sm font-semibold text-ink hover:border-brand">{k}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               )}
 
+  </>)
+  const B_clients = (<>
               {/* 4. Client facturé + Client assisté (apparaissent apres choix d un type) */}
               {showClients && (<>
               <div
@@ -1278,6 +1276,8 @@ export default function NewMissionClient({
               </div>
               </>)}
 
+  </>)
+  const B_adresses = (<>
               {/* 5. Adresses (apparait apres selection du client facture) */}
               {showAddresses && (
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
@@ -1299,15 +1299,25 @@ export default function NewMissionClient({
               </div>
               )}
 
-              {/* 6+. Vehicule + Avertissements + Remarques + autres
-                  (apparaissent apres saisie d une adresse minimum) */}
-              {showRest && (<>
-
+  </>)
+  const B_veh = (<>
               {/* 6. Véhicule */}
               <div
                 className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter relative"
                 style={showVehicleDrop ? { zIndex: 50 } : undefined}
               >
+                {rapide && dejaOuverte && dejaOuverte.length > 0 && (
+                  <div className="mb-4 rounded-xl bg-amber-100 text-amber-900 px-3 py-2.5 text-sm">
+                    <b>Cette plaque a déjà {dejaOuverte.length > 1 ? `${dejaOuverte.length} fiches ouvertes` : 'une fiche ouverte'}.</b>
+                    {dejaOuverte.slice(0, 3).map((m: any) => (
+                      <div key={m.id} className="flex items-center justify-between gap-2 mt-1.5">
+                        <span>#{m.mission_number || '—'} · {m.status === 'parked' ? 'au parc' : 'en cours'}{m.vehicle_brand ? ` · ${m.vehicle_brand} ${m.vehicle_model || ''}` : ''}</span>
+                        <a href={`/dispatch/${m.id}?fiche=1`} target="_blank" rel="noopener" className="min-h-[36px] px-3 rounded-lg bg-white border border-amber-300 font-semibold inline-flex items-center">Voir la fiche</a>
+                      </div>
+                    ))}
+                    <p className="mt-1.5 text-amber-800">Relivraison ou nouvelle mission ? Vous pouvez continuer si c'est bien une nouvelle intervention.</p>
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-ink font-semibold text-sm">🚗 Véhicule</h2>
                   {/* Toggle Voiture/Moto : pilote la grille tarifaire Police Accident (PCD voiture vs PC moto). */}
@@ -1429,6 +1439,8 @@ export default function NewMissionClient({
                 </div>
               </div>
 
+  </>)
+  const B_avert = (<>
               {/* 7. Avertissements */}
               {warnings.length > 0 && (
                 <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
@@ -1451,6 +1463,8 @@ export default function NewMissionClient({
                 </div>
               )}
 
+  </>)
+  const B_paie = (<>
               {/* 8. Paiement à réclamer au client — mis en evidence pour eviter l oubli */}
               <div className={`rounded-2xl p-5 transition nm-card-enter ${amountToCollect ? 'bg-amber-500/10 border-2 border-amber-500/60 shadow-lg shadow-amber-500/10' : 'bg-amber-500/5 border-2 border-amber-500/30 hover:border-amber-500/50'}`}>
                 <h2 className="text-ink font-bold text-base mb-2 flex items-center gap-2">
@@ -1470,6 +1484,8 @@ export default function NewMissionClient({
                 </div>
               </div>
 
+  </>)
+  const B_tarif = (<>
               {/* 8b. Tarif spécial (forfait négocié) — écrase le tarif calculé.
                   Saisie HTVA ou TVAC ; stocké en HTVA. Olivier 2026-07-07. */}
               <div className="bg-surface border rounded-2xl p-5 hover:border-brand/30 transition nm-card-enter">
@@ -1501,6 +1517,8 @@ export default function NewMissionClient({
                 )}
               </div>
 
+  </>)
+  const B_rem = (<>
               {/* 9. Remarques (avant Chauffeur assigne : reorganise 2026-05-26).
                   Olivier : "Chauffeur assigne doit etre le dernier bloc etant
                   donne que ca correspond a la derniere action avant que la
@@ -1523,6 +1541,8 @@ export default function NewMissionClient({
                 </div>
               </div>
 
+  </>)
+  const B_chauf = (<>
               {/* 10. Chauffeur assigne (optionnel) — DERNIER bloc : c est la
                   derniere action avant que la mission ne parte vers un autre
                   intervenant (Olivier 2026-05-26). */}
@@ -1557,6 +1577,127 @@ export default function NewMissionClient({
                 )}
               </div>
 
+  </>)
+
+  return (
+    <AppShell
+      title="Nouvelle mission"
+      userName={userName}
+      userEmail={userEmail}
+      userId={userId}
+      userRole={userRole}
+      userModules={userModules}
+    >
+      <style>{`
+        @keyframes nm-fade-up {
+          /* Olivier 2026-05-28 : on finit sur transform: none (pas translateY(0))
+             pour ne PAS laisser un stacking context permanent sur la card. Sinon
+             les dropdowns z-50 (recherche client / vehicule) restent prisonniers
+             de la card et les cards suivantes leur passent par dessus. */
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes nm-pulse-glow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 46, 0.0); }
+          50%      { box-shadow: 0 0 0 6px rgba(225, 29, 46, 0.15); }
+        }
+        @keyframes nm-sparkle {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%      { opacity: 0.6; transform: scale(0.92); }
+        }
+        .nm-card-enter { animation: nm-fade-up 320ms ease-out both; }
+        .nm-stagger-1  { animation-delay: 30ms;  }
+        .nm-stagger-2  { animation-delay: 70ms;  }
+        .nm-stagger-3  { animation-delay: 120ms; }
+        .nm-stagger-4  { animation-delay: 180ms; }
+        .nm-stagger-5  { animation-delay: 240ms; }
+        .nm-stagger-6  { animation-delay: 300ms; }
+        .nm-stagger-7  { animation-delay: 360ms; }
+        .nm-stagger-8  { animation-delay: 420ms; }
+        .nm-stagger-9  { animation-delay: 480ms; }
+        .nm-pulse      { animation: nm-pulse-glow 2s ease-in-out infinite; }
+        .nm-sparkle    { animation: nm-sparkle    1.6s ease-in-out infinite; }
+      `}</style>
+
+      {/* Sticky compact bar : retour + CTA principal (toujours accessible scroll) */}
+      <div className="bg-surface/90 backdrop-blur-md border-b px-4 lg:px-8 py-3 sticky top-0 z-20">
+        <div className="flex items-center gap-3 max-w-6xl">
+          <Link href="/dispatch" className="text-ink-secondary hover:text-ink text-lg flex items-center gap-1.5 transition" title="Retour à la liste dispatch">
+            ← <span className="hidden sm:inline text-sm">Dispatch</span>
+          </Link>
+          <span className="flex-1" />
+          <button onClick={handleSubmit} disabled={saving || !canSubmit}
+            className={`hidden lg:flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-brand to-brand-dark hover:opacity-90 text-white rounded-xl font-semibold text-sm transition disabled:opacity-40 ${canSubmit && !saving ? 'nm-pulse' : ''}`}>
+            {saving ? '⏳ Création...' : '✓ Créer la mission'}
+          </button>
+        </div>
+      </div>
+
+      <div className="relative min-h-[calc(100vh-4rem)]">
+        {/* Ambient gradient blobs — purement decoratif, pas d'interaction */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-50">
+          <div className="absolute -top-32 -left-20 w-[420px] h-[420px] rounded-full bg-gradient-to-br from-brand/15 to-purple-500/10 blur-3xl" />
+          <div className="absolute top-1/3 -right-32 w-[480px] h-[480px] rounded-full bg-gradient-to-br from-info/15 to-success/10 blur-3xl" />
+          <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-gradient-to-br from-warning/10 to-brand/5 blur-3xl" />
+        </div>
+
+        <div className="relative flex-1 px-4 lg:px-8 py-6 lg:py-8">
+          {/* Hero header */}
+          <div className="max-w-6xl mb-6 nm-card-enter">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand/20 via-purple-500/15 to-info/15 flex items-center justify-center text-2xl shadow-lg shadow-brand/10 flex-shrink-0">
+                <span className="nm-sparkle">✨</span>
+              </div>
+              <div>
+                <h1 className="text-ink text-2xl lg:text-3xl font-bold leading-tight">Nouvelle mission</h1>
+                <p className="text-ink-muted text-sm mt-1">Créer un nouveau dossier d'intervention.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl">
+
+            {/* ── Colonne principale ───────────────────────────────────────── */}
+            <div className="lg:col-span-2 space-y-5">
+
+              {rapide ? (<>
+                {/* Création rapide (préversion dispatch_v2, Olivier seul) : l'essentiel pendant l'appel,
+                    le reste replié. Mêmes blocs, mêmes règles, même enregistrement. */}
+                {B_veh}
+                {B_source}
+                {B_type}
+                {B_adresses}
+                {B_clients}
+                {B_paie}
+                <details className="bg-surface border rounded-2xl p-5 group" open={resteOuvert} onToggle={e => setResteOuvert((e.target as HTMLDetailsElement).open)}>
+                  <summary className="cursor-pointer list-none flex items-center justify-between min-h-[44px] text-ink font-semibold text-sm">
+                    <span>Le reste, une fois raccroché <span className="text-ink-faint font-normal">· rendez-vous, dépôt, avertissements, tarif spécial, remarques</span></span>
+                    <span className="text-ink-faint group-open:rotate-90 transition">›</span>
+                  </summary>
+                  <div className="space-y-5 mt-4">
+                    {B_rdv}
+                    {B_depot}
+                    {B_avert}
+                    {B_tarif}
+                    {B_rem}
+                  </div>
+                </details>
+                {B_chauf}
+              </>) : (<>
+                {B_rdv}
+                {B_depot}
+                {B_source}
+                {B_type}
+                {B_clients}
+                {B_adresses}
+                {showRest && (<>
+                  {B_veh}
+                  {B_avert}
+                  {B_paie}
+                  {B_tarif}
+                  {B_rem}
+                  {B_chauf}
+                </>)}
               </>)}
             </div>
 

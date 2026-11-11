@@ -5,8 +5,12 @@ import { redirect }          from 'next/navigation'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import NewMissionClient      from './NewMissionClient'
+import { cookies }           from 'next/headers'
+import { isPreviewOn }       from '@/lib/feature-flags'
 
-export default async function NewMissionPage() {
+export const dynamic = 'force-dynamic'
+
+export default async function NewMissionPage({ searchParams }: { searchParams?: { ancien?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -29,8 +33,29 @@ export default async function NewMissionPage() {
     supabase.from('mission_source_catalog').select('key, label').eq('active', true).order('label'),
   ])
 
+  // Création rapide : préversion du nouveau Dispatch (Olivier seul). Même bascule que /dispatch :
+  // trois appuis sur le titre du Dispatch (cookie) ou ?ancien=1 → présentation actuelle.
+  const rapide = await isPreviewOn('dispatch_v2', user.role, user.id)
+    && searchParams?.ancien !== '1' && cookies().get('vd_dispatch_ancien')?.value !== '1'
+  // Raccourcis : les 6 sources les plus utilisées ces 3 derniers mois.
+  let raccourcis: string[] = []
+  if (rapide) {
+    // Lecture par tranches de 1 000 (limite du serveur), ordre stable par id.
+    const n = new Map<string, number>()
+    const depuis = new Date(Date.now() - 90 * 86400000).toISOString()
+    for (let de = 0; de < 20000; de += 1000) {
+      const { data: page } = await supabase.from('incoming_missions').select('source')
+        .gte('received_at', depuis).eq('dossier_leg', false).order('id').range(de, de + 999)
+      for (const r of page || []) if ((r as any).source) n.set((r as any).source, (n.get((r as any).source) || 0) + 1)
+      if (!page || page.length < 1000) break
+    }
+    raccourcis = Array.from(n.entries()).sort((a, b) => b[1] - a[1]).map(([k]) => k).filter(k => k !== 'unknown').slice(0, 6)
+  }
+
   return (
     <NewMissionClient
+      rapide={rapide}
+      raccourcis={raccourcis}
       drivers={drivers || []}
       warnings={warnings || []}
       sources={catalogSources || []}

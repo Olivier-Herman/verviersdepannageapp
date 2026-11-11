@@ -148,6 +148,13 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [selId, setSelId] = useState<string | null>(null)
   const [complete, setComplete] = useState<{ id: string; titre: string } | null>(null)   // fiche complète embarquée (indépendante de la sélection)
   const choisir = (m: M) => setSelId(m.id)   // fermeture par le ✕ du volet
+  // Arrivée depuis la création rapide : /dispatch?ouvrir=<id> ouvre la mission dans le volet.
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href), id = u.searchParams.get('ouvrir')
+      if (id) { setSelId(id); u.searchParams.delete('ouvrir'); window.history.replaceState(null, '', u.pathname + u.search) }
+    } catch {}
+  }, [])
   // Chauffeur proposé : calculé à l'ouverture d'une mission à valider ou sans chauffeur, jamais en boucle.
   const [prop, setProp] = useState<{ id: string; data: any | null } | null>(null)
   const [siabis, setSiabis] = useState<{ m: M; next: (() => void) | null } | null>(null)
