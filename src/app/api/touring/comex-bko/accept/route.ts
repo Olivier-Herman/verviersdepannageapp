@@ -40,7 +40,8 @@ export async function POST(req: Request) {
     if (cookies.has(label)) return cookies.get(label)!
     const acct = accounts.find(a => a.label === label)
     if (!acct) return null
-    try { const c = await loginComexBko(acct); cookies.set(label, c); return c } catch { return null }
+    // Clic humain (« Accepter ») : essaie même si le robot est en pause après échecs (11/11/2026).
+    try { const c = await loginComexBko(acct, { force: !isInternal }); cookies.set(label, c); return c } catch { return null }
   }
 
   const now = new Date().toISOString()

@@ -61,15 +61,46 @@ function hdr(cookie: string, form = false): Record<string, string> {
  * intermittence côté COMEX (rotation de session Spring qui « ne prend pas » →
  * canILog renvoie "not logged…"). On RÉESSAIE jusqu'à 3× avec un court backoff :
  * un login raté renvoie 0 dossier et fausse toute la synchro BKO. Olivier 2026-08-09. */
-export async function loginComexBko(account: BkoAccount): Promise<string> {
+// Ralentissement après échecs répétés (Olivier 11/11/2026) : depuis 12 h 21 Touring refuse la
+// connexion du SERVEUR (les mêmes identifiants passent depuis le PC). Les essais toutes les
+// 3 min × 2 comptes × 3 tentatives (~120/h) entretiennent probablement le blocage. Après 3 échecs
+// d'affilée, un seul essai toutes les 30 min ; « Synchroniser » (force) essaie toujours.
+const PAUSE_KEY = 'comex_bko_login_pause'
+const PAUSE_APRES = 3
+const PAUSE_MIN = 30
+type Pause = { echecs: number; dernier: string | null; depuis: string | null }
+async function lirePause(): Promise<Pause> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data } = await createAdminClient().from('app_settings').select('value').eq('key', PAUSE_KEY).maybeSingle()
+    const v = data?.value ? (typeof data.value === 'string' ? JSON.parse(data.value) : data.value) : null
+    return { echecs: Number(v?.echecs || 0), dernier: v?.dernier || null, depuis: v?.depuis || null }
+  } catch { return { echecs: 0, dernier: null, depuis: null } }
+}
+async function ecrirePause(p: Pause) {
+  try { const { createAdminClient } = await import('@/lib/supabase'); await createAdminClient().from('app_settings').upsert({ key: PAUSE_KEY, value: JSON.stringify(p) }, { onConflict: 'key' }) } catch { /* best-effort */ }
+}
+/** État du ralentissement (pour l'écran) : nombre d'échecs d'affilée, premier échec, prochain essai. */
+export async function etatConnexionBko(): Promise<{ echecs: number; depuis: string | null; prochainEssai: string | null }> {
+  const p = await lirePause()
+  const prochain = p.echecs >= PAUSE_APRES && p.dernier ? new Date(Date.parse(p.dernier) + PAUSE_MIN * 60_000).toISOString() : null
+  return { echecs: p.echecs, depuis: p.depuis, prochainEssai: prochain }
+}
+
+export async function loginComexBko(account: BkoAccount, opts: { force?: boolean } = {}): Promise<string> {
   const user = (account.user || '').toUpperCase()
   const pass = account.pass || ''
   if (!user || !pass) throw new Error('compte BKO incomplet')
+  const pause = await lirePause()
+  const enPause = pause.echecs >= PAUSE_APRES && !!pause.dernier && Date.now() - Date.parse(pause.dernier) < PAUSE_MIN * 60_000
+  if (enPause && !opts.force) throw new Error(`login COMEX BKO en pause après ${pause.echecs} échecs (prochain essai ${new Date(Date.parse(pause.dernier!) + PAUSE_MIN * 60_000).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })})`)
   const hash = sha256(pass)
   const creds = new URLSearchParams({ j_username: user, j_password: hash }).toString()
 
   let lastErr = 'login COMEX BKO échoué'
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  // En échec répété : une seule tentative par essai (pas 3).
+  const tentatives = pause.echecs >= PAUSE_APRES ? 1 : 3
+  for (let attempt = 1; attempt <= tentatives; attempt++) {
     try {
       let cookie = ''
       // 1) welcome
@@ -85,12 +116,15 @@ export async function loginComexBko(account: BkoAccount): Promise<string> {
       r = await fetch(`${BASE}/secured/canILog.do`, { headers: hdr(cookie), signal: AbortSignal.timeout(20000) })
       const txt = (await r.text()).trim()
       if (!/^logged/.test(txt)) throw new Error(`login COMEX BKO échoué (canILog="${txt.slice(0, 40)}")`)
+      if (pause.echecs) await ecrirePause({ echecs: 0, dernier: null, depuis: null })
       return cookie
     } catch (e: any) {
       lastErr = e?.message || 'login COMEX BKO échoué'
-      if (attempt < 3) await new Promise(res => setTimeout(res, 500 * attempt))
+      if (attempt < tentatives) await new Promise(res => setTimeout(res, 500 * attempt))
     }
   }
+  const now = new Date().toISOString()
+  await ecrirePause({ echecs: pause.echecs + 1, dernier: now, depuis: pause.depuis || now })
   throw new Error(lastErr)
 }
 
@@ -255,13 +289,13 @@ export async function listBkoDossiersForAccord(cookie: string, numAccord: string
  * compte + les erreurs par compte (best-effort : un compte KO n'empêche pas les
  * autres). Olivier 2026-07-27.
  */
-export async function listAllComexBko(): Promise<{ dossiers: BkoDossier[]; errors: { account: string; error: string }[] }> {
+export async function listAllComexBko(opts: { force?: boolean } = {}): Promise<{ dossiers: BkoDossier[]; errors: { account: string; error: string }[] }> {
   const accounts = getBkoAccounts()
   const dossiers: BkoDossier[] = []
   const errors: { account: string; error: string }[] = []
   for (const acct of accounts) {
     try {
-      const cookie = await loginComexBko(acct)
+      const cookie = await loginComexBko(acct, opts)
       const rows = await listComexBkoDossiers(cookie, acct.label)
       dossiers.push(...rows)
     } catch (e: any) {

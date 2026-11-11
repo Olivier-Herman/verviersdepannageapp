@@ -35,7 +35,7 @@ const kindOf = (r: Row): 'ok' | 'verify' | 'other' => r.verdict === 'ok' ? 'ok' 
 export default function TouringValiderClient(props: { userRole: string; userName: string; userEmail: string; userModules: string[] }) {
   const [rows, setRows]     = useState<Row[]>([])
   const [lastSync, setLast] = useState<any>(null)
-  const [coupure, setCoupure] = useState<{ depuis: string | null; erreur: string } | null>(null)
+  const [coupure, setCoupure] = useState<{ depuis: string | null; erreur: string; prochainEssai?: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy]     = useState<string | null>(null)
   const [sel, setSel]       = useState<Set<string>>(new Set())
@@ -122,7 +122,7 @@ export default function TouringValiderClient(props: { userRole: string; userName
         {coupure && (
           <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 text-red-800 px-4 py-3">
             <b>Connexion à Touring coupée{coupure.depuis ? ` depuis le ${new Date(coupure.depuis).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''} : la liste n'est pas à jour.</b>
-            <span className="block text-sm mt-0.5">Les dossiers arrivés chez Touring depuis n'apparaissent pas ici. « Synchroniser » réessaie ; si ça persiste, les accès Touring sont à vérifier.</span>
+            <span className="block text-sm mt-0.5">Touring refuse la connexion de notre serveur (les accès sont bons). Les dossiers arrivés chez Touring depuis n'apparaissent pas ici. Le robot réessaie toutes les 30 minutes{coupure.prochainEssai ? ` (prochain essai à ${new Date(coupure.prochainEssai).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })})` : ''} ; « Synchroniser » réessaie tout de suite.</span>
           </div>
         )}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
