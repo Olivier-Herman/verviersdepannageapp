@@ -33,8 +33,44 @@ export async function acceptKazeProposalBg(
   actorId:    string | null,
   supabase:   ReturnType<typeof createAdminClient>,
 ) {
-  if (!proposalId) return
   const run = (async () => {
+    // Fiche Kaze sans numéro de proposition (la proposition et la création de
+    // la fiche arrivent par deux événements simultanés) : on relit le numéro
+    // dans les événements Kaze reçus. Jamais d'abandon muet : sans numéro, le
+    // dispatch est prévenu (2EHC951, 11/11/2026, proposition expirée).
+    if (!proposalId) {
+      const { data: fiche } = await supabase.from('incoming_missions')
+        .select('kaze_job_id, mission_number, vehicle_plate, dossier_number').eq('id', missionId).maybeSingle()
+      const job = (fiche as any)?.kaze_job_id as string | null
+      if (!job) return                                   // pas une mission Kaze
+      const { data: evs } = await supabase.from('kaze_webhook_events')
+        .select('payload').eq('kaze_job_id', job).eq('event_type', 'job_proposal_proposed').limit(5)
+      for (const e of evs || []) {
+        const p: any = (e as any).payload
+        const id = p?.data?.proposal_id || p?.payload?.proposal_id || p?.proposal_id
+          || JSON.stringify(p || {}).match(/"proposal_id"\s*:\s*"([^"]+)"/)?.[1]
+        if (id) { proposalId = String(id); break }
+      }
+      if (proposalId) {
+        await supabase.from('incoming_missions').update({ kaze_proposal_id: proposalId }).eq('id', missionId)
+      } else {
+        // Job attribué directement (sans proposition) : rien à accepter.
+        const { getJob } = await import('@/lib/kaze/client')
+        const st = await getJob(job).then((j: any) => String(j?.status || ''), () => '')
+        if (['assigned', 'accepted', 'in_progress', 'started', 'completed'].includes(st)) return
+        await supabase.from('mission_logs').insert({ mission_id: missionId, actor_id: actorId, action: 'kaze_sync_error',
+          notes: `Kaze ↗ acceptation impossible : aucun numéro de proposition reçu (statut Kaze « ${st || 'inconnu'} »)`, metadata: { job_id: job } }).then(() => {}, () => {})
+        try {
+          const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+          await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'kaze_accept_manual', {
+            title: '⚠️ Kaze : à accepter à la main',
+            body: `${(fiche as any)?.vehicle_plate || ''} · ${(fiche as any)?.dossier_number || ''} — la proposition n'a pas pu être acceptée automatiquement. Accepte-la dans Kaze.`,
+            action_url: `/dispatch/${missionId}`, mission_id: missionId,
+          } as any)
+        } catch (e: any) { console.error('[kaze accept] notification KO:', e?.message) }
+        return
+      }
+    }
     const log = (action: string, notes: string, metadata: any) =>
       supabase.from('mission_logs').insert({ mission_id: missionId, actor_id: actorId, action, notes, metadata })
         .then(() => {}, () => {})
