@@ -54,6 +54,8 @@ export default function RequisitoiresClient(props: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
   /** Embarqué dans l'écran Documents (16/09/2026) : pas d'AppShell, pas de titre. */
   embedded?: boolean
+  /** Préversion ma_journee (lot 4, 11/11/2026) : carte courte, raison de l'arrêt du robot. */
+  habille?: boolean
 }) {
   const [tab, setTab]         = useState('pending')
   const [items, setItems]     = useState<Item[]>([])
@@ -188,8 +190,8 @@ export default function RequisitoiresClient(props: {
               Aucun réquisitoire {tab === 'pending' ? 'à rattacher' : 'dans cette catégorie'}.
             </div>
           ) : (
-            <div className="space-y-4">
-              {items.map(item => <RequisitoireCard key={item.id} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} onRequalify={requalify} onDelete={del} />)}
+            <div className={props.habille ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>
+              {items.map(item => <RequisitoireCard key={item.id} habille={!!props.habille} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} onRequalify={requalify} onDelete={del} />)}
             </div>
           )}
         </div>
@@ -213,7 +215,26 @@ function ConfidenceBadge({ c }: { c: string | null }) {
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[k] || map.none}`}>{label[k] || label.none}</span>
 }
 
-function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify, onDelete }: {
+// S2 (lot 4) : pourquoi le robot ne l'a pas rattaché seul. Miroir de lib/requisitoire/match.ts
+// (clé forte unique → « forte » ; + adresse précise + date à ≤ 1 jour → rattachement automatique).
+function raisonArret(item: Item): string | null {
+  if (!(item.status === 'pending' || item.status === 'to_verify')) return null
+  if ((item as any).error) return `Le robot a essayé de le rattacher et a été refusé : ${(item as any).error}`
+  const ex = item.extracted
+  if ((item.doc_type || ex?.doc_type) === 'levee_saisie') return 'Une levée arrête le gardiennage : le robot ne la confirme seul que si tout concorde (plaque, date de levée, une seule fiche).'
+  const top = item.candidates[0], second = item.candidates[1]
+  if (!top) return 'Aucune fiche ne ressemble : ni plaque, ni châssis, ni adresse.'
+  const forte = top.reasons.some(r => r.startsWith('Plaque') || r.startsWith('VIN'))
+  if (!forte) return 'Ni la plaque ni le châssis ne correspondent : la fiche proposée ne ressemble que par la marque ou l\'adresse.'
+  if (second && top.score - second.score < 20) return 'Plusieurs fiches se ressemblent autant : le robot ne choisit pas.'
+  if (!top.reasons.includes('Adresse précise')) return 'La plaque correspond, mais pas l\'adresse de l\'enlèvement : le robot attend une confirmation.'
+  const dd = ex?.date_requisition && top.incident_at ? Math.abs(Date.parse(ex.date_requisition) - Date.parse(top.incident_at)) / 86_400_000 : null
+  if (dd != null && dd > 1.5) return `La date du document est à ${Math.round(dd)} jours de celle de la fiche : le robot attend une confirmation.`
+  return null
+}
+
+function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify, onDelete, habille = false }: {
+  habille?: boolean
   item: Item
   onAttach: (id: string, opts: AttachOpts) => void
   onIgnore: (id: string) => void
@@ -228,11 +249,14 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify
   const [lvDate, setLvDate]   = useState(ex?.levee_date || '')
   const [lvType, setLvType]   = useState<'definitive' | 'temporaire'>(ex?.levee_type || 'definitive')
   const isActionable = item.status === 'pending' || item.status === 'to_verify'
+  const [autres, setAutres] = useState(false)
+  const raison = habille ? raisonArret(item) : null
+  const montres = habille && !autres ? item.candidates.slice(0, 1) : item.candidates
 
   const leveeOpts = (): AttachOpts => isLevee ? { leveeDate: lvDate, leveeType: lvType } : {}
 
   return (
-    <div className="bg-surface border rounded-2xl p-4 space-y-3">
+    <div className={habille ? `bg-surface border border-l-[8px] ${item.status === 'attached' ? 'border-l-green-500' : item.confidence === 'high' ? 'border-l-emerald-500' : item.status === 'to_verify' ? 'border-l-amber-500' : 'border-l-sky-500'} rounded-2xl p-4 space-y-3 shadow-sm min-w-0` : 'bg-surface border rounded-2xl p-4 space-y-3'}>
       {/* Entête mail */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
@@ -313,11 +337,12 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify
               <span className="text-xs text-purple-800 pb-1">La date pilote le gardiennage — vérifie-la avant de lever.</span>
             </div>
           )}
-          <div className="text-xs font-semibold text-ink-secondary uppercase tracking-wide">Fiches proposées</div>
+          {raison && <div className="text-sm bg-sky-50 border border-sky-200 text-sky-900 rounded-xl px-3 py-2"><b>Pourquoi pas rattaché seul :</b> {raison}</div>}
+          <div className="text-xs font-semibold text-ink-secondary uppercase tracking-wide">{habille && item.candidates.length ? 'Fiche proposée' : 'Fiches proposées'}</div>
           {item.candidates.length === 0 ? (
             <div className="text-sm text-ink-faint">Aucune fiche ne correspond automatiquement. Rattache manuellement ci-dessous.</div>
-          ) : item.candidates.map(c => (
-            <div key={c.mission_id} className="flex items-center justify-between gap-3 border rounded-xl px-3 py-2 flex-wrap">
+          ) : montres.map((c, ci) => (
+            <div key={c.mission_id} className={`flex items-center justify-between gap-3 border rounded-xl px-3 py-2 flex-wrap ${habille && ci === 0 ? 'border-emerald-300 bg-emerald-50/60' : ''}`}>
               <div className="min-w-0 text-sm">
                 <span className="font-semibold text-ink">Fiche {c.mission_number || c.mission_id.slice(0, 8)}</span>
                 <span className="text-ink-secondary"> · {c.vehicle_plate || '—'} · {[c.vehicle_brand, c.vehicle_model].filter(Boolean).join(' ') || '—'}</span>
@@ -331,6 +356,11 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify
               </button>
             </div>
           ))}
+          {habille && item.candidates.length > 1 && (
+            <button onClick={() => setAutres(v => !v)} className="min-h-[40px] text-sm font-semibold text-brand hover:underline">
+              {autres ? 'Masquer les autres fiches' : `Voir les ${item.candidates.length - 1} autre${item.candidates.length > 2 ? 's' : ''} fiche${item.candidates.length > 2 ? 's' : ''}`}
+            </button>
+          )}
 
           {/* Rattachement manuel + ignorer */}
           <div className="flex items-center gap-2 flex-wrap pt-1">

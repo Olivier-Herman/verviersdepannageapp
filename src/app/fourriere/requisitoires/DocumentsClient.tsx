@@ -61,7 +61,7 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
       </div>
       <div className={habille ? '[contain:inline-size]' : undefined}>
       {tab === 'recus'
-        ? <RequisitoiresClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded />
+        ? <RequisitoiresClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded habille={habille} />
         : <RelanceRequisitoireClient initialItems={relanceItems} appUrl={appUrl} embedded />}
       </div>
     </AppShell>
