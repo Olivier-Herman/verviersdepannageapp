@@ -40,7 +40,7 @@ Git et déploiement
 - Zéro valeur métier en dur (ids Odoo, montants, boîtes mail) : `app_settings` via `src/lib/settings/business-registry.ts` ou les grilles tarifaires. Le prebuild refuse le build sinon.
 
 Navigation et UI
-- Nouvelle page admin = tuile dans `src/app/admin/page.tsx` + entrée dans `src/app/admin/AdminNav.tsx`, même commit. Pas d'ajout à la barre de gauche (`nav-items.ts`) sans demander. Sous-page d'un hub : tuile du hub + section niveau 2 de `nav-tree.ts`.
+- Nouvelle page admin = une entrée dans le catalogue `src/lib/admin/reglages.ts` (onglet d'un écran existant, sinon Au quotidien ou Rangé), même commit : page Réglages, onglets et recherche en découlent. Ne jamais créer une 2e liste. Pas d'ajout à la barre de gauche (`nav-items.ts`) sans demander. Sous-page d'un hub : tuile du hub + section niveau 2 de `nav-tree.ts`.
 - Pas de « Odoo » dans les libellés utilisateur, sauf le bouton « Ouvrir dans Odoo ».
 - Textes lus par un utilisateur final (modes d'emploi, aide, tests) : pas de jargon (URL, statuts BDD, cron, API, modal).
 - Modals : fermeture par ✕ ou bouton, jamais au clic sur le fond. Thème clair : texte -700/800/900 sur fond -50/-100.

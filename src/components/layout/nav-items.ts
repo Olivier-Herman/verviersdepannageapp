@@ -47,8 +47,10 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/admin/flux2',   label: 'Flux 2',           icon: '⚡', moduleId: null, role: 'superadmin' },
   { href: '/facturation',       label: 'Facturation',         icon: '🧾', moduleId: 'facturation' },
   { href: '/missions-terminees', label: 'Missions terminées', i18nKey: 'nav.finished', icon: '📂', moduleId: 'facturation_or_missions' },
-  { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'facturation_or_admin' },
-  { href: '/admin/ventes',      label: 'Ventes véhicules',    icon: '🚗', moduleId: 'facturation_or_admin' },
+  // 11/11/2026 : les pages /admin/* sont réservées aux admins (layout) ; le lien n'est plus montré à la facturation,
+  // qu'il renvoyait à l'accueil. Accès inchangés (consigne d'Olivier). Les ventes restent dans Fourrière › Sorties.
+  { href: '/admin/amendes',     label: 'Amendes',             icon: '⚠️', moduleId: 'admin' },
+  { href: '/admin/ventes',      label: 'Ventes véhicules',    icon: '🚗', moduleId: 'admin' },
   // Olivier 2026-08-31 : Agent Mail en rodage → superadmin uniquement.
   // Le module 'mail_agent' existe déjà en base (désactivé) : pour l'ouvrir à
   // Jona/Momo, réactiver le module et repasser sur moduleId: 'mail_agent'.
@@ -69,7 +71,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/check-vehicule',label: 'Check Véhicule',   i18nKey: 'nav.check',         icon: '🔧', moduleId: null, role: 'staff' },  // tout le personnel (30/09/2026)
   { href: '/garde',         label: 'Garde',            icon: '🛡️', moduleId: null, role: 'dispatcher_or_admin' },
   { href: '/garage-info',   label: 'Garage Info',      icon: 'ℹ️', moduleId: null, role: 'non_driver' },
-  { href: '/admin',         label: 'Administration',   icon: '⚙️', moduleId: 'admin' },
+  { href: '/admin',         label: 'Réglages',         icon: '⚙️', moduleId: 'admin' },
   { href: '/ma-paie',       label: 'Mes Prestations',  icon: '📋', moduleId: null },
   { href: '/aide',          label: 'Aide',             i18nKey: 'nav.help',          icon: '📖', moduleId: null },
   // Assistant IA (/assistant) : retiré du menu le 28/10/2026, fait doublon avec l'assistant de Mobi (décision d'Olivier) ; la page reste.

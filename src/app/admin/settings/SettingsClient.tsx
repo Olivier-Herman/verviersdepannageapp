@@ -1,10 +1,10 @@
 'use client'
 
-import { useState }  from 'react'
+import { useEffect, useState }  from 'react'
 import { useRouter }  from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { signOutCascade as signOut } from '@/lib/auth-signout'
-import FeatureFlagsPanel from '@/components/admin/FeatureFlagsPanel'
+import { GROUPE_AFFICHE, ORDRE_GROUPES, normaliser } from '@/lib/admin/reglages'
 
 const LIST_TYPES = [
   { key: 'motif',        label: 'Motifs d\'intervention' },
@@ -17,13 +17,31 @@ export default function SettingsClient({
   listItems,
   callShortcuts,
   appSettings,
+  focus,
+  onglet,
 }: {
   listItems:    any[]
   callShortcuts: any[]
   appSettings:  Record<string, string>
+  /** Réglage à montrer (lien de la recherche de la page Réglages : ?r=<clé>). */
+  focus?:       string
+  /** Onglet à ouvrir (?onglet=motif|payment_mode|calls|params). */
+  onglet?:      string
 }) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'motif' | 'payment_mode' | 'calls' | 'params'>('motif')
+  const ongletInitial = (['motif', 'payment_mode', 'calls', 'params'] as const).find(o => o === onglet) || (focus ? 'params' : 'motif')
+  const [activeTab, setActiveTab] = useState<'motif' | 'payment_mode' | 'calls' | 'params'>(ongletInitial)
+  const [filtre, setFiltre] = useState('')
+
+  // Arrivée depuis la recherche : défiler jusqu'au réglage et le surligner quelques secondes.
+  const [surligne, setSurligne] = useState<string | null>(focus || null)
+  useEffect(() => {
+    if (!focus) return
+    const t = setTimeout(() => document.getElementById(`reglage-${focus}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+    const fin = setTimeout(() => setSurligne(null), 4000)
+    return () => { clearTimeout(t); clearTimeout(fin) }
+  }, [focus])
+  const anneau = (key: string) => surligne === key ? ' ring-2 ring-brand ring-offset-2' : ''
   const [showAdd,      setShowAdd]      = useState(false)
   const [newLabel,     setNewLabel]     = useState('')
   const [newValue,     setNewValue]     = useState('')
@@ -44,10 +62,16 @@ export default function SettingsClient({
   const [savingParams,   setSavingParams]   = useState(false)
   // Réglages métier (lot A « admin sans valeurs en dur », 09/09/2026) : texte tel que saisi ;
   // vide = repli du registre (la valeur qui était codée).
-  const [biz, setBiz] = useState<Record<string, string>>(() => Object.fromEntries(BUSINESS_SETTINGS.map(d => {
+  // 11/11/2026 : une valeur structurée (règles de tri des mails, loyers sans facture,
+  // comptes par fournisseur, absences) s'affiche et se renvoie en JSON, telle quelle :
+  // avant, elle devenait « [object Object] » à l'enregistrement.
+  const estStructure = (v: unknown) => v != null && typeof v === 'object' && (!Array.isArray(v) || v.some(x => x != null && typeof x === 'object'))
+  const [structures] = useState<Set<string>>(() => new Set(BUSINESS_SETTINGS.filter(d => estStructure((appSettings as any)[d.key])).map(d => d.key)))
+  const [bizInitial, setBizInitial] = useState<Record<string, string>>(() => Object.fromEntries(BUSINESS_SETTINGS.map(d => {
     const v = (appSettings as any)[d.key]
-    return [d.key, v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v)]
+    return [d.key, v == null ? '' : estStructure(v) ? JSON.stringify(v, null, 1) : Array.isArray(v) ? v.join(', ') : String(v)]
   })))
+  const [biz, setBiz] = useState<Record<string, string>>(bizInitial)
   const [paramsSaved,    setParamsSaved]    = useState(false)
 
   const items = listItems.filter(i => i.list_type === activeTab)
@@ -132,7 +156,14 @@ export default function SettingsClient({
       settings.tgr_info_email = tgrEmail.trim()
       settings.achats_rfq_mailbox = rfqMailbox.trim()
       for (const d of BUSINESS_SETTINGS) {
+        // Seuls les réglages modifiés à l'écran sont écrits : un réglage non touché garde
+        // exactement sa valeur en base (un 0 voulu, un réglage jamais renseigné) et ne bloque plus les autres.
+        if ((biz[d.key] || '') === (bizInitial[d.key] || '')) continue
         const raw = (biz[d.key] || '').trim()
+        if (structures.has(d.key)) {
+          try { settings[d.key] = JSON.parse(raw) } catch { setParamsError(`« ${d.label} » : contenu mal formé, vérifiez les crochets, accolades et guillemets.`); return }
+          continue
+        }
         // Liste vide autorisée quand l'origine est vide (talkie permanent, adresses du comptable).
         if (!raw && Array.isArray(d.seed) && d.seed.length === 0) { settings[d.key] = []; continue }
         if (!raw) { setParamsError(`« ${d.label} » est obligatoire (valeur d'origine : ${Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)}).`); return }
@@ -146,6 +177,7 @@ export default function SettingsClient({
         body: JSON.stringify({ settings })
       })
       if (!r.ok) { const j = await r.json().catch(() => ({})); setParamsError(j.error || `Erreur ${r.status}`); return }
+      setBizInitial(biz)
       setParamsSaved(true)
       setTimeout(() => setParamsSaved(false), 2000)
     } finally {
@@ -187,11 +219,32 @@ export default function SettingsClient({
       </div>
 
       {/* ── Onglet Paramètres ── */}
-      {activeTab === 'params' && (
+      {activeTab === 'params' && (() => {
+        // Filtre de la page (11/11/2026) : tous les mots tapés, sans accents ni majuscules.
+        const mots = normaliser(filtre).split(/\s+/).filter(Boolean)
+        const montre = (texte: string) => !mots.length || mots.every(m => normaliser(texte).includes(m))
+        const groupes = ORDRE_GROUPES
+          .map(g => ({ g, defs: BUSINESS_SETTINGS.filter(d => d.group === g && montre(`${d.label} ${d.help || ''} ${GROUPE_AFFICHE[g] || g}`)) }))
+          .filter(x => x.defs.length)
+        const blocs = {
+          achat:  montre('Avance de fonds email boîte achat factures fournisseurs'),
+          gps:    montre('Accueil visiteurs zone GPS QR rayon latitude longitude'),
+          tgr:    montre('TGR adresse information mail'),
+          rfq:    montre('Achats boîte demandes de prix appels d’offre'),
+          cache:  montre('Cache session reconnecter rôles accès'),
+        }
+        const rien = !groupes.length && !Object.values(blocs).some(Boolean)
+        return (
         <div className="flex flex-col gap-4">
-          <div className="bg-surface-2 border border rounded-2xl p-4">
+          <input type="search" value={filtre} onChange={e => setFiltre(e.target.value)} autoComplete="off"
+            placeholder={`Filtrer les ${BUSINESS_SETTINGS.length + 4} réglages…`} aria-label="Filtrer les réglages"
+            className="w-full min-h-[48px] bg-surface border border-strong rounded-xl px-4 text-ink text-base outline-none focus:border-brand" />
+          {rien && <p className="text-ink-muted text-sm text-center py-4">Aucun réglage ne correspond à « {filtre.trim()} ».</p>}
+
+          {blocs.achat && (
+          <div id="reglage-odoo_purchase_email" className={`bg-surface-2 border border rounded-2xl p-4${anneau('odoo_purchase_email')}`}>
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
-              Odoo — Avance de fonds
+              Avance de fonds
             </p>
             <label className="block text-sm text-ink-secondary mb-1.5">
               Email boîte achat
@@ -205,11 +258,13 @@ export default function SettingsClient({
                          text-ink text-sm outline-none focus:border-brand"
             />
             <p className="text-ink-faint text-xs mt-1.5">
-              Les factures fournisseurs (avances de fonds) seront envoyées à cette adresse pour traitement OCR Odoo.
+              Les factures fournisseurs (avances de fonds) sont envoyées à cette adresse pour être lues automatiquement.
             </p>
           </div>
+          )}
 
-          <div className="bg-surface-2 border border rounded-2xl p-4">
+          {blocs.gps && (
+          <div id="reglage-reception_geofence" className={`bg-surface-2 border border rounded-2xl p-4${anneau('reception_geofence')}`}>
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
               Accueil visiteurs — zone GPS
             </p>
@@ -231,8 +286,10 @@ export default function SettingsClient({
               </label>
             </div>
           </div>
+          )}
 
-          <div className="bg-surface-2 border border rounded-2xl p-4">
+          {blocs.tgr && (
+          <div id="reglage-tgr_info_email" className={`bg-surface-2 border border rounded-2xl p-4${anneau('tgr_info_email')}`}>
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
               TGR — adresse d'information
             </p>
@@ -240,8 +297,10 @@ export default function SettingsClient({
               className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
             <p className="text-ink-faint text-xs mt-1.5">Reçoit le mail à chaque nouvelle demande TGR déposée par un partenaire. Vide = pas de mail.</p>
           </div>
+          )}
 
-          <div className="bg-surface-2 border border rounded-2xl p-4">
+          {blocs.rfq && (
+          <div id="reglage-achats_rfq_mailbox" className={`bg-surface-2 border border rounded-2xl p-4${anneau('achats_rfq_mailbox')}`}>
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-3">
               Achats — boîte des demandes de prix
             </p>
@@ -249,41 +308,52 @@ export default function SettingsClient({
               className="w-full bg-surface-hover border border-strong rounded-xl px-4 py-2.5 text-ink text-sm outline-none focus:border-brand" />
             <p className="text-ink-faint text-xs mt-1.5">Boîte qui envoie et reçoit les appels d'offre du module Achats. Vide = administration@. La boîte doit être autorisée côté Microsoft avant de basculer.</p>
           </div>
+          )}
 
-          {(['Odoo', 'Boîtes mail', 'Montants', 'Facturation', 'Site public'] as const).map(group => (
-            <div key={group} className="bg-surface-2 border border rounded-2xl p-4">
-              <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-1">Réglages métier — {group}</p>
-              <p className="text-ink-faint text-xs mb-3">Obligatoire — la valeur d'origine est rappelée entre parenthèses. Pris en compte dans la minute, sans déploiement.</p>
+          {groupes.map(({ g, defs }) => (
+            <div key={g} className="bg-surface-2 border border rounded-2xl p-4">
+              <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-1">Réglages métier — {GROUPE_AFFICHE[g] || g}</p>
+              <p className="text-ink-faint text-xs mb-3">La valeur d'origine est rappelée entre parenthèses. Seuls les réglages modifiés sont enregistrés ; pris en compte dans la minute, sans déploiement.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {BUSINESS_SETTINGS.filter(d => d.group === group).map(d => (
-                  <label key={d.key} className="block">
-                    <span className="block text-ink-secondary text-xs font-medium mb-1">{d.label} <span className="text-ink-faint font-normal">({Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)})</span></span>
-                    <input type="text" inputMode={d.kind === 'number' ? 'decimal' : undefined} value={biz[d.key] || ''} onChange={e => setBiz(b => ({ ...b, [d.key]: e.target.value }))}
-                      placeholder={Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)}
-                      className="w-full bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
+                {defs.map(d => {
+                  const json = structures.has(d.key)
+                  const origine = Array.isArray(d.seed) ? d.seed.join(', ') : String(d.seed)
+                  return (
+                  <label key={d.key} id={`reglage-${d.key}`} className={`block rounded-xl${json ? ' md:col-span-2' : ''}${anneau(d.key)}`}>
+                    <span className="block text-ink-secondary text-xs font-medium mb-1">{d.label}{!json && origine && <span className="text-ink-faint font-normal"> ({origine})</span>}</span>
+                    {json ? (
+                      <textarea value={biz[d.key] || ''} onChange={e => setBiz(b => ({ ...b, [d.key]: e.target.value }))} rows={6} spellCheck={false}
+                        className="w-full bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-xs font-mono outline-none focus:border-brand" />
+                    ) : (
+                      <input type="text" inputMode={d.kind === 'number' ? 'decimal' : undefined} value={biz[d.key] || ''} onChange={e => setBiz(b => ({ ...b, [d.key]: e.target.value }))}
+                        placeholder={origine}
+                        className="w-full bg-surface-hover border border-strong rounded-xl px-3 py-2 text-ink text-sm outline-none focus:border-brand" />
+                    )}
                     {d.help && <span className="block text-ink-faint text-[11px] mt-0.5">{d.help}</span>}
                   </label>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}
 
-          {paramsError && <p className="text-red-700 text-sm">{paramsError}</p>}
+          <div className="sticky bottom-0 z-10 -mx-4 px-4 py-3 bg-surface/95 backdrop-blur border-t border-strong space-y-2">
+            {paramsError && <p className="text-red-700 text-sm">{paramsError}</p>}
+            <button
+              onClick={saveParams}
+              disabled={savingParams}
+              className="w-full min-h-[48px] py-3 bg-brand text-white rounded-xl font-bold text-sm
+                         disabled:opacity-50 transition-all"
+            >
+              {paramsSaved ? '✅ Enregistré' : savingParams ? 'Enregistrement...' : 'Enregistrer les paramètres'}
+            </button>
+          </div>
 
-          <button
-            onClick={saveParams}
-            disabled={savingParams}
-            className="w-full py-3 bg-brand text-white rounded-xl font-bold text-sm
-                       disabled:opacity-50 transition-all"
-          >
-            {paramsSaved ? '✅ Enregistré' : savingParams ? 'Enregistrement...' : 'Enregistrer les paramètres'}
-          </button>
-
-          {/* Préversions (feature flags) — visible superadmin uniquement */}
-          <FeatureFlagsPanel />
+          {/* Les préversions ont leur onglet : Réglages › Général › Préversions (11/11/2026). */}
 
           {/* Vider le cache session */}
-          <div className="bg-surface-2 border border rounded-2xl p-4 mt-2">
+          {blocs.cache && (
+          <div id="reglage-cache-session" className={`bg-surface-2 border border rounded-2xl p-4 mt-2${anneau('cache-session')}`}>
             <p className="text-ink-muted text-xs font-semibold uppercase tracking-widest mb-2">
               Cache session
             </p>
@@ -301,8 +371,10 @@ export default function SettingsClient({
               🔄 Vider le cache et reconnecter
             </button>
           </div>
+          )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ── Onglets listes / raccourcis ── */}
       {activeTab !== 'params' && (

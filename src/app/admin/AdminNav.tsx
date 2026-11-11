@@ -1,158 +1,45 @@
 'use client'
 
-// AdminNav : navigation horizontale groupee par theme (separateurs entre
-// groupes). Inclut TOUTES les sections /admin/* pour ne plus avoir a
-// taper l URL a la main. Pour une vraie nav segmentee (sidebar collapsible),
-// cf chantier [[admin-zero-hardcode]].
+// En-tête des pages de Réglages (option C, Olivier 11/11/2026) : retour vers la page
+// Réglages, titre de l'écran et ses onglets. Remplace l'ancien menu du haut à 43 liens.
+// Les onglets sont les pages existantes, à leur adresse habituelle (src/lib/admin/reglages.ts) :
+// un ancien lien ouvre directement le bon onglet. Rien sur la page Réglages elle-même.
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Wrench } from 'lucide-react'
-import {
-  Tag, MapPin, Users, Car,
-  Receipt, DollarSign,
-  Radio, Bell, ShieldCheck, FileSignature,
-  Map, ClipboardCheck,
-  FileText, Archive, Wallet, Truck,
-  Settings, Home, Printer, LifeBuoy,
-  ToggleLeft,
-  Moon,
-  type LucideIcon } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
+import { ecranDe } from '@/lib/admin/reglages'
 
-type NavItem = { href: string; label: string; icon: LucideIcon; obd?: boolean }
-type NavGroup = { title: string; items: NavItem[] }
+export default function AdminNav({ obd = false, superadmin = false }: { obd?: boolean; superadmin?: boolean }) {
+  const pathname = usePathname() || ''
+  if (pathname === '/admin') return null
 
-const GROUPS: NavGroup[] = [
-  {
-    title: 'Référentiel',
-    items: [
-      { href: '/admin/sources',          label: 'Sources',          icon: Tag },
-      { href: '/admin/depots',           label: 'Dépôts',           icon: MapPin },
-      { href: '/admin/trucks',           label: 'Dépanneuses',      icon: Truck },
-      { href: '/admin/adoption',         label: 'Adoption',         icon: Tag },
-      { href: '/admin/saisie-motifs',    label: 'Motifs de saisie', icon: Tag },
-      { href: '/admin/reception-motifs', label: 'Motifs réception', icon: Tag },
-      { href: '/admin/competences',      label: 'Compétences',      icon: Users },
-      { href: '/admin/visites',          label: 'Visites comptoir', icon: Users },
-      { href: '/admin/experts',          label: 'Accès experts',    icon: ShieldCheck },
-      { href: '/admin/police-zones',     label: 'Zones de police',  icon: ShieldCheck },
-      { href: '/admin/garage-partners',  label: 'Garages',          icon: Users },
-      { href: '/admin/garage-users',     label: 'Comptes garages',  icon: Users },
-      { href: '/admin/garage-cancellations', label: 'Annulations garage', icon: ShieldCheck },
-      { href: '/admin/espace-client',    label: 'Espace client',    icon: Users },
-      { href: '/admin/users',            label: 'Utilisateurs',     icon: Users },
-      { href: '/admin/vr-locations',     label: 'Lieux VR',         icon: Car },
-    ],
-  },
-  {
-    title: 'Tarification',
-    items: [
-      { href: '/admin/tarifs',     label: 'Tarifs',     icon: Receipt },
-      { href: '/admin/tarifs-transport', label: 'Tarifs transport', icon: Truck },
-      { href: '/admin/surcharges', label: 'Surcharges', icon: DollarSign },
-      { href: '/admin/facturation-auto', label: 'Facturation auto', icon: Receipt },
-    ],
-  },
-  {
-    title: 'Workflow',
-    items: [
-      { href: '/admin/axa',       label: 'AXA',       icon: Radio },
-      { href: '/admin/dispatch',      label: 'Dispatch',      icon: Radio },
-      { href: '/admin/garde-nuit',    label: 'Garde de nuit', icon: Moon },
-      { href: '/admin/demandes-site', label: 'Demandes du site', icon: Bell },
-      { href: '/admin/notifications', label: 'Notifications', icon: Bell },
-      { href: '/admin/sons-notifications', label: 'Sons des notifications', icon: Bell },
-      { href: '/admin/vetements', label: 'Pulls et t-shirts', icon: Users },
-      { href: '/admin/sam-echanges',  label: 'Échanges Sam / Sonic', icon: Radio },
-      { href: '/admin/max-echanges',  label: 'Conversations de Max', icon: Radio },
-      { href: '/admin/agents',        label: 'Propositions des agents', icon: Users },
-      { href: '/paiements',           label: 'Paiements fournisseurs', icon: Wallet },
-      { href: '/admin/decharges',     label: 'Décharges',     icon: ShieldCheck },
-      { href: '/admin/missions',      label: 'Missions',      icon: FileSignature },
-    ],
-  },
-  {
-    title: 'Parc & Flotte',
-    items: [
-      { href: '/admin/parc',           label: 'Plan parc',     icon: Map },
-      { href: '/admin/flux2',          label: 'Flux 2',        icon: ToggleLeft },
-      { href: '/admin/labels',         label: 'Étiquettes',    icon: Printer },
-      { href: '/admin/check-vehicule', label: 'Check véhicule', icon: ClipboardCheck },
-      // Préversion diagnostic OBD (05/11/2026) : seulement si le drapeau obd_diagnostic est visible pour l'utilisateur.
-      { href: '/admin/diagnostics-obd', label: 'Diagnostics OBD', icon: Wrench, obd: true },
-    ],
-  },
-  {
-    title: 'Documents & Compta',
-    items: [
-      { href: '/admin/documents', label: 'Documents', icon: FileText },
-      { href: '/admin/archives',  label: 'Archives',  icon: Archive },
-      { href: '/admin/cash',      label: 'Caisses',   icon: Wallet },
-      { href: '/admin/ventes',    label: 'Ventes',    icon: Car },
-      { href: '/admin/tgr',       label: 'TGR',       icon: Truck },
-    ],
-  },
-  {
-    title: 'Support',
-    items: [
-      { href: '/admin/matthieu', label: 'La tête à Matthieu', icon: LifeBuoy },
-    ],
-  },
-  {
-    title: 'Réglages',
-    items: [
-      { href: '/admin/settings', label: 'Paramètres', icon: Settings },
-    ],
-  },
-]
-
-export default function AdminNav({ obd = false }: { obd?: boolean }) {
-  const pathname = usePathname()
-  const isHome = pathname === '/admin'
+  const trouve = ecranDe(pathname, { superadmin, obd })
 
   return (
-    <nav className="flex overflow-x-auto items-stretch px-4 py-2 bg-surface-2 border-b scrollbar-hide">
-      {/* Lien accueil admin */}
+    <nav aria-label="Réglages" className="px-4 pt-3 pb-1 lg:px-0 lg:pt-0 space-y-2">
       <Link href="/admin"
-        className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 mr-2 ${
-          isHome ? 'bg-brand text-white' : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
-        }`}
-        title="Tableau de bord administration"
-      >
-        <Home size={15} />
-        Accueil
+        className="inline-flex items-center gap-1 min-h-[44px] -ml-1 pr-3 text-sm font-medium text-ink-secondary hover:text-ink">
+        <ChevronLeft size={18} /> Réglages
       </Link>
-
-      {GROUPS.map((group, gIdx) => (
-        <div key={group.title} className="flex items-stretch">
-          {/* Separateur vertical entre groupes (sauf avant le premier) */}
-          <span className="self-stretch w-px bg-border mx-2" aria-hidden />
-
-          {/* Label de groupe (texte tres discret au-dessus des items) */}
-          <div className="flex flex-col items-start gap-0.5 min-w-0">
-            <span className="text-ink-faint text-[10px] uppercase tracking-wider px-2 pt-0.5">
-              {group.title}
-            </span>
-            <div className="flex gap-1">
-              {group.items.filter(it => !it.obd || obd).map(({ href, label, icon: Icon }) => {
-                const active = pathname === href || pathname.startsWith(href + '/')
-                return (
-                  <Link key={href} href={href}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
-                      active
-                        ? 'bg-brand text-white'
-                        : 'text-ink-secondary hover:text-ink hover:bg-surface-hover'
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {label}
-                  </Link>
-                )
-              })}
-            </div>
+      {trouve && trouve.ecran.onglets.length > 1 && (
+        <div>
+          <p className="text-ink font-bold text-lg leading-tight mb-2">{trouve.ecran.label}</p>
+          <div role="tablist" className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            {trouve.ecran.onglets.map(o => {
+              const actif = o.href === trouve.actif
+              return (
+                <Link key={o.href} href={o.href} role="tab" aria-selected={actif}
+                  className={`flex items-center min-h-[44px] px-4 rounded-xl text-sm font-semibold whitespace-nowrap border transition-colors ${
+                    actif ? 'bg-brand/10 border-brand text-brand' : 'bg-surface border-strong text-ink-secondary hover:text-ink hover:border-brand/40'
+                  }`}>
+                  {o.label}
+                </Link>
+              )
+            })}
           </div>
         </div>
-      ))}
+      )}
     </nav>
   )
 }

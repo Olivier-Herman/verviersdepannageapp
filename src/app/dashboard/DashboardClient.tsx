@@ -74,7 +74,7 @@ const MODULES: ModuleItem[] = [
   { id: 'circuit',       label: 'Circuit Spa',     href: '/circuit',        icon: '🏁', color: 'info'   },
   { id: 'francofolies',  label: 'Francofolies',    href: '/francofolies',   icon: '🎪', color: 'brand'  },
   { id: 'finance',       label: 'Finance',         href: '/finance',        icon: '💵', color: 'success', i18nKey: 'dashboard.tile_finance_label' },
-  { id: 'admin',         label: 'Administration',  href: '/admin',          icon: '⚙️', color: 'alert',   i18nKey: 'dashboard.tile_admin_label'   },
+  { id: 'admin',         label: 'Réglages',        href: '/admin',          icon: '⚙️', color: 'alert',   i18nKey: 'dashboard.tile_admin_label'   },
   { id: 'depose',        label: 'Dépose Véhicule', href: '/depose',         icon: '🗺️', color: 'warning', i18nKey: 'dashboard.tile_depose_label'  },
 ]
 
