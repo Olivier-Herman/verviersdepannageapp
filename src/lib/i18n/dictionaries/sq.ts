@@ -161,7 +161,7 @@ export const sq: Dictionary = {
     tile_check_label:      'Kontroll i mjetit',
     tile_tgr_label:        'TGR Touring',
     tile_finance_label:    'Financa',
-    tile_admin_label:      'Administrim',
+    tile_admin_label:      'Cilësimet',
     tile_depose_label:     'Dorëzim i mjetit',
     tile_depannage_label:  'Asistencë',
     tile_fourriere_label:  'Parkim ligjor',

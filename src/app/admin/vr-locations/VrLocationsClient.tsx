@@ -1,7 +1,6 @@
 'use client'
 // src/app/admin/vr-locations/VrLocationsClient.tsx
 import { useState, useRef, useEffect } from 'react'
-import Link from 'next/link'
 
 interface VrLocation { id: string; name: string; address: string; lat: number|null; lng: number|null; active: boolean; sort_order: number }
 
@@ -92,7 +91,6 @@ export default function VrLocationsClient({ initialData }: { initialData: VrLoca
   return (
     <div className="min-h-screen bg-surface px-6 py-8 max-w-3xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/admin" className="w-9 h-9 flex items-center justify-center bg-surface-hover rounded-xl text-ink">←</Link>
         <h1 className="text-ink font-bold text-2xl">Emplacements VR</h1>
         <button onClick={() => setEditing({ name: '', address: '', lat: null, lng: null, sort_order: 0 })}
           className="ml-auto px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">

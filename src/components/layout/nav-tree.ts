@@ -150,7 +150,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
   {
     key: 'reglages', label: 'Réglages', icon: '⚙️',
     sections: [
-      { href: '/admin',        label: 'Administration',      icon: Settings,  requires: '/admin' },
+      { href: '/admin',        label: 'Réglages',            icon: Settings,  requires: '/admin' },
       { href: '/journal',      label: 'Journal',             icon: FileText,  requires: '/journal',     superadminOnly: true, heading: 'Outils' },
       { href: '/chantiers',    label: 'Chantiers',           icon: ClipboardList, requires: '/chantiers', superadminOnly: true },
       { href: '/admin/flux2',  label: 'Flux 2',              icon: Settings,  requires: '/admin/flux2', superadminOnly: true },

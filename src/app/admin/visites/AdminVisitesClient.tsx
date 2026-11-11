@@ -6,8 +6,6 @@
 
 import { useState }  from 'react'
 import { useRouter } from 'next/navigation'
-import Link          from 'next/link'
-
 interface Motif  { id: string; label: string; is_expert: boolean; sort_order: number; active: boolean }
 interface Bureau { id: string; name: string;  sort_order: number; active: boolean }
 
@@ -87,9 +85,8 @@ export default function AdminVisitesClient({
 
   return (
     <div className="min-h-screen bg-surface max-w-3xl mx-auto flex flex-col">
-      <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
+      <div className="bg-surface-2 border-b border-app px-5 pt-4 pb-4">
         <div className="flex items-center gap-3 mb-1">
-          <Link href="/admin" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
           <div className="flex-1">
             <h1 className="text-ink font-bold text-lg">👥 Visites au comptoir</h1>
             <p className="text-ink-muted text-xs">Motifs de visite et bureaux d'expertise proposés lors de l'enregistrement d'une visite (véhicule en parc).</p>

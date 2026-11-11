@@ -158,7 +158,7 @@ export const fr = {
     tile_check_label:      'Check Véhicule',
     tile_tgr_label:        'TGR Touring',
     tile_finance_label:    'Finance',
-    tile_admin_label:      'Administration',
+    tile_admin_label:      'Réglages',
     tile_depose_label:     'Dépose Véhicule',
     tile_depannage_label:  'Dépannage',
     tile_fourriere_label:  'Fourrière',

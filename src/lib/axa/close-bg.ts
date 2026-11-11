@@ -18,7 +18,7 @@
 // Garde-fou connu : go&assist répond souvent 200 avec `{isSuccess:false}` — le
 // client le traduit déjà en `ok:false`, on journalise le message tel quel.
 
-import { closeMissionAuto, postReport, getMission, postInterventionStep, reportMovementForNothing } from '@/lib/axa/goassist'
+import { closeMissionAuto, postReport, getMission, postInterventionStep, reportMovementForNothing, acceptMission, dispatchMission } from '@/lib/axa/goassist'
 import { computeMissionKm } from '@/lib/missions/estimate-price'
 
 export interface AxaCloseBgResult {
@@ -142,6 +142,23 @@ export async function closeAxaBg(
       .eq('id', missionId).maybeSingle()
 
     if (m?.axa_closed_at) { await log('axa_synced', 'AXA : déjà clôturée, on ne rejoue pas', {}); return { ok: true } }
+
+    // Mission jamais affectée à notre technicien chez AXA (fiche créée par le mail,
+    // chauffeur désigné AVANT le lien go&assist) : AXA refuse alors toute étape
+    // (« not the dispatched technician »). On valide si « New », on affecte, puis
+    // on pointe. 24 fiches touchées du 01/09 au 10/11/2026 (Olivier 11/11/2026).
+    {
+      const st = (await getMission(missionOrderId))?.status || null
+      if (st === 'New' || st === 'AwaitingDispatch') {
+        if (st === 'New') {
+          const a = await acceptMission(missionOrderId)
+          if (!a.ok) { await log('axa_sync_error', `AXA : validation avant clôture refusée — ${a.data?.message || a.status}`, {}); return { ok: false, error: 'validation refusée' } }
+        }
+        const dsp = await dispatchMission(missionOrderId)
+        if (!dsp.ok) { await log('axa_sync_error', `AXA : affectation avant clôture refusée — ${dsp.data?.message || dsp.status}`, {}); return { ok: false, error: 'affectation refusée' } }
+        await log('axa_synced', 'AXA ↗ mission affectée à notre technicien avant la clôture (elle ne l’était pas encore)', { mission_order_id: missionOrderId, previous_status: st })
+      }
+    }
 
     // Nos pointages → étapes go&assist. `Started` = le début de l'intervention sur
     // place ; `DestinationAddress` et la fin suivent le chargement / la livraison.

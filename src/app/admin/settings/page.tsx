@@ -4,7 +4,7 @@ export const revalidate = 0
 import { createAdminClient } from '@/lib/supabase'
 import SettingsClient from './SettingsClient'
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams?: { r?: string; onglet?: string } }) {
   const supabase = createAdminClient()
 
   const { data: listItems } = await supabase
@@ -37,6 +37,8 @@ export default async function SettingsPage() {
       listItems={listItems || []}
       callShortcuts={callShortcuts || []}
       appSettings={appSettings}
+      focus={typeof searchParams?.r === 'string' ? searchParams.r : undefined}
+      onglet={typeof searchParams?.onglet === 'string' ? searchParams.onglet : undefined}
     />
   )
 }

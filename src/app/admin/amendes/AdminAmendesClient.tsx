@@ -260,7 +260,7 @@ export default function AdminAmendesClient({ fines, drivers, userRole, userName,
   const grandUnknown    = filtered.filter(f => !f.driver_id).length
 
   return (
-    <AppShell title="Amendes — Administration" userRole={userRole} userName={userName} userModules={userModules}>
+    <AppShell title="Amendes" userRole={userRole} userName={userName} userModules={userModules}>
       <div className="max-w-5xl mx-auto p-4 lg:p-6 space-y-4">
         {/* Header + actions */}
         <div className="flex items-center justify-between gap-2 flex-wrap">

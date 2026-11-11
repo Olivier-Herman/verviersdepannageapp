@@ -20,7 +20,7 @@ export default function AdminLayoutClient({
   userModules?: string[]
 }) {
   return (
-    <AppShell title="Administration" userName={userName} userRole={userRole} userEmail={userEmail} userId={userId} userModules={userModules}>
+    <AppShell title="Réglages"userName={userName} userRole={userRole} userEmail={userEmail} userId={userId} userModules={userModules}>
       {/* AdminNav + contenu — chaque client gère son propre padding.
           AmbientBackground variant=light pose un fond discret sur toute la zone admin. */}
       <div className="min-w-0 overflow-x-hidden lg:px-8 lg:py-6">

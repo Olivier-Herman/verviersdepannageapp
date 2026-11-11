@@ -4,6 +4,7 @@ import { reloginAxa } from '@/lib/axa/relogin'
 import { recordAxaPollResult } from '@/lib/axa/health'
 
 export const AXA_RELOGIN_KEY = 'axa_relogin_last'
+const POLL_RETRY_AFTER_FAIL_MS = 60 * 60_000
 
 export function axaReloginConfigured(): boolean {
   return !!(process.env.AXA_PORTAL_EMAIL && process.env.AXA_PORTAL_PASSWORD)
@@ -22,11 +23,17 @@ export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual'): Promis
     await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify(r) }, { onConflict: 'key' })
     return r
   }
-  // Pas deux reconnexions en même temps (cron + poll) : verrou 3 min.
+  // Pas deux reconnexions en même temps (cron + poll) : verrou 6 min (l'attente du code AXA peut durer 2 min).
   const { data: last } = await sb.from('app_settings').select('value').eq('key', AXA_RELOGIN_KEY).maybeSingle()
   try {
     const l = last?.value ? JSON.parse(last.value) : null
-    if (l?.running_since && Date.now() - Date.parse(l.running_since) < 3 * 60_000) return { ok: false, steps: [], error: 'reconnexion déjà en cours', at }
+    if (l?.running_since && Date.now() - Date.parse(l.running_since) < 6 * 60_000) return { ok: false, steps: [], error: 'reconnexion déjà en cours', at }
+    // 11/11/2026 : chaque essai raté envoyait un mail de code AXA → 67 mails en une
+    // heure. Après un échec, le poll ne réessaie qu'une fois par heure (le cron et
+    // le bouton « Reconnecter maintenant » ne sont pas freinés).
+    if (trigger === 'poll' && l && l.ok === false && l.at && Date.now() - Date.parse(l.at) < POLL_RETRY_AFTER_FAIL_MS) {
+      return { ok: false, steps: [], error: `dernière reconnexion en échec (${l.error || 'erreur'}) — prochain essai automatique dans l’heure`, at }
+    }
   } catch {}
   await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify({ running_since: at, trigger }) }, { onConflict: 'key' })
   const r = await reloginAxa(async steps => {

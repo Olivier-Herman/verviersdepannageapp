@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 
 export default function AdminFrancofoliesClient({
@@ -34,7 +33,6 @@ export default function AdminFrancofoliesClient({
   return (
     <AppShell title="Francofolies — Tarifs" userRole={userRole} userName={userName} userEmail={userEmail}>
       <main className="p-4 lg:p-8 max-w-lg mx-auto space-y-5">
-        <Link href="/admin" className="text-ink-muted text-sm">← Administration</Link>
         <div>
           <h1 className="text-ink text-xl font-bold">🎪 Tarifs Francofolies de Spa</h1>
           <p className="text-ink-muted text-sm">Mal garée évènementiel.</p>

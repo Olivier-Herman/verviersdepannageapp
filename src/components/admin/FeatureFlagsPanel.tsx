@@ -20,12 +20,14 @@ export default function FeatureFlagsPanel() {
   const [flags,  setFlags]  = useState<Flag[] | null>(null)
   const [users,  setUsers]  = useState<U[]>([])
   const [saving, setSaving] = useState<string | null>(null)
+  const [charge, setCharge] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/feature-flags', { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : null))
       .then(j => { setFlags(j?.flags || null); setUsers(j?.users || []) })
       .catch(() => setFlags(null))
+      .finally(() => setCharge(true))
   }, [])
 
   // Pilotes nommés : en mode « Moi », ces users voient aussi la préversion.
@@ -51,7 +53,8 @@ export default function FeatureFlagsPanel() {
     }
   }
 
-  if (!flags || flags.length === 0) return null
+  if (!charge) return <p className="text-ink-muted text-sm py-4">Chargement…</p>
+  if (!flags || flags.length === 0) return <p className="text-ink-muted text-sm py-4">Aucune préversion en cours.</p>
 
   return (
     <div className="bg-surface-2 border border rounded-2xl p-4">

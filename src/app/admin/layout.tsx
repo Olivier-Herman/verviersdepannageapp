@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       userId={userId}
       userModules={userModules}
     >
-      <AdminNav obd={await isPreviewOn('obd_diagnostic', userRole, userId)} />
+      <AdminNav obd={await isPreviewOn('obd_diagnostic', userRole, userId)} superadmin={userRole === 'superadmin'} />
       <div className="flex-1 overflow-y-auto">
         {children}
       </div>

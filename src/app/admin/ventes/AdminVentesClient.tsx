@@ -152,7 +152,6 @@ export default function AdminVentesClient({
   return (
     <div className={`p-4 md:p-6 max-w-7xl mx-auto space-y-5 ${embedded ? 'pt-2' : ''}`}>
       <div className="flex flex-wrap items-center gap-3">
-        {!embedded && <Link href="/admin" className="text-sm text-ink-muted hover:text-ink">← Admin</Link>}
         {!embedded && <h1 className="text-xl font-bold text-ink">🚗 Ventes de véhicules</h1>}
         <div className="ml-auto flex gap-2">
           <button onClick={() => setPickAbandon(true)} disabled={busy}
