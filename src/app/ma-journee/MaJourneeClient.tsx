@@ -102,7 +102,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
   const dNous = dRead.filter(x => x.r.who === 'nous' && x.r.primary?.kind !== 'comex')
   const dRobot = dRead.filter(x => x.r.who === 'robot').length
   const dEux = dRead.filter(x => x.r.who === 'eux').length
-  const vRead = useMemo(() => vehicles.map(v => ({ v, r: readVehicle(v) })), [vehicles])
+  const vRead = useMemo(() => vehicles.map(v => ({ v, r: readVehicle(v, { zonesSeules: true }) })), [vehicles])
   const vNous = vRead.filter(x => x.r.who === 'nous').sort((a, b) => b.v.nights - a.v.nights)
   const vRobot = vRead.filter(x => x.r.who === 'robot').length
   const vEux = vRead.filter(x => x.r.who === 'eux').length
@@ -141,7 +141,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
     return <Link href={href} target={p.kind === 'odoo' ? '_blank' : undefined} className={btnGhost}>{p.label}</Link>
   }
   const vehicleAction = (v: V, p: NonNullable<ReturnType<typeof readVehicle>['primary']>) => {
-    const href = p.href || (p.kind === 'restitute' ? `/qr/mission/${v.id}` : `/fourriere?q=${encodeURIComponent(v.plate || v.vin || String(v.mission_number ?? ''))}`)
+    const href = p.kind === 'zone' ? `/fourriere?q=${encodeURIComponent(v.plate || v.vin || String(v.mission_number ?? ''))}` : p.href || (p.kind === 'restitute' ? `/qr/mission/${v.id}` : `/fourriere?q=${encodeURIComponent(v.plate || v.vin || String(v.mission_number ?? ''))}`)
     return <Link href={href} className={p.tone === 'brand' ? btnMain : btnGhost}>{p.label}</Link>
   }
 

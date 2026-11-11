@@ -25,6 +25,8 @@ export interface V {
   source: string | null; status: string; mission_type: string | null
   plate: string | null; vin: string | null; brand: string | null; model: string | null
   zone: string | null; zone_label: string | null; row: number | null; slot: number | null
+  /** Zone d'attente (Transit, J, K, K1, LABO… réglage de la zone) : le véhicule reste à ranger. */
+  zone_waiting?: boolean
   entered_at: string | null; nights: number; regime: string; storage_htva: number; storage_note: string
   client_name: string | null; officer_name: string | null; officer_partner_id: number | null; police_zone: string | null; pv: string | null
   motif: string | null; motif_code: string | null
@@ -65,11 +67,13 @@ type StepState = 'done' | 'now' | 'todo' | 'bad' | 'wait'
 interface Step { key: string; label: string; state: StepState; note?: string }
 export interface Reading {
   who: Who; headline: string; detail?: string
-  primary?: { label: string; kind: 'place' | 'locate' | 'officer' | 'relance' | 'qualify' | 'destruction' | 'restitute' | 'sell' | 'link' | 'fiche'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
+  primary?: { label: string; kind: 'place' | 'zone' | 'locate' | 'officer' | 'relance' | 'qualify' | 'destruction' | 'restitute' | 'sell' | 'link' | 'fiche'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
   steps: Step[]
 }
 
-export function readVehicle(v: V): Reading {
+/** `zonesSeules` (préversion ma_journee, Olivier 11/11/2026) : on range par ZONE, jamais par rangée ;
+ *  seuls les véhicules sans zone ou en zone d'attente sont « à ranger ». */
+export function readVehicle(v: V, opts: { zonesSeules?: boolean } = {}): Reading {
   const src = String(v.source || '').toLowerCase()
   const fam = familyOf(src)
   const legacy = fam === 'legacy' || !src
@@ -89,7 +93,9 @@ export function readVehicle(v: V): Reading {
   const base = { steps }
 
   if (v.unlocated) return { ...base, who: 'nous', headline: 'Introuvable au dernier inventaire', detail: 'Retrouve-le au scanner, ou déclare-le sorti si le véhicule n\'est plus là.', primary: { label: 'Localiser', kind: 'locate', href: '/fourriere/non-localises', tone: 'brand' } }
-  if (!v.zone || v.row == null) return { ...base, who: 'nous', headline: !v.zone ? 'Arrivé — à placer' : `En ${v.zone_label || v.zone} — rangée à définir`, detail: 'La zone proposée vient de la source ; choisis la rangée sur le plan.', primary: { label: 'Placer', kind: 'place', href: '/fourriere/plan', tone: 'brand' } }
+  if (opts.zonesSeules) {
+    if (!v.zone) return { ...base, who: 'nous', headline: 'Arrivé — sans zone', detail: 'Choisis sa zone.', primary: { label: 'Changer de zone', kind: 'zone', tone: 'brand' } }
+  } else if (!v.zone || v.row == null) return { ...base, who: 'nous', headline: !v.zone ? 'Arrivé — à placer' : `En ${v.zone_label || v.zone} — rangée à définir`, detail: 'La zone proposée vient de la source ; choisis la rangée sur le plan.', primary: { label: 'Placer', kind: 'place', href: '/fourriere/plan', tone: 'brand' } }
   // Transit = zone de transit ACCIDENT (Olivier 16/09/2026) : déposé par le
   // chauffeur, à traiter par le bureau vers la relivraison ou la zone A. Un
   // véhicule d'une autre source en Transit n'est pas à sa place.
@@ -97,6 +103,7 @@ export function readVehicle(v: V): Reading {
     if (fam === 'accident') return { ...base, who: 'nous', headline: `Accident en transit depuis ${v.nights} j — à traiter : relivraison ou zone A`, detail: `${v.client_name ? `${v.client_name} · ` : ''}${v.redelivery_address ? `adresse de relivraison : ${v.redelivery_address}` : 'pas encore d\'adresse de relivraison'}. Programme la relivraison, ou place-le en zone A s'il reste.`, primary: { label: 'Traiter', kind: 'link', href: `/dispatch/dossier/${v.id}`, tone: 'brand' } }
     if (!legacy) return { ...base, who: 'nous', headline: `${srcLabel(v.source)} en Transit — à placer dans sa zone`, detail: 'Transit est la zone de transit accident ; ce véhicule attend une vraie place.', primary: { label: 'Placer', kind: 'place', href: '/fourriere/plan', tone: 'brand' } }
   }
+  if (opts.zonesSeules && v.zone_waiting) return { ...base, who: 'nous', headline: `En ${v.zone_label || v.zone} (zone d'attente) depuis ${v.nights} j — à ranger`, detail: 'Déplace-le dans sa zone.', primary: { label: 'Changer de zone', kind: 'zone', tone: 'brand' } }
   if (legacy) return { ...base, who: 'nous', headline: 'Fiche d\'avant VD Soft — à qualifier', detail: `Entré le ${fmtY(v.entered_at)} (${v.nights} nuits). Saisie, AVP, épave, ou déjà sorti ? Le choix se fait sur la fiche (source), le véhicule entre alors dans son circuit.`, primary: { label: 'Qualifier', kind: 'qualify', href: `/dispatch/${v.id}`, tone: 'brand' } }
   if (v.destruction) return { ...base, who: 'nous', headline: `Dossier de destruction ${v.destruction.status ? `· ${v.destruction.status}` : 'ouvert'}`, detail: 'Présentation, frais à la date de présentation, épaviste.', primary: { label: 'Ouvrir le dossier', kind: 'destruction', href: '/fourriere/destruction/dossiers', tone: 'ghost' } }
   if (v.domaine_remise_date) return { ...base, who: 'eux', headline: `Remis au Domaine le ${fmtY(v.domaine_remise_date)} — enlèvement attendu`, detail: v.domaine_enlevement_date ? `Enlèvement prévu le ${fmtY(v.domaine_enlevement_date)}.` : 'Date d\'enlèvement pas encore connue.', primary: { label: 'Domaine', kind: 'link', href: '/fourriere/domaine', tone: 'ghost' } }
@@ -159,7 +166,7 @@ function Timeline({ steps }: { steps: Step[] }) {
 type Filter = 'all' | Who
 export default function ParcClient({ userRole, userName, userEmail, userModules, journee = false }: { userRole: string; userName: string; userEmail?: string | null; userModules: string[]; journee?: boolean }) {
   const [rows, setRows] = useState<V[]>([])
-  const [zones, setZones] = useState<{ key: string; label: string }[]>([])
+  const [zones, setZones] = useState<{ key: string; label: string; waiting?: boolean }[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('nous')
   const [fam, setFam] = useState<string>('all')
@@ -182,7 +189,13 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
   useEffect(() => { load() }, [])
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 7000); return () => clearTimeout(t) }, [msg])
 
-  const readings = useMemo(() => new Map(rows.map(v => [v.id, readVehicle(v)] as const)), [rows])
+  const readings = useMemo(() => new Map(rows.map(v => [v.id, readVehicle(v, { zonesSeules: journee })] as const)), [rows, journee])
+  const [zoneFor, setZoneFor] = useState<string | null>(null)
+  const moveZone = async (v: V, key: string) => {
+    setBusy(v.id)
+    try { const r = await fetch(`/api/missions/${v.id}/transfer-parc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone_key: key }) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Déplacement impossible'); setMsg(`✓ ${v.plate || 'Véhicule'} déplacé en ${zones.find(z => z.key === key)?.label || key}`); setZoneFor(null); await load() }
+    catch (e: any) { setMsg(`⚠ ${e.message}`) } finally { setBusy(null) }
+  }
   const norm = (s: string) => s.toLowerCase().replace(/[\s.\-_/]/g, '')
   const scoped = useMemo(() => {
     const nq = norm(q)
@@ -220,6 +233,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
     if (p.kind === 'officer') { setOfficerFor(officerFor === v.id ? null : v.id); setOfficerName(v.officer_name || '') }
     else if (p.kind === 'relance') relance(v)
     else if (p.kind === 'fiche') setFiche(v.id)
+    else if (p.kind === 'zone') setZoneFor(zoneFor === v.id ? null : v.id)
     else if (p.href) window.location.href = p.href
   }
 
@@ -325,6 +339,18 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
                   <div className="min-w-0"><div className="text-sm font-bold">{r.headline}</div>{r.detail && <div className="text-xs opacity-80 mt-0.5">{r.detail}</div>}</div>
                   {p && <button disabled={busy === v.id} onClick={() => primary(v, r)} className={`px-3.5 py-2 rounded-xl text-sm font-bold shrink-0 disabled:opacity-50 ${TONE[p.tone || 'brand']}`}>{busy === v.id ? '…' : p.label}{p.href && p.kind !== 'officer' ? ' ↗' : ''}</button>}
                 </div>
+                {zoneFor === v.id && (
+                  <div className="mx-4 mb-3 p-3 bg-surface-2 border rounded-xl">
+                    <p className="text-xs font-semibold text-ink-secondary mb-2">Déplacer {v.plate || 'le véhicule'} en zone :</p>
+                    <div className="flex flex-wrap gap-2">
+                      {zones.filter(z => z.key !== v.zone).map(z => (
+                        <button key={z.key} disabled={busy === v.id} onClick={() => moveZone(v, z.key)}
+                          className={`min-h-[44px] min-w-[44px] px-3 rounded-xl border text-sm font-bold disabled:opacity-40 ${(z as any).waiting ? 'bg-surface text-ink-muted' : 'bg-surface text-ink hover:border-brand'}`}>{z.label}</button>
+                      ))}
+                      <button onClick={() => setZoneFor(null)} className="min-h-[44px] px-3 rounded-xl text-sm text-ink-secondary">Annuler</button>
+                    </div>
+                  </div>
+                )}
                 {officerFor === v.id && (
                   <div className="mx-4 mb-3 p-3 bg-surface-2 border rounded-xl max-w-md">
                     <OfficerAutocomplete allZones label="Policier (contact de la zone)" value={officerName} companyId={null} onChange={setOfficerName} onPickPartner={pid => { if (pid != null) linkOfficer(v, pid) }} />

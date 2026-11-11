@@ -100,7 +100,7 @@ export async function GET() {
       id: m.id, mission_number: m.mission_number, external_id: m.external_id, dossier_number: m.dossier_number,
       source: m.source, status: m.status, mission_type: m.mission_type,
       plate: m.vehicle_plate, vin: m.vehicle_vin, brand: m.vehicle_brand, model: m.vehicle_model,
-      zone: m.parc_zone_key, zone_label: zoneConf?.label || m.parc_zone_key, row: m.parc_row_number, slot: m.parc_slot_index,
+      zone: m.parc_zone_key, zone_label: zoneConf?.label || m.parc_zone_key, zone_waiting: !!zoneConf?.zone_attente, row: m.parc_row_number, slot: m.parc_slot_index,
       entered_at: entry, nights, regime, storage_htva: Math.round(storage * 100) / 100, storage_note: storageNote,
       client_name: m.client_name, officer_name: m.officer_name, officer_partner_id: m.officer_partner_id, police_zone: m.police_zone, pv: m.police_pv_number,
       motif: m.saisie_motif_label, motif_code: m.saisie_motif_code,
@@ -117,5 +117,5 @@ export async function GET() {
       odoo_vehicle_id: m.odoo_vehicle_id,
     }
   })
-  return NextResponse.json({ ok: true, vehicles, zones: zones.map(z => ({ key: z.key, label: z.label })) })
+  return NextResponse.json({ ok: true, vehicles, zones: zones.map(z => ({ key: z.key, label: z.label, waiting: z.zone_attente })) })
 }
