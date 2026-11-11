@@ -126,7 +126,7 @@ export default async function SourceDetailPage({ params }: { params: { key: stri
                 ? <>
                     {source.default_billed_to_name}
                     {source.default_billed_to_id != null && (
-                      <span className="text-ink-faint text-xs ml-2">(Odoo partner #{source.default_billed_to_id})</span>
+                      <span className="text-ink-faint text-xs ml-2">(client ERP n° {source.default_billed_to_id})</span>
                     )}
                   </>
                 : <span className="text-ink-muted italic">— non configuré (les missions seront créées sans client par défaut)</span>}

@@ -93,7 +93,7 @@ export default function TestPrintClient() {
 
       {/* Saisie ticket */}
       <div className="bg-surface border rounded-2xl p-5">
-        <label className="block text-ink-muted text-xs mb-1.5">ID Ticket Helpdesk Odoo</label>
+        <label className="block text-ink-muted text-xs mb-1.5">N° du ticket d’assistance (ERP)</label>
         <div className="flex gap-2">
           <input value={ticketId}
             onChange={e => setTicketId(e.target.value.replace(/[^0-9]/g, ''))}

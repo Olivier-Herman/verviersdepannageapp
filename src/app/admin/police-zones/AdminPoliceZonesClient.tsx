@@ -113,7 +113,7 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
                   </p>
                   <p className="text-ink-muted text-xs">
                     Ordre : {z.sort_order}
-                    {z.odoo_company_id ? ` · Société Odoo #${z.odoo_company_id}` : ' · pas de société Odoo'}
+                    {z.odoo_company_id ? ` · société ERP n° ${z.odoo_company_id}` : ' · pas de société dans l’ERP'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -152,12 +152,12 @@ export default function AdminPoliceZonesClient({ initialZones }: { initialZones:
             </div>
 
             <div>
-              <label className="block text-ink-muted text-xs font-semibold mb-1.5">ID société Odoo</label>
+              <label className="block text-ink-muted text-xs font-semibold mb-1.5">N° de la société dans l’ERP</label>
               <input type="number" value={editing.odoo_company_id ?? ''}
                 onChange={e => setEditing({ ...editing, odoo_company_id: e.target.value === '' ? null : (parseInt(e.target.value, 10) || null) })}
                 placeholder="Ex: 1234"
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm" />
-              <p className="text-ink-faint text-[10px] mt-1">ID de la fiche Société Odoo de la zone. Ses contacts seront proposés comme agents au chauffeur (autocomplete).</p>
+              <p className="text-ink-faint text-[10px] mt-1">Numéro de la fiche société de la zone dans l’ERP. Ses contacts seront proposés comme agents au chauffeur (autocomplete).</p>
             </div>
 
             <label className="flex items-center gap-2 text-ink-secondary text-sm">

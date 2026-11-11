@@ -101,7 +101,7 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
 
         {visible.length === 0 ? (
           <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted text-sm">
-            Aucun garage. Crée le premier — pense à renseigner son <code>odoo_partner_id</code> après avoir créé le partner côté Odoo.
+            Aucun garage. Crée le premier — pense à renseigner son <code>odoo_partner_id</code> après avoir créé le client dans l’ERP.
           </div>
         ) : (
           <ul className="space-y-2">
@@ -116,8 +116,8 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
                     </p>
                     <div className="text-ink-muted text-xs mt-0.5 space-y-0.5">
                       {p.odoo_partner_id != null
-                        ? <p>📎 Odoo partner ID : <span className="font-mono">{p.odoo_partner_id}</span></p>
-                        : <p className="text-amber-500">⚠️ Pas d&apos;Odoo partner ID — facturation impossible tant que pas renseigné</p>}
+                        ? <p>📎 Client ERP n° <span className="font-mono">{p.odoo_partner_id}</span></p>
+                        : <p className="text-amber-500">⚠️ Pas de client ERP — facturation impossible tant qu’il n’est pas renseigné</p>}
                       {p.contact_email && <p>📧 {p.contact_email}</p>}
                       {p.contact_phone && <p>📞 {p.contact_phone}</p>}
                     </div>
@@ -156,12 +156,12 @@ export default function AdminGaragePartnersClient({ initialPartners }: { initial
             </div>
 
             <div>
-              <label className="block text-ink-muted text-xs font-semibold mb-1.5">Odoo partner ID</label>
+              <label className="block text-ink-muted text-xs font-semibold mb-1.5">N° du client dans l’ERP</label>
               <input type="number" value={editing.odoo_partner_id ?? ''}
                 onChange={e => setEditing({ ...editing, odoo_partner_id: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
-                placeholder="Ex: 1234 (ID Odoo res.partner)"
+                placeholder="Ex. : 1234"
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm font-mono" />
-              <p className="text-ink-faint text-[10px] mt-1">Crée le partner côté Odoo d&apos;abord, puis copie son ID ici. Sans ça la facturation auto ne fonctionnera pas.</p>
+              <p className="text-ink-faint text-[10px] mt-1">Crée d’abord le client dans l’ERP, puis copie son numéro ici. Sans ça la facturation auto ne fonctionnera pas.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2">

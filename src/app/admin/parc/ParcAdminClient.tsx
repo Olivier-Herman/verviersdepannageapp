@@ -971,7 +971,7 @@ function RefreshDatesBlock() {
         d intervention bidon (02h Bruxelles = 00h UTC, car <code className="bg-surface px-1 rounded">x_studio_date_dentree</code> Odoo
         ne contient que la date). Recupere l <strong>heure reelle</strong> depuis <code className="bg-surface px-1 rounded">helpdesk.ticket.create_date</code>.
         <br/>
-        <strong>Rapide</strong> : 1 batch Odoo (~5s, pas de Browserless). Ne touche que les missions a heure suspecte.
+        <strong>Rapide</strong> : 1 lot ERP (~5s, pas de Browserless). Ne touche que les missions a heure suspecte.
       </p>
       <button
         onClick={run}

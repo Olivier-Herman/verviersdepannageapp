@@ -31,7 +31,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 }
 
 const DATA_SOURCE_LABEL: Record<string, string> = {
-  odoo_ticket: 'Ticket Helpdesk Odoo',
+  odoo_ticket: 'Ticket d’assistance (ERP)',
   mission:     'Mission VD Soft',
   static:      'Aucune donnée requise',
 }
@@ -159,7 +159,7 @@ function PrintModal({ template, onClose }: { template: Template; onClose: () => 
           {/* Saisie de la donnée source */}
           {needsTicket && (
             <div>
-              <label className="block text-ink-muted text-xs mb-1.5">ID Ticket Helpdesk Odoo</label>
+              <label className="block text-ink-muted text-xs mb-1.5">N° du ticket d’assistance (ERP)</label>
               <input value={ticketId}
                 onChange={e => setTicketId(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="ex: 1346"

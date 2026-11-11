@@ -336,7 +336,7 @@ function EditModal({ source, depots, zones, onClose, onSaved }: { source: Source
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); searchClient() } }}
                 onFocus={() => setShowClientDrop(true)}
                 onBlur={() => setTimeout(() => setShowClientDrop(false), 200)}
-                placeholder="Rechercher un client Odoo (min 3 char + Enter)..."
+                placeholder="Chercher un client (3 lettres puis Entrée)…"
                 className="w-full bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand placeholder:text-ink-faint" />
               {showClientDrop && clientResults.length > 0 && (
                 <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">

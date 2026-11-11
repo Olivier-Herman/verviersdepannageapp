@@ -1072,7 +1072,7 @@ export default function TarifsClient(props: Props) {
                       checked={editTariff.is_autofac || false}
                       onChange={e => setEditTariff(p => ({ ...p!, is_autofac: e.target.checked }))}
                     />
-                    Autofacturation (l'assurance facture elle-même, pas de facture Odoo VD)
+                    Autofacturation (l'assurance facture elle-même, pas de facture VD)
                   </label>
                 </div>
                 {editTariff.notes && (
@@ -1257,7 +1257,7 @@ export default function TarifsClient(props: Props) {
                     📋 Lignes pré-configurées — {SOURCE_LABELS[linesModal.source] || linesModal.source} · {TYPE_LABELS[linesModal.mission_type] || linesModal.mission_type}
                   </h2>
                   <p className="text-xs text-ink-faint mt-1">
-                    Ces lignes seront pré-chargées dans le devis Odoo. L'employé ajustera qty / PU lors de la facturation.
+                    Ces lignes seront pré-chargées dans le devis. L'employé ajustera qty / PU lors de la facturation.
                     La ligne <strong>SERV-MAJ</strong> est ajoutée automatiquement si majoration applicable.
                   </p>
                 </div>
