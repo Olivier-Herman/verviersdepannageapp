@@ -60,7 +60,7 @@ export default function SortiesClient({ userRole, userName, userEmail, userModul
       <div className={habille ? '[contain:inline-size]' : undefined}>
       {tab === 'avp'      && <DestructionClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded releveCommune={habille} />}
       {tab === 'dossiers' && <DossiersClient embedded />}
-      {tab === 'domaine'  && canDomaine && <DomaineClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded />}
+      {tab === 'domaine'  && canDomaine && <DomaineClient userRole={userRole} userName={userName} userEmail={userEmail} userModules={userModules} embedded sortiesEnTete={habille} />}
       {tab === 'ventes'   && canVentes && !habille && <AdminVentesClient initialSales={sales} abandons={abandons} embedded />}
       </div>
     </AppShell>

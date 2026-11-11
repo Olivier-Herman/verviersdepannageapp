@@ -191,7 +191,7 @@ const TONE: Record<NonNullable<Reading['primary']>['tone'] & string, string> = {
 }
 
 // ── Écran ────────────────────────────────────────────────────────────────────
-type Filter = 'danger' | 'nous' | 'eux' | 'pause' | 'rien' | 'closed' | 'all'
+type Filter = 'retours' | 'danger' | 'nous' | 'eux' | 'pause' | 'rien' | 'closed' | 'all'
 
 export default function SaisiesClient({ userRole, userName, userEmail, userModules, habille = false }: {
   userRole: string; userName: string; userEmail: string; userModules: string[]
@@ -229,6 +229,10 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
     } catch { setMsg('⚠ Erreur réseau') } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+  // P2 : retours du Parquet que le robot n'a pas su lire (préversion).
+  const [nonLus, setNonLus] = useState<{ id: string; subject: string | null; from_addr: string | null; received_at: string | null; outcome: string | null; nonLues: number }[]>([])
+  const chargerNonLus = useCallback(() => { if (habille) fetch('/api/fourriere/saisies/retours-non-lus', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j?.items) setNonLus(j.items) }).catch(() => {}) }, [habille])
+  useEffect(() => { chargerNonLus() }, [chargerNonLus])
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 6000); return () => clearTimeout(t) }, [msg])
 
   async function post(url: string, body?: any, method = 'POST') {
@@ -386,7 +390,8 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
                 <div className="px-3 py-1.5 text-[11px] text-ink-faint border-t">{cronLast?.at ? `Robot du matin : dernier passage ${new Date(cronLast.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Robot du matin : aucun passage enregistré'}</div>
               </div>
             )}
-            <Tuiles colonnes={7} actif={filter} onChoix={k => setFilter(k as Filter)} items={[
+            <Tuiles colonnes={nonLus.length ? 4 : 7} actif={filter} onChoix={k => setFilter(k as Filter)} items={[
+              ...(nonLus.length ? [{ key: 'retours', label: 'Pages à attribuer', n: nonLus.length, cls: 'bg-orange-50 border-orange-300 text-orange-900', help: 'retours du Parquet que le robot n\'a pas su lire' }] : []),
               { key: 'danger', label: 'Délai en danger', n: counts.danger, cls: 'bg-red-50 border-red-300 text-red-800', help: 'forclusion proche : à regarder en premier' },
               { key: 'nous', label: 'À nous', n: counts.nous, dot: WHO.nous.dot, cls: 'bg-amber-50 border-amber-300 text-amber-900', help: 'une action à faire par le bureau' },
               { key: 'eux', label: 'Chez le Parquet', n: counts.eux, dot: WHO.eux.dot, cls: 'bg-sky-50 border-sky-300 text-sky-900', help: 'on attend le Parquet, un policier, JustInvoice ou le Domaine' },
@@ -432,8 +437,12 @@ export default function SaisiesClient({ userRole, userName, userEmail, userModul
           </div>
         )}
 
+        {habille && filter === 'retours' && (
+          <RetoursNonLus items={nonLus} dossiers={dossiers} onFait={() => { chargerNonLus(); load() }} onMsg={setMsg} />
+        )}
+
         {/* Dossiers */}
-        {loading ? (
+        {habille && filter === 'retours' ? null : loading ? (
           <div className="text-center py-16 text-ink-faint text-sm">Chargement…</div>
         ) : visible.length === 0 ? (
           <div className="text-center py-16 text-ink-faint">
@@ -518,6 +527,68 @@ function Timeline({ steps }: { steps: Step[] }) {
 }
 
 // ── Carte dossier ────────────────────────────────────────────────────────────
+// ── P2 : retours du Parquet non lus par le robot (préversion ma_journee, 11/11/2026) ──
+function RetoursNonLus({ items, dossiers, onFait, onMsg }: {
+  items: { id: string; subject: string | null; from_addr: string | null; received_at: string | null; outcome: string | null; nonLues: number }[]
+  dossiers: Dossier[]; onFait: () => void; onMsg: (m: string) => void
+}) {
+  const [pieces, setPieces] = useState<Record<string, { i: number; name: string }[] | 'chargement'>>({})
+  const [choix, setChoix] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+  const efs = useMemo(() => dossiers.flatMap(d => (d.etats || []).filter(e => e.status === 'envoye').map(e => ({ key: `${d.id}|${e.id}`, label: `${e.numero} · ${d.vehicle_plate || '—'} ${[d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' ')}` })))
+    .sort((a, b) => a.label.localeCompare(b.label)), [dossiers])
+  const voir = async (id: string) => {
+    setPieces(p => ({ ...p, [id]: 'chargement' }))
+    const j = await fetch(`/api/fourriere/saisies/retours-non-lus/${id}?liste=1`, { cache: 'no-store' }).then(r => r.json()).catch(() => null)
+    setPieces(p => ({ ...p, [id]: j?.pdfs || [] }))
+  }
+  const attribuer = async (id: string, i: number, refus: boolean) => {
+    const k = choix[`${id}:${i}`]; if (!k) { onMsg('⚠ Choisis l\'état de frais'); return }
+    const [dossier_id, ef_id] = k.split('|'); setBusy(`${id}:${i}`)
+    try {
+      const r = await fetch(`/api/fourriere/saisies/retours-non-lus/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'attribuer', i, dossier_id, ef_id, refus }) })
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Erreur')
+      onMsg(`✓ ${j.numero || 'État de frais'} : ${refus ? 'refus' : 'accord'} enregistré${j.deposit?.ok ? ' et déposé sur JustInvoice' : ''}`); onFait()
+    } catch (e: any) { onMsg(`⚠ ${e.message}`) } finally { setBusy(null) }
+  }
+  const ecarter = async (id: string) => {
+    setBusy(id)
+    try { const r = await fetch(`/api/fourriere/saisies/retours-non-lus/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ecarter' }) }); if (!r.ok) throw new Error('Erreur'); onFait() }
+    catch (e: any) { onMsg(`⚠ ${e.message}`) } finally { setBusy(null) }
+  }
+  if (!items.length) return <div className="bg-surface border rounded-2xl p-8 text-center text-ink-muted">Aucune page en attente : le robot a tout lu.</div>
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-ink-secondary">Retours du Parquet arrivés par mail dont le robot n'a pas su lire le numéro d'état de frais. Ouvre la pièce, choisis l'état de frais, puis Accord ou Refus : c'est le même enregistrement que « Retour signé reçu ».</p>
+      {items.map(it => {
+        const ps = pieces[it.id]
+        return (
+          <div key={it.id} className="bg-surface border border-l-[8px] border-l-orange-500 rounded-2xl p-4 space-y-2">
+            <div className="flex items-start gap-3 flex-wrap">
+              <div className="flex-1 min-w-[220px]"><b className="text-ink">{it.subject || '(sans objet)'}</b><span className="block text-xs text-ink-muted">{it.from_addr || ''} · reçu le {fmt(it.received_at)} · {it.nonLues} page(s) non reconnue(s)</span></div>
+              {!ps && <button onClick={() => voir(it.id)} className="min-h-[44px] px-4 rounded-xl bg-brand text-white text-sm font-bold">Voir les pièces</button>}
+              <button disabled={busy === it.id} onClick={() => ecarter(it.id)} className="min-h-[44px] px-4 rounded-xl border bg-surface text-sm font-semibold text-ink disabled:opacity-40">C'est traité</button>
+            </div>
+            {ps === 'chargement' && <p className="text-sm text-ink-muted">Chargement des pièces…</p>}
+            {Array.isArray(ps) && ps.length === 0 && <p className="text-sm text-ink-muted">Plus de pièce jointe dans ce mail (déplacé ou supprimé ?).</p>}
+            {Array.isArray(ps) && ps.map(p => (
+              <div key={p.i} className="flex items-center gap-2 flex-wrap border-t pt-2">
+                <a href={`/api/fourriere/saisies/retours-non-lus/${it.id}?i=${p.i}`} target="_blank" rel="noreferrer" className="min-h-[44px] inline-flex items-center px-3 rounded-xl border bg-surface-2 text-sm font-semibold text-ink">📄 {p.name || `Pièce ${p.i + 1}`}</a>
+                <select aria-label="État de frais" value={choix[`${it.id}:${p.i}`] || ''} onChange={e => setChoix(c => ({ ...c, [`${it.id}:${p.i}`]: e.target.value }))} className="min-h-[44px] flex-1 min-w-[220px] border rounded-xl px-3 text-sm bg-surface text-ink">
+                  <option value="">État de frais concerné…</option>
+                  {efs.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
+                </select>
+                <button disabled={busy === `${it.id}:${p.i}`} onClick={() => attribuer(it.id, p.i, false)} className="min-h-[44px] px-4 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold disabled:opacity-40">Accord</button>
+                <button disabled={busy === `${it.id}:${p.i}`} onClick={() => attribuer(it.id, p.i, true)} className="min-h-[44px] px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-40">Refus</button>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function DossierCard({ d, r, busy, onPrimary, onUpload, onGenerate, onRecipient, onClose, onPause, onRemove, onRelance, onJustInvoice, onFacture, onEfStatus, onEfRelance, onEfResend, onEfCorrection }: {
   d: Dossier; r: Reading; busy: boolean
   onPrimary: () => void

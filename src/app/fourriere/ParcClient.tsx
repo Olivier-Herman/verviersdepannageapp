@@ -266,10 +266,12 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         <div className={journee ? 'flex max-w-full overflow-x-auto items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm whitespace-nowrap [&>*]:shrink-0' : 'inline-flex items-center gap-1 bg-surface-2 border rounded-xl p-1 text-sm'}>
           <span className="px-3 py-1.5 rounded-lg bg-surface text-ink font-semibold shadow-sm">Liste</span>
           <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>
-          <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle du parc</Link>
-          <Link href="/fourriere/non-localises" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Non localisés{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length}` : ''}</Link>
-          {/* Préversion « Ma journée » (Olivier seul, 11/11/2026) : Relevé et Accident quittent le menu et deviennent des vues de Parc. */}
-          {journee && <Link href="/fourriere/releve" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Relevé sans étiquette</Link>}
+          {journee
+            ? <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length} à retrouver` : ''}</Link>
+            : <>
+                <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle du parc</Link>
+                <Link href="/fourriere/non-localises" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Non localisés{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length}` : ''}</Link>
+              </>}
           {journee && <Link href="/taches" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Accident</Link>}
           <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Recherche avancée</Link>
         </div>
