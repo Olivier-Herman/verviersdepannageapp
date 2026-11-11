@@ -63,6 +63,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
   const [auto, setAuto] = useState<Record<string, AutoInfo> | undefined>()
   const [vehicles, setVehicles] = useState<V[]>([])
   const [comex, setComex] = useState<ComexRow[]>([])
+  const [coupure, setCoupure] = useState<{ depuis: string | null } | null>(null)
   const [reqs, setReqs] = useState<Req[]>([]); const [reqRobot, setReqRobot] = useState(0)
   const [mails, setMails] = useState<Mail[]>([])
   const [acc, setAcc] = useState<{ todo: Acc[]; stock: Acc[] } | null>(null)
@@ -93,6 +94,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
     if (a?.byMission) setAuto(a.byMission)
     if (p?.vehicles) setVehicles(p.vehicles)
     if (c?.rows) setComex(c.rows)
+    setCoupure(c?.coupure || null)
     if (m) { setReqs(m.requisitoires || []); setReqRobot(m.requisitoiresRobot24h || 0); setMails(m.mails || []) }
     setLoading(false)
   }, [canFacturation, canFourriere])
@@ -219,6 +221,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
       <div className="columns-1 md:columns-2 2xl:columns-3 min-[1900px]:columns-4 gap-4">
         {canFacturation && (
           <Card tone="bg-indigo-700" n={loading ? '…' : comex.length} title="Touring à valider" sub="Leur montant face au nôtre" action={<Link href="/touring-comex" className="inline-flex items-center min-h-[40px] px-3 rounded-xl border border-white/70 text-[13px] font-bold">Ouvrir la liste</Link>}>
+            {coupure && <div role="alert" className="mx-4 mt-3 rounded-xl border border-red-300 bg-red-50 text-red-800 px-3 py-2 text-sm font-semibold">Connexion à Touring coupée{coupure.depuis ? ` depuis le ${new Date(coupure.depuis).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''} : la liste n'est pas à jour.</div>}
             {comex.length > 0 && (
               <div className="flex h-9 rounded-xl overflow-hidden mx-4 mt-3 text-[12.5px] font-extrabold">
                 {tOk.length > 0 && <div style={{ flexGrow: tOk.length }} className="flex items-center justify-center gap-1 px-2.5 whitespace-nowrap bg-emerald-600 text-white"><Check size={14} />{tOk.length} d’accord</div>}
@@ -242,7 +245,7 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
                 <Link href="/touring-comex?f=verify" className={btnGhost}>Regarder</Link>
               </Row>) })}
             <More href="/touring-comex?f=verify" n={tVerify.length} />
-            {!loading && comex.length === 0 && <Empty>Rien en attente chez Touring.</Empty>}
+            {!loading && comex.length === 0 && !coupure && <Empty>Rien en attente chez Touring.</Empty>}
           </Card>
         )}
 

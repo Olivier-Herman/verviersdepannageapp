@@ -35,6 +35,7 @@ const kindOf = (r: Row): 'ok' | 'verify' | 'other' => r.verdict === 'ok' ? 'ok' 
 export default function TouringValiderClient(props: { userRole: string; userName: string; userEmail: string; userModules: string[] }) {
   const [rows, setRows]     = useState<Row[]>([])
   const [lastSync, setLast] = useState<any>(null)
+  const [coupure, setCoupure] = useState<{ depuis: string | null; erreur: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy]     = useState<string | null>(null)
   const [sel, setSel]       = useState<Set<string>>(new Set())
@@ -49,7 +50,7 @@ export default function TouringValiderClient(props: { userRole: string; userName
     if (!silent) setLoading(true)
     try {
       const j = await fetch('/api/touring/comex-bko/list', { cache: 'no-store' }).then(r => r.json())
-      if (!j.error) { setRows(j.rows || []); setLast(j.lastSync || null) }
+      if (!j.error) { setRows(j.rows || []); setLast(j.lastSync || null); setCoupure(j.coupure || null) }
     } finally { if (!silent) setLoading(false) }
   }
   // Synchro à l'ouverture (Olivier 28/07/2026), puis rafraîchissement 15 s + retour sur l'onglet (30/07/2026).
@@ -118,6 +119,12 @@ export default function TouringValiderClient(props: { userRole: string; userName
           </div>
         </div>
 
+        {coupure && (
+          <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 text-red-800 px-4 py-3">
+            <b>Connexion à Touring coupée{coupure.depuis ? ` depuis le ${new Date(coupure.depuis).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''} : la liste n'est pas à jour.</b>
+            <span className="block text-sm mt-0.5">Les dossiers arrivés chez Touring depuis n'apparaissent pas ici. « Synchroniser » réessaie ; si ça persiste, les accès Touring sont à vérifier.</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {FILTERS.map(f => (
             <button key={f.k} onClick={() => setFilter(f.k)} className={`text-left rounded-2xl px-4 py-3 min-h-[76px] border-2 shadow-sm ${f.cls} ${filter === f.k ? 'border-current' : 'border-transparent'}`}>

@@ -43,7 +43,14 @@ export async function GET() {
     else if (r.verdict === 'verify') counts.verify++
     else counts.noMatch++
   }
-  return NextResponse.json({ rows: rows || [], counts, lastSync: ls || null })
+  // R2 (Olivier 11/11/2026) : connexion à Touring coupée → l'écran le dit au lieu d'afficher « 0 en attente ».
+  // Coupée = au dernier passage, aucun compte n'a pu se connecter. « Depuis » = dernière fois qu'un dossier a été vu.
+  let coupure: { depuis: string | null; erreur: string } | null = null
+  if (ls && Array.isArray(ls.errors) && ls.errors.length > 0 && !ls.accounts) {
+    const { data: last } = await sb.from('touring_comex_dossiers').select('last_seen_at').order('last_seen_at', { ascending: false }).limit(1).maybeSingle()
+    coupure = { depuis: (last as any)?.last_seen_at || null, erreur: String(ls.errors[0]?.error || 'connexion refusée').slice(0, 160) }
+  }
+  return NextResponse.json({ rows: rows || [], counts, lastSync: ls || null, coupure })
 }
 
 export async function POST(req: Request) {
