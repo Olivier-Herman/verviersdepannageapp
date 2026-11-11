@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOutCascade } from '@/lib/auth-signout'
-import { useState, useEffect, useLayoutEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react'
 import { Moon, Sun, LogOut, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import VehicleCheckBanner from '@/components/check-vehicule/VehicleCheckBanner'
 import TruckCheckPopup from '@/components/check-vehicule/TruckCheckPopup'
@@ -98,6 +98,20 @@ export default function AppShell({
   const navRoles = enChauffeur ? ['driver'] : userRoles
   const visibleNavAll = filterNavItems({ userModules: navModules, userRole: navRole, userNavOrder, userRoles: navRoles, flags: navFlags })
   const visibleNav = visibleNavAll.filter(i => !i.ownerOnly || navFlags.agents_shortcut)
+  // Nouveau Dispatch (préversion dispatch_v2, Olivier seul, 11/11/2026) : trois appuis
+  // rapides sur le titre basculent entre nouvel et ancien affichage. Placé ici, dans
+  // l'en-tête commun, pour répondre même si le nouvel écran ne s'affiche pas.
+  const appuisTitre = useRef<number[]>([])
+  const onTitre = () => {
+    if (pathname !== '/dispatch' || !navFlags.dispatch_v2) return
+    const t = Date.now()
+    appuisTitre.current = [...appuisTitre.current.filter(x => t - x < 900), t]
+    if (appuisTitre.current.length < 3) return
+    appuisTitre.current = []
+    const ancien = document.cookie.split('; ').includes('vd_dispatch_ancien=1')
+    document.cookie = `vd_dispatch_ancien=${ancien ? '' : '1'}; path=/; max-age=${ancien ? 0 : 31536000}; samesite=lax`
+    window.location.href = '/dispatch'
+  }
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])
@@ -331,7 +345,7 @@ export default function AppShell({
             <TruckSwitcherIcon />
             <GlobalSearch shortcut={!navV2} />
           </div>
-          <h1 className="font-display text-ink font-bold text-lg">{title}</h1>
+          <h1 onClick={onTitre} className="font-display text-ink font-bold text-lg select-none">{title}</h1>
           {headerExtra}
         </div>
 
@@ -366,7 +380,7 @@ export default function AppShell({
         {/* Header desktop */}
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between gap-4">
-            <h1 className="font-display text-ink font-bold text-2xl">{title}</h1>
+            <h1 onClick={onTitre} className="font-display text-ink font-bold text-2xl select-none">{title}</h1>
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
             {work.available && <WorkModeButton mode={work.mode} />}
             <DispatchAlertBadge userRole={navRole} />
