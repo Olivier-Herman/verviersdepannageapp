@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Trash2, X, Edit2, Eye, EyeOff, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, X, Edit2, Eye, EyeOff, ChevronRight, Search, AlertTriangle } from 'lucide-react'
+import BandeauChiffres from '@/components/admin/BandeauChiffres'
 import { parcZoneLabel } from '@/lib/parc/zone-label'
 
 interface Source {
@@ -97,108 +98,99 @@ export default function SourcesClient({ initial, depots = [], zones = [] }: { in
     refresh()
   }
 
+  // Habillage en cartes (Olivier 11/11/2026, maquette validée) : une carte par source,
+  // ce qui reste à configurer en orange.
+  const aConfigurer = (s: Source) => !s.default_billed_to_name || !s.default_depot_name
+  const actives = sources.filter(s => s.active)
   return (
-    <div className="p-4 lg:p-6 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-ink text-xl font-semibold">Sources de mission</h1>
-          <p className="text-ink-muted text-sm">Catalogue central des sources (Touring, Allianz, VAB...). Les grilles de majoration et tarifaires futures s'appuient dessus.</p>
+    <div className="px-4 py-4 lg:px-0 space-y-4 max-w-[1800px]">
+      <BandeauChiffres chiffres={[
+        { label: 'Actives', valeur: actives.length },
+        { label: 'À configurer', valeur: actives.filter(aConfigurer).length },
+        { label: 'Sans majoration', valeur: actives.filter(s => !s.has_surcharge).length },
+      ]} />
+      <h1 className="text-ink text-xl font-semibold">Sources de mission</h1>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
+          <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Chercher une source…" aria-label="Chercher une source"
+            className="w-full min-h-[46px] pl-10 pr-4 rounded-2xl bg-surface border border-strong text-ink text-sm outline-none focus:border-sky-500" />
         </div>
         <button onClick={() => setAdding(true)}
-          className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-sm font-medium flex items-center gap-2 transition">
-          <Plus size={16} /> Ajouter une source
+          className="lg:ml-auto inline-flex items-center gap-1.5 min-h-[46px] px-4 rounded-2xl text-white text-sm font-bold bg-gradient-to-br from-sky-500 to-blue-600 shadow-md shadow-blue-500/30 hover:brightness-105">
+          <Plus size={18} /> Ajouter une source
         </button>
       </div>
 
-      <input
-        value={filter}
-        onChange={e => setFilter(e.target.value)}
-        placeholder="Filtrer..."
-        className="w-full sm:max-w-xs bg-surface-2 border rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:border-brand"
-      />
-
-      <div className="bg-surface border rounded-2xl overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-2 border-b">
-            <tr className="text-ink-muted text-xs uppercase tracking-wide">
-              <th className="px-4 py-2 text-left">Libellé</th>
-              <th className="px-4 py-2 text-left">Clé</th>
-              <th className="px-4 py-2 text-left">Client facturé par défaut</th>
-              <th className="px-4 py-2 text-left">Parc par défaut</th>
-              <th className="px-4 py-2 text-left">Missions</th>
-              <th className="px-4 py-2 text-left">Surcharge</th>
-              <th className="px-4 py-2 text-left">État</th>
-              <th className="w-32"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-ink-muted text-sm">Aucune source.</td></tr>
-            ) : filtered.map(s => (
-              <tr key={s.key} className={s.active ? '' : 'opacity-50'}>
-                <td className="px-4 py-2">
-                  <Link href={`/admin/sources/${encodeURIComponent(s.key)}`} className="group inline-flex items-center gap-1 hover:text-brand transition">
-                    <span className={`inline-block w-2.5 h-2.5 rounded-sm ${s.display_color || 'bg-zinc-600'} mr-2`} title={s.display_color || 'aucune couleur'} />
-                    <span className="text-ink font-medium group-hover:text-brand">{s.label}</span>
-                    {s.group_key && (
-                      <span className="ml-2 text-[10px] uppercase tracking-wider text-ink-faint font-mono">[{s.group_key}]</span>
-                    )}
-                    <ChevronRight size={14} className="text-ink-faint group-hover:text-brand opacity-0 group-hover:opacity-100 transition" />
+      {filtered.length === 0 ? (
+        <p className="text-ink-muted text-sm text-center py-10">{filter.trim() ? `Aucune source ne correspond à « ${filter.trim()} ».` : 'Aucune source.'}</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-5">
+          {filtered.map(s => {
+            const manque = aConfigurer(s)
+            return (
+              <section key={s.key} className={`bg-surface border rounded-3xl shadow-card p-4 flex flex-col ${manque && s.active ? 'border-amber-300' : 'border-strong'} ${s.active ? '' : 'opacity-60'}`}>
+                <header className="flex items-start gap-3">
+                  <span className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-md ${s.display_color || 'bg-stone-500'}`}>
+                    {(s.label.match(/\p{L}/u)?.[0] || '?').toUpperCase()}
+                  </span>
+                  <Link href={`/admin/sources/${encodeURIComponent(s.key)}`} className="group flex-1 min-w-0">
+                    <span className="flex items-center gap-1 font-display text-ink font-bold text-lg leading-tight group-hover:text-sky-700">
+                      <span className="truncate">{s.label}</span><ChevronRight size={16} className="flex-shrink-0 text-ink-faint group-hover:text-sky-700" />
+                    </span>
+                    <span className="block text-ink-muted text-xs">
+                      {s.mission_count > 0 ? `${s.mission_count} mission${s.mission_count > 1 ? 's' : ''}` : 'Aucune mission'}
+                      {s.group_key ? ` · groupe ${s.group_key}` : ''}
+                    </span>
                   </Link>
-                  {s.notes && <p className="text-ink-muted text-xs">{s.notes}</p>}
-                </td>
-                <td className="px-4 py-2"><span className="text-ink-muted text-xs font-mono">{s.key}</span></td>
-                <td className="px-4 py-2">
-                  {s.default_billed_to_name
-                    ? <span className="text-ink text-xs">{s.default_billed_to_name}</span>
-                    : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
-                        — à configurer
-                      </button>
-                  }
-                </td>
-                <td className="px-4 py-2">
-                  {s.default_depot_name
-                    ? <span className="text-ink text-xs">🅿️ {s.default_depot_name}{s.default_parc_zone_key ? ` · zone ${parcZoneLabel(s.default_parc_zone_key)}` : ''}</span>
-                    : <button onClick={() => setEditing(s)} className="text-ink-muted text-xs italic hover:text-brand transition underline-offset-2 hover:underline">
-                        — à configurer
-                      </button>
-                  }
-                </td>
-                <td className="px-4 py-2">
-                  <span className="text-ink-secondary text-xs">{s.mission_count > 0 ? `${s.mission_count} historique${s.mission_count > 1 ? 's' : ''}` : '—'}</span>
-                </td>
-                <td className="px-4 py-2">
-                  {s.has_surcharge
-                    ? <span className="text-xs px-2 py-0.5 bg-success-soft text-success rounded">configurée</span>
-                    : <a href="/admin/surcharges" className="text-xs text-ink-muted hover:text-brand underline">à configurer</a>
-                  }
-                </td>
-                <td className="px-4 py-2">
-                  {s.active
-                    ? <span className="text-xs px-2 py-0.5 bg-success-soft text-success rounded">actif</span>
-                    : <span className="text-xs px-2 py-0.5 bg-ink-faint/15 text-ink-muted rounded">désactivé</span>
-                  }
-                </td>
-                <td className="px-4 py-2 flex items-center gap-1 justify-end">
-                  <button onClick={() => toggleActive(s)} title={s.active ? 'Désactiver' : 'Réactiver'}
-                    className="p-1.5 text-ink-faint hover:text-ink transition rounded">
-                    {s.active ? <EyeOff size={14} /> : <Eye size={14} />}
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${s.active ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-600'}`}>
+                    {s.active ? 'Active' : 'Désactivée'}
+                  </span>
+                </header>
+                {s.notes && <p className="text-ink-muted text-xs mt-2">{s.notes}</p>}
+
+                <dl className="mt-3 divide-y divide-[var(--border-default,rgba(0,0,0,0.08))] text-sm">
+                  {[
+                    ['Client facturé', s.default_billed_to_name],
+                    ['Parc par défaut', s.default_depot_name ? `${s.default_depot_name}${s.default_parc_zone_key ? ` · zone ${parcZoneLabel(s.default_parc_zone_key)}` : ''}` : null],
+                  ].map(([k, v]) => (
+                    <div key={k as string} className="flex items-center justify-between gap-3 min-h-[44px]">
+                      <dt className="text-ink-muted">{k}</dt>
+                      {v ? <dd className="text-ink font-medium text-right truncate">{v}</dd> : (
+                        <button onClick={() => setEditing(s)} className="inline-flex items-center gap-1 min-h-[36px] px-3 rounded-full bg-amber-100 text-amber-900 text-xs font-bold hover:bg-amber-200">
+                          <AlertTriangle size={13} /> À configurer
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between gap-3 min-h-[44px]">
+                    <dt className="text-ink-muted">Majorations</dt>
+                    {s.has_surcharge
+                      ? <dd className="text-emerald-700 font-medium">Configurées</dd>
+                      : <Link href="/admin/surcharges" className="inline-flex items-center min-h-[36px] px-3 rounded-full bg-stone-100 text-stone-700 text-xs font-bold hover:bg-stone-200">À configurer</Link>}
+                  </div>
+                </dl>
+
+                <div className="mt-auto pt-3 flex items-center justify-end gap-1 border-t border-strong">
+                  <button onClick={() => toggleActive(s)} title={s.active ? 'Désactiver' : 'Réactiver'} aria-label={s.active ? 'Désactiver' : 'Réactiver'}
+                    className="w-11 h-11 flex items-center justify-center rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover">
+                    {s.active ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
-                  <button onClick={() => setEditing(s)} title="Modifier"
-                    className="p-1.5 text-ink-faint hover:text-brand transition rounded">
-                    <Edit2 size={14} />
+                  <button onClick={() => deleteSource(s)} title="Supprimer" aria-label="Supprimer" disabled={s.mission_count > 0}
+                    className="w-11 h-11 flex items-center justify-center rounded-xl text-ink-faint hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <Trash2 size={18} />
                   </button>
-                  <button onClick={() => deleteSource(s)} title="Supprimer"
-                    disabled={s.mission_count > 0}
-                    className="p-1.5 text-ink-faint hover:text-critical disabled:opacity-30 disabled:cursor-not-allowed transition rounded">
-                    <Trash2 size={14} />
+                  <button onClick={() => setEditing(s)}
+                    className="inline-flex items-center gap-1.5 min-h-[44px] px-4 rounded-xl bg-surface-hover text-ink text-sm font-semibold hover:bg-sky-50 hover:text-sky-800">
+                    <Edit2 size={16} /> Modifier
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      )}
 
       {adding && <EditModal source={null} depots={depots} zones={zones} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh() }} />}
       {editing && <EditModal source={editing} depots={depots} zones={zones} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}

@@ -254,3 +254,14 @@ body {
 /* La mise en colonnes des cartes calcule une largeur minimale (colonnes × carte) que le cadre
    de l'app laisserait déborder de l'écran : la zone prend toujours la largeur disponible. */
 .reglages-contenu { contain: inline-size; }
+/* Habillage commun des écrans de Réglages pas encore passés en cartes (Olivier 11/11/2026 :
+   « pas un écran vert ») : l'ancien en-tête gris s'efface (le bandeau porte le titre), les
+   tableaux deviennent des cartes aérées aux titres de colonnes lisibles. */
+.reglages-contenu .bg-surface-2.border-b.px-5 { background: transparent; border-bottom-width: 0; padding-top: .25rem; }
+.reglages-contenu table { border-collapse: separate; border-spacing: 0; background: var(--bg-surface); }
+.reglages-contenu :not(td) > div:has(> table) { border-radius: 1.5rem; border: 1px solid var(--border-strong); box-shadow: var(--shadow-card); overflow-x: auto; background: var(--bg-surface); }
+.reglages-contenu thead, .reglages-contenu thead tr { background: transparent; }
+.reglages-contenu thead th { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: var(--text-muted); padding-top: .85rem; padding-bottom: .6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.reglages-contenu tbody td { padding-top: .7rem; padding-bottom: .7rem; }
+.reglages-contenu tbody tr { transition: background-color .12s; }
+.reglages-contenu tbody tr:hover { background: var(--bg-surface-hover); }
