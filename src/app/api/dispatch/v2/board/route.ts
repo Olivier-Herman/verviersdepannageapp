@@ -112,5 +112,23 @@ export async function GET() {
   alertes.sort((a, b) => (poids[a.type] - poids[b.type]) || (t(a.depuis) - t(b.depuis)))
   lances.sort((a, b) => t(a.assigned_at || a.received_at) - t(b.assigned_at || b.received_at))
 
-  return NextResponse.json({ cmd, att, alertes, lances, now: new Date(maintenant).toISOString() })
+  // Planning des chauffeurs : tout ce qui a été attribué aujourd'hui (heure belge), terminé ou non.
+  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date(maintenant))
+  // Minuit à Bruxelles tombe entre 22 h et 23 h en temps universel : on part de 22 h (au pire une heure de la veille au soir).
+  const debutJour = new Date(new Date(`${jour}T00:00:00Z`).getTime() - 2 * 3600_000).toISOString()
+  let qj = sb.from('incoming_missions')
+    .select('id, assigned_to, status, source, mission_type, incident_type, vehicle_plate, incident_city, incident_address, destination_name, destination_address, received_at, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, delivering_at, parked_at, completed_at, paused_at, pause_released_at')
+    .not('assigned_to', 'is', null)
+    .gte('assigned_at', debutJour)
+    .eq('dossier_leg', false)
+    .not('status', 'in', '(cancelled,ignored)')
+    .order('id', { ascending: true })
+    .range(0, 499)
+  if ((u.role || '') !== 'superadmin') qj = qj.not('vehicle_plate', 'ilike', 'TEST')
+  const { data: journee } = await qj
+  // Missions lancées hier soir et encore en cours aujourd'hui : déjà dans `lances`, on les ajoute au planning.
+  const ids2 = new Set((journee || []).map((m: any) => m.id))
+  const planning = [...(journee || []), ...lances.filter(m => !ids2.has(m.id))]
+
+  return NextResponse.json({ cmd, att, alertes, lances, planning, now: new Date(maintenant).toISOString() })
 }

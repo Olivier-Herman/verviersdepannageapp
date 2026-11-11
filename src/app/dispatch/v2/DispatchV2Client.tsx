@@ -28,7 +28,7 @@ interface Props {
 }
 type M = Record<string, any>
 type Alerte = { type: string; depuis: string | null; mission: M; [k: string]: any }
-type Board = { cmd: M[]; att: M[]; alertes: Alerte[]; lances: M[] }
+type Board = { cmd: M[]; att: M[]; alertes: Alerte[]; lances: M[]; planning?: M[] }
 
 // ── Petits utilitaires d'affichage ───────────────────────────────────────────
 const hm = (d: Date) => d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }).replace(':', ' h ')
@@ -67,6 +67,85 @@ function couleurAnciennete(min: number) { return min >= 30 ? 'text-red-800' : mi
 const court = (a?: string | null) => String(a || '').replace(/\s*\|.*$/, '').replace(/,?\s*(BEL|Belgique|Belgium|BE)\s*$/i, '').replace(/\s+/g, ' ').trim()
 const trajet = (m: M) => [court(m.incident_address) || m.incident_city, m.destination_name || m.destination_address ? '→ ' + court(m.destination_name || m.destination_address) : ''].filter(Boolean).join(' ')
 const vehicule = (m: M) => [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
+
+// ── Planning des chauffeurs (étape 5) ─────────────────────────────────────────
+// Une ligne par chauffeur : fait (pâle), en cours (plein), fin estimée (hachuré), pas encore
+// acceptée (pointillé). Missions sans suivi (police, privé encodés sur place : étapes à la même
+// seconde) : un simple bloc, sans fausses heures. Durées estimées = repères, pas des promesses.
+const DUREE_TYPE: Record<string, number> = { DSP: 45, REM: 80, REL: 60, TRP: 120, DPR: 40 }
+const ms = (iso?: string | null) => (iso ? new Date(iso).getTime() : null)
+function Planning({ missions, chauffeurs, etats, sources, now, selId, onSel, onDepot }: {
+  missions: M[]; chauffeurs: any[]; etats: any[] | null; sources: SourceDisplay[]; now: number; selId: string | null
+  onSel: (m: M) => void; onDepot: (missionId: string, driverId: string) => void
+}) {
+  const [cible, setCible] = useState<string | null>(null)
+  const h = (t: number) => { const d = new Date(t); return d.getHours() + d.getMinutes() / 60 }
+  const debuts = missions.map(m => ms(m.accepted_at) || ms(m.assigned_at)).filter(Boolean) as number[]
+  const memeJour = (t: number) => new Date(t).toDateString() === new Date(now).toDateString()
+  const hDebut = Math.max(0, Math.min(7, ...debuts.filter(memeJour).map(t => Math.floor(h(t)))))
+  const hFin = Math.min(24, Math.max(19, Math.ceil(h(now)) + 3))
+  const pct = (t: number) => { const x = memeJour(t) ? h(t) : (t < now ? hDebut : hFin); return Math.max(0, Math.min(100, ((x - hDebut) / (hFin - hDebut)) * 100)) }
+  const etatDe = (id: string) => (etats || []).find((e: any) => e.id === id)
+  const parChauffeur = new Map<string, M[]>()
+  for (const m of missions) if (m.assigned_to) parChauffeur.set(m.assigned_to, [...(parChauffeur.get(m.assigned_to) || []), m])
+  const actif = (c: any) => { const e = etatDe(c.id); return parChauffeur.has(c.id) || (e && !e.on_conge && !e.manual_offline && e.status !== 'hors_service') }
+  const lignes = chauffeurs.filter(actif).sort((a, b) => Number(parChauffeur.has(b.id)) - Number(parChauffeur.has(a.id)) || String(a.name).localeCompare(String(b.name)))
+  const absents = chauffeurs.filter(c => !actif(c) && etatDe(c.id))
+  const heures = Array.from({ length: hFin - hDebut + 1 }, (_, i) => hDebut + i)
+  const couleur = (m: M) => { const c = getSourceColor(m.source, sources); return c }
+  const blocs = (c: any) => (parChauffeur.get(c.id) || []).map(m => {
+    const lib = `${getSourceLabel(m.source, sources)} ${typeCourt(m)} · ${m.vehicle_plate || ''}`
+    const sel = selId === m.id ? ' ring-2 ring-stone-900' : ''
+    const debut = ms(m.accepted_at) || ms(m.assigned_at) || now
+    const finReelle = ms(m.completed_at) || ms(m.parked_at)
+    const sansSuivi = m.accepted_at && m.on_site_at && Math.abs((ms(m.on_site_at) || 0) - (ms(m.accepted_at) || 0)) < 60_000
+    const enCours = ['accepted', 'in_progress', 'delivering'].includes(m.status)
+    if (m.status === 'assigned' && !m.accepted_at) {
+      const fin = now + (DUREE_TYPE[typeCourt(m)] || 60) * 60_000
+      return <button key={m.id} type="button" onClick={() => onSel(m)} title={lib} style={{ left: `${pct(now)}%`, width: `${Math.max(2, pct(fin) - pct(now))}%` }}
+        className={`absolute top-1 bottom-1 rounded-md border-2 border-dashed border-amber-500 bg-white text-stone-900 text-[11px] font-bold px-1.5 overflow-hidden whitespace-nowrap text-left${sel}`}>{lib} · à accepter</button>
+    }
+    if (enCours && !sansSuivi) {
+      const finEst = Math.max(now + 10 * 60_000, debut + (DUREE_TYPE[typeCourt(m)] || 60) * 60_000)
+      return <span key={m.id} className="contents">
+        <button type="button" onClick={() => onSel(m)} title={lib} style={{ left: `${pct(debut)}%`, width: `${Math.max(1, pct(now) - pct(debut))}%` }}
+          className={`absolute top-1 bottom-1 rounded-l-md text-white text-[11px] font-bold px-1.5 overflow-hidden whitespace-nowrap text-left ${couleur(m)}${sel}`}>{lib}</button>
+        <button type="button" onClick={() => onSel(m)} title={`Fin estimée vers ${new Date(finEst).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`} style={{ left: `${pct(now)}%`, width: `${Math.max(1, pct(finEst) - pct(now))}%`, backgroundImage: 'repeating-linear-gradient(135deg,rgba(255,255,255,.35) 0 6px,transparent 6px 12px)' }}
+          className={`absolute top-1 bottom-1 rounded-r-md text-white text-[11px] font-bold px-1.5 overflow-hidden whitespace-nowrap text-left opacity-80 ${couleur(m)}`}>libre ≈ {new Date(finEst).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</button>
+      </span>
+    }
+    const fin = finReelle || (enCours ? now : debut + 30 * 60_000)
+    return <button key={m.id} type="button" onClick={() => onSel(m)} title={sansSuivi ? `${lib} (encodée sur place, sans suivi des étapes)` : lib} style={{ left: `${pct(debut)}%`, width: `${Math.max(1, pct(fin) - pct(debut))}%` }}
+      className={`absolute top-1 bottom-1 rounded-md text-white text-[11px] font-bold px-1.5 overflow-hidden whitespace-nowrap text-left ${enCours ? '' : 'opacity-45'} ${couleur(m)}${sel}`}>{lib}</button>
+  })
+  return (
+    <div className="flex flex-col gap-1.5 pt-1">
+      <div className="grid grid-cols-[170px_minmax(0,1fr)] items-center">
+        <span />
+        <div className="flex justify-between text-[11px] text-stone-500 tabular-nums">{heures.map(x => <span key={x}>{x} h</span>)}</div>
+      </div>
+      {lignes.length === 0 && <p className="text-stone-500 text-sm">Aucun chauffeur en service ni attribué aujourd'hui.</p>}
+      {lignes.map(c => {
+        const e = etatDe(c.id)
+        const etiquette = e?.status === 'en_mission' ? 'en mission' : e?.status === 'en_service' ? 'libre' : parChauffeur.has(c.id) ? 'hors service' : ''
+        return (
+          <div key={c.id} className="grid grid-cols-[170px_minmax(0,1fr)] items-center gap-0">
+            <div className="pr-2 min-w-0"><b className="text-[13.5px] text-stone-900 block truncate">{c.name}</b><span className="text-[11.5px] text-stone-500">{etiquette}{e?.schedule_day || e?.schedule_night ? ' · de garde' : ''}</span></div>
+            <div onDragOver={ev => { if (ev.dataTransfer.types.includes('text/vd-mission')) { ev.preventDefault(); setCible(c.id) } }} onDragLeave={() => setCible(x => (x === c.id ? null : x))}
+              onDrop={ev => { ev.preventDefault(); setCible(null); const id = ev.dataTransfer.getData('text/vd-mission'); if (id) onDepot(id, c.id) }}
+              className={`relative h-10 rounded-lg ${cible === c.id ? 'ring-2 ring-emerald-600' : ''}`}
+              style={{ background: `repeating-linear-gradient(90deg,#f5f5f4 0,#f5f5f4 calc(${100 / (hFin - hDebut)}% - 1px),#e7e5e4 calc(${100 / (hFin - hDebut)}% - 1px),#e7e5e4 ${100 / (hFin - hDebut)}%)` }}>
+              <span className="absolute -top-1 -bottom-1 w-0.5 bg-red-600 z-10 pointer-events-none" style={{ left: `${pct(now)}%` }} />
+              {blocs(c)}
+            </div>
+          </div>
+        )
+      })}
+      {absents.length > 0 && <p className="text-stone-500 text-[12.5px]">Absents ou hors service : {absents.map(c => c.name).join(', ')}.</p>}
+      <p className="text-stone-500 text-[12.5px]">Pâle : fait · plein : en cours · hachuré : fin estimée · pointillé : pas encore acceptée · trait rouge : maintenant. Glissez une mission de la colonne de gauche sur une ligne pour l'affecter.</p>
+    </div>
+  )
+}
 
 // ── Morceaux d'affichage (hors du composant : pas recréés à chaque seconde) ──
 // Avancement : reçue, acceptée, en route, sur place, chargée ou réparée, livrée.
@@ -109,8 +188,8 @@ const commune = (adr?: string | null, ville?: string | null) => {
 const trajetCourt = (m: M) => [commune(m.incident_address, m.incident_city), m.destination_name || m.destination_address ? commune(m.destination_name ? null : m.destination_address, null) || court(m.destination_name) : ''].filter(Boolean).join(' → ')
 
 // Carte de la file : juste de quoi reconnaître la mission et agir. Le détail est dans le volet de droite.
-const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau, detail, children }: { m: M; sources: SourceDisplay[]; occupe: string | null; sel: boolean; onSel: (m: M) => void; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode }) => (
-  <div role="button" tabIndex={0} onClick={() => onSel(m)} onKeyDown={e => { if (e.key === 'Enter') onSel(m) }}
+const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau, detail, children, glissable }: { m: M; sources: SourceDisplay[]; occupe: string | null; sel: boolean; onSel: (m: M) => void; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode; glissable?: boolean }) => (
+  <div role="button" tabIndex={0} onClick={() => onSel(m)} draggable={glissable} onDragStart={glissable ? e => { e.dataTransfer.setData('text/vd-mission', m.id); e.dataTransfer.effectAllowed = 'move' } : undefined} onKeyDown={e => { if (e.key === 'Enter') onSel(m) }}
     className={`cursor-pointer rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600 bg-red-50/60' : niveau === 'a' ? 'border-l-amber-500 bg-white' : 'border-l-blue-600 bg-white'} ${sel ? 'ring-2 ring-stone-900' : ''} ${occupe === m.id ? 'opacity-60' : ''}`}>
     <div className="flex items-start justify-between gap-2">
       <b className="text-[14px] text-stone-900">{titre}</b>
@@ -140,6 +219,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [erreur, setErreur] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [filtre, setFiltre] = useState<'cours' | 'rdv' | 'vhu' | 'parked' | 'all'>('cours')
+  const [vueCentre, setVueCentre] = useState<'liste' | 'planning'>('liste')
   const [autres, setAutres] = useState<M[] | null>(null)
   const [q, setQ] = useState('')
   const [occupe, setOccupe] = useState<string | null>(null)
@@ -150,9 +230,9 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [ongletTel, setOngletTel] = useState<'traiter' | 'cours' | 'chauffeurs'>('traiter')
   const [etatsChauffeurs, setEtatsChauffeurs] = useState<any[] | null>(null)
   useEffect(() => {
-    if (ongletTel !== 'chauffeurs') return
+    if (ongletTel !== 'chauffeurs' && vueCentre !== 'planning') return
     fetch('/api/users/driver-status', { cache: 'no-store' }).then(r => r.json()).then(d => setEtatsChauffeurs(Array.isArray(d) ? d : (d?.drivers || []))).catch(() => setEtatsChauffeurs([]))
-  }, [ongletTel, board])
+  }, [ongletTel, vueCentre, board])
   const [complete, setComplete] = useState<{ id: string; titre: string } | null>(null)   // fiche complète embarquée (indépendante de la sélection)
   const choisir = (m: M) => setSelId(m.id)   // fermeture par le ✕ du volet
   // Arrivée depuis la création rapide : /dispatch?ouvrir=<id> ouvre la mission dans le volet.
@@ -258,7 +338,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const n = board ? board.cmd.length + board.att.length + board.alertes.length : 0
   const enRetard = board ? [...board.cmd.filter(m => m.limite ? new Date(m.limite).getTime() < now + 2 * 60_000 : minutesDepuis(m.received_at, now) >= 15),
     ...board.att.filter(m => minutesDepuis(m.intervention_date && new Date(m.intervention_date).getTime() < now ? m.intervention_date : m.received_at, now) >= 15)].length : 0
-  const sel = selId ? ([...(board?.cmd || []), ...(board?.att || []), ...(board?.lances || []), ...(autres || [])].find(m => m.id === selId) || null) : null
+  const sel = selId ? ([...(board?.cmd || []), ...(board?.att || []), ...(board?.lances || []), ...(autres || []), ...(board?.planning || [])].find(m => m.id === selId) || null) : null
   const alertesSel = sel && board ? board.alertes.filter(a => a.mission.id === sel.id) : []
   const aAffecter = !!sel && (sel.status === 'new' || sel.status === 'dispatching')
   useEffect(() => {
@@ -280,7 +360,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const reste = m.limite ? Math.round((new Date(m.limite).getTime() - now) / 1000) : null
     const min = minutesDepuis(m.received_at, now)
     return (
-      <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
+      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
         titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : 'À valider'}
         delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${duree(min)}`}
         delaiCls={reste != null ? (reste < 180 ? 'text-red-800' : 'text-amber-800') : couleurAnciennete(min)}>
@@ -294,7 +374,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const prevue = m.intervention_date && new Date(m.intervention_date).getTime() > now
     const min = minutesDepuis(prevue ? null : (m.intervention_date || m.received_at), now)
     return (
-      <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre="Sans chauffeur"
+      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre="Sans chauffeur"
         delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${duree(min)}`}
         delaiCls={prevue ? 'text-blue-800' : couleurAnciennete(min)}>
         <Btn ton="p" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Affecter un chauffeur</Btn>
@@ -377,10 +457,19 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           {/* Liste des missions lancées */}
           <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'cours' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="px-3 pt-3 pb-2 flex flex-col gap-2">
-              <b className="text-[16px] text-ink">Missions</b>
+              <div className="flex items-center justify-between gap-2">
+                <b className="text-[16px] text-ink">{vueCentre === 'planning' ? 'La journée des chauffeurs' : 'Missions'}</b>
+                <span className="hidden lg:inline-flex bg-stone-100 rounded-xl p-1">
+                  {([['liste', 'Liste'], ['planning', 'Planning']] as const).map(([k, l]) => (
+                    <button key={k} type="button" onClick={() => setVueCentre(k)} className={`min-h-[36px] px-3.5 rounded-lg font-bold text-sm ${vueCentre === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}`}>{l}</button>
+                  ))}
+                </span>
+              </div>
+              {vueCentre === 'planning' && board && <div className="hidden lg:block"><Planning missions={board.planning || []} chauffeurs={drivers} etats={etatsChauffeurs} sources={sources} now={now} selId={selId}
+                onSel={choisir} onDepot={(missionId, driverId) => { const m = [...board.cmd, ...board.att].find(x => x.id === missionId); if (m) affecter(m, driverId) }} /></div>}
               <input value={q} onChange={e => setQ(e.target.value)} type="search" placeholder="Plaque, client, adresse, n° de fiche…" aria-label="Chercher une mission"
-                className="min-h-[44px] rounded-xl border border-stone-300 bg-stone-50 px-3 text-stone-900" />
-              <div className="flex gap-1.5 flex-wrap">
+                className={`min-h-[44px] rounded-xl border border-stone-300 bg-stone-50 px-3 text-stone-900 ${vueCentre === 'planning' ? 'lg:hidden' : ''}`} />
+              <div className={`flex gap-1.5 flex-wrap ${vueCentre === 'planning' ? 'lg:hidden' : ''}`}>
                 {([['cours', `En cours · ${board?.lances.length ?? 0}`], ['rdv', 'Rendez-vous'], ['vhu', 'VHU'], ['parked', 'À relivrer'], ['all', 'Toutes']] as const).map(([k, l]) => (
                   <button key={k} type="button" onClick={() => setFiltre(k)}
                     className={`min-h-[40px] px-3.5 rounded-full border font-semibold text-sm ${filtre === k ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-900 border-stone-200'}`}>{l}</button>
@@ -388,7 +477,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 <Link href="/missions-terminees" className="min-h-[40px] px-3.5 rounded-full border border-stone-200 bg-white text-stone-900 font-semibold text-sm inline-flex items-center">Terminées ↗</Link>
               </div>
             </header>
-            <div className="overflow-auto min-h-0 px-1">
+            <div className={`overflow-auto min-h-0 px-1 ${vueCentre === 'planning' ? 'lg:hidden' : ''}`}>
               {!liste ? <p className="px-3 py-2 text-stone-500">Chargement…</p> : liste.length === 0 ? <p className="px-3 py-2 text-stone-500">{q ? 'Aucune mission ne correspond.' : filtre === 'cours' ? 'Aucune mission lancée pour l\'instant.' : 'Rien dans cette vue.'}</p> : (
                 <>
                 <div className="lg:hidden flex flex-col gap-2 px-2 pb-2">
