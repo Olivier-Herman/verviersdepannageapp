@@ -7,10 +7,13 @@
 // se reconnecte chaque jour ; on fait pareil, sans écran ni PC : Chrome sans
 // tête (le même que pour VAB Comet), login Auth0 avec AXA_PORTAL_EMAIL /
 // AXA_PORTAL_PASSWORD, lecture du refresh token dans le stockage du portail,
-// amorçage. Si Auth0 exige un code ou une passkey, on s'arrête et on le dit.
+// amorçage. Depuis le 11/11/2026, Auth0 envoie un code par mail à chaque
+// connexion : on le lit dans la boîte du compte (lib/axa/mfa-code.ts) et on le
+// tape. Une passkey ou un code introuvable : on s'arrête et on le dit.
 
 import { launchBrowser } from '@/lib/vab/sign-browser'
 import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
+import { waitAxaMfaCode } from '@/lib/axa/mfa-code'
 
 const PORTAL = 'https://go-and-assist.axapartners.com'
 
@@ -90,17 +93,52 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     }
     await page.evaluate((sel: string) => { const el = [...document.querySelectorAll(sel)].find(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 }) as HTMLInputElement | undefined; el?.focus() }, pwdSel)
     await page.keyboard.type(password, { delay: 20 })
+    // Un code reçu avant cet instant appartient à une tentative précédente (marge horloge 15 s).
+    const mfaSince = Date.now() - 15_000
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
       page.keyboard.press('Enter'),
     ])
     steps.push('mot de passe envoyé')
     // Retour au portail ? Sinon : MFA / passkey / erreur — on lit ce qu'Auth0 affiche.
+    let codeSent = false
     for (let i = 0; i < 20; i++) {
       const url = page.url()
       if (url.startsWith(PORTAL)) break
       const txt = await page.evaluate(() => document.body?.innerText?.slice(0, 400) || '').catch(() => '')
-      if (/passkey|clé d.accès|security key|code|vérification|verification|authenticator|one-time/i.test(txt)) {
+      // Code par mail : champ visible + texte « email … code ». Une seule fois.
+      if (!codeSent && /e-?mail/i.test(txt) && /code/i.test(txt)) {
+        const codeSel = 'input[name="code"], input#code, input[autocomplete="one-time-code"], input[inputmode="numeric"]'
+        const hasField = await page.$$eval(codeSel, els => els.some(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 })).catch(() => false)
+        if (hasField) {
+          steps.push('code demandé par mail')
+          const code = await waitAxaMfaCode(mfaSince, 120_000)
+          if (!code) return { ok: false, steps, error: 'AXA a demandé un code par mail, mais aucun code n’est arrivé dans la boîte en 2 minutes.' }
+          steps.push('code reçu')
+          await page.evaluate((sel: string) => { const el = [...document.querySelectorAll(sel)].find(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 }) as HTMLInputElement | undefined; el?.focus() }, codeSel)
+          await page.keyboard.type(code, { delay: 30 })
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
+            page.keyboard.press('Enter'),
+          ])
+          codeSent = true
+          steps.push('code envoyé')
+          continue
+        }
+      }
+      // Proposition d'enregistrer une passkey après le code : on la refuse.
+      if (codeSent && /passkey|clé d.accès/i.test(txt)) {
+        const skipped = await page.evaluate(() => {
+          const b = [...document.querySelectorAll('button, a')].find(e => /skip|not now|later|plus tard|continue without|ignorer|passer/i.test((e as HTMLElement).innerText || '')) as HTMLElement | undefined
+          if (b) { b.click(); return true }
+          return false
+        }).catch(() => false)
+        if (skipped) { steps.push('passkey refusée'); await new Promise(r => setTimeout(r, 2500)); continue }
+      }
+      if (codeSent && /invalid|incorrect|wrong|expired|expiré/i.test(txt) && /code/i.test(txt)) {
+        return { ok: false, steps, error: `Code AXA refusé : ${txt.replace(/\s+/g, ' ').slice(0, 160)}` }
+      }
+      if (!codeSent && /passkey|clé d.accès|security key|code|vérification|verification|authenticator|one-time/i.test(txt)) {
         return { ok: false, steps, error: `Auth0 demande une vérification supplémentaire (MFA / passkey) — la reconnexion automatique n'est pas possible pour ce compte. Écran : ${txt.replace(/\s+/g, ' ').slice(0, 160)}` }
       }
       if (/wrong|incorrect|invalid|mot de passe|password/i.test(txt) && /wrong|incorrect|invalid|erron/i.test(txt)) {
