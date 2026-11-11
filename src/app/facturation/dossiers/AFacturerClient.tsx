@@ -45,8 +45,8 @@ const inGroup = (d: Dossier, g: SourceGroup) => {
   return g.sources === null ? !touring : g.key === 'touring' ? touring : !!source && g.sources.includes(source)
 }
 
-type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
-type ComexInfo = { id: string; verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }
+export type AutoInfo = { status: string; eligibleAt?: string; reason?: string }
+export type ComexInfo = { id: string; verdict: string | null; montant: number | null; accepted_at: string | null; dossier: string | null }
 
 const isOdoo = (l: DossierLeg) => (l.channel || 'odoo') === 'odoo'
 const ready  = (d: Dossier) => d.legs.filter(l => isOdoo(l) && (canPickLeg(l) || (l.amount_unknown && !isLegBilled(l) && !l.nothing_to_bill)) && !(l.kind === 'gard' && l.open))
@@ -57,10 +57,10 @@ const remarks = (d: Dossier) => d.legs.flatMap(l => l.billing_remarks || [])
 const alerts  = (d: Dossier) => d.legs.flatMap(l => l.alerts || [])
 
 // ── Lecture du dossier : où en est-on, qui a la main, quelle est l'action ────
-type Who = 'nous' | 'robot' | 'eux' | 'client' | 'veille' | 'fini'
+export type Who = 'nous' | 'robot' | 'eux' | 'client' | 'veille' | 'fini'
 type StepState = 'done' | 'now' | 'todo' | 'bad' | 'wait'
 interface Step { key: string; label: string; state: StepState; note?: string }
-interface Reading {
+export interface Reading {
   who: Who
   headline: string
   detail?: string
@@ -68,7 +68,7 @@ interface Reading {
   steps: Step[]
 }
 
-function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | undefined, autoRule: boolean, now: number): Reading {
+export function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexInfo | undefined, autoRule: boolean, now: number): Reading {
   const done = isDone(d)
   const rd = ready(d)
   const inComex = !!comex && !comex.accepted_at && !done
@@ -194,6 +194,8 @@ export default function AFacturerClient({ initial, autoById, comexById = {}, isS
   const [filter, setFilter] = useState<Filter>('nous')
   const [group, setGroupState] = useState<string>('all')
   const [search, setSearch] = useState('')
+  // Arrivée depuis « Ma journée » : /facturation/dossiers?q=… ouvre la liste filtrée (11/11/2026).
+  useEffect(() => { try { const p = new URLSearchParams(window.location.search).get('q'); if (p) setSearch(p) } catch {} }, [])
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [billing, setBilling] = useState<Dossier | null>(null)
   const [loadingBill, setLoadingBill] = useState<string | null>(null)

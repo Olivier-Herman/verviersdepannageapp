@@ -20,7 +20,7 @@ import {
   Mail, Trash2, ScanLine, AlertTriangle, Map as MapIcon, Landmark, Receipt, ShieldCheck, Shield,
   ClipboardList, BarChart3, LayoutGrid, CreditCard, Wallet, Users, CalendarDays,
   Megaphone, Contact, TrendingUp, Settings, Store, Building2, Bot, ClipboardCheck,
-  CalendarClock, Send, Link2, ListChecks, type LucideIcon,
+  CalendarClock, Send, Link2, ListChecks, Sun, BadgeCheck, MailWarning, type LucideIcon,
 } from 'lucide-react'
 import { type NavItem } from './nav-items'
 
@@ -44,6 +44,9 @@ export interface NavSection {
   /** Masquée quand ce feature flag est actif pour le user (extinction progressive d'un ancien écran :
    *  la page reste accessible par URL, seule l'entrée du menu disparaît). Facturation temps 3, 21/09/2026. */
   hiddenWhenFlag?: string
+  /** Affichée SEULEMENT quand ce feature flag est actif (préversion d'une nouvelle entrée).
+   *  « Ma journée », Olivier seul, 11/11/2026. */
+  onlyWhenFlag?: string
 }
 
 export interface NavModule {
@@ -85,9 +88,9 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     // (barre en haut de l'écran), plus des entrées de menu.
     sections: [
       { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
-      { href: '/fourriere/controle',             label: 'Contrôle du parc',       icon: ScanLine,      requires: '/fourriere' },   // remplace l'inventaire (Olivier 21/10/2026)
-      { href: '/fourriere/releve',               label: 'Relevé sans étiquette',  icon: ListChecks,    requires: '/fourriere' },   // inventaire terrain (Olivier 18/10/2026)
-      { href: '/taches',                         label: 'Accident',        icon: ListChecks,    requires: '/fourriere' },   // Module Tâches, premier jet (28/09/2026) : véhicules arrivés au parc sur appel police, flag taches_accident
+      { href: '/fourriere/controle',             label: 'Contrôle du parc',       icon: ScanLine,      requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // préversion ma_journee : vue de Parc   // remplace l'inventaire (Olivier 21/10/2026)
+      { href: '/fourriere/releve',               label: 'Relevé sans étiquette',  icon: ListChecks,    requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // préversion ma_journee : vue de Parc   // inventaire terrain (Olivier 18/10/2026)
+      { href: '/taches',                         label: 'Accident',        icon: ListChecks,    requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // préversion ma_journee : vue de Parc   // Module Tâches, premier jet (28/09/2026) : véhicules arrivés au parc sur appel police, flag taches_accident
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
       { href: '/fourriere/saisies',              label: 'États de frais',         icon: FileWarning,   requires: '/fourriere', heading: 'Facturation' },
       { href: '/fourriere/sorties',              label: 'Sorties',                icon: Trash2,        requires: '/fourriere', heading: 'Sorties' },
@@ -97,13 +100,19 @@ export const NAV_TREE_ESPACES: NavModule[] = [
   {
     key: 'facturation', label: 'Facturation', icon: '🧾',
     sections: [
+      // Préversion « Ma journée » (Olivier seul, 11/11/2026) : page de travail + Touring et Rejets dans le menu.
+      { href: '/ma-journee',           label: 'Ma journée',               icon: Sun,          requires: '/facturation', onlyWhenFlag: 'ma_journee' },
       { href: '/facturation/dossiers', label: 'À facturer',               icon: FolderCheck,  requires: '/facturation' },
-      { href: '/admin/facturation-auto', label: 'Stats facturation auto', icon: BarChart3,  requires: '/admin' },   // taux robot / manuel (Olivier 20/09 : introuvable depuis le menu)
+      { href: '/touring-comex',        label: 'Touring à valider',        icon: BadgeCheck,   requires: '/facturation', onlyWhenFlag: 'ma_journee' },
+      { href: '/mail-agent',           label: 'Rejets de factures',       icon: MailWarning,  requires: '/mail-agent', onlyWhenFlag: 'ma_journee' },
+      { href: '/admin/facturation-auto', label: 'Stats facturation auto', icon: BarChart3,  requires: '/admin', hiddenWhenFlag: 'ma_journee' },   // préversion : dans Réglages   // taux robot / manuel (Olivier 20/09 : introuvable depuis le menu)
       { href: '/facturation',          label: 'Liste par fiche (ancienne)', icon: Receipt,    requires: '/facturation', hiddenWhenFlag: 'facturation_v2' },   // s'éteint pour les pilotes « À facturer » (Olivier 16-21/09/2026)
       { href: '/missions-terminees',   label: 'Missions terminées',       icon: FolderCheck,  i18nKey: 'nav.finished', requires: '/missions-terminees' },
-      { href: '/admin/amendes',        label: 'Amendes',                  icon: AlertTriangle, requires: '/admin/amendes' },
-      { href: '/facturation/touring',  label: 'Touring',                  icon: Shield,       requires: '/facturation', heading: 'Assisteurs' },
-      { href: '/facturation/allianz',  label: 'Clôture Allianz',          icon: ShieldCheck,  requires: '/facturation' },
+      { href: '/admin/amendes',        label: 'Amendes',                  icon: AlertTriangle, requires: '/admin/amendes', hiddenWhenFlag: 'ma_journee' },   // préversion : dans Réglages
+      { href: '/facturation/touring',  label: 'Touring',                  icon: Shield,       requires: '/facturation', heading: 'Assisteurs', hiddenWhenFlag: 'ma_journee' },
+      { href: '/facturation/allianz',  label: 'Clôture Allianz',          icon: ShieldCheck,  requires: '/facturation', hiddenWhenFlag: 'ma_journee' },   // préversion : menu ⋯ de À facturer
+      // Préversion : repli « Plus » (rien ne disparaît, l'entrée descend).
+      { href: '/facturation/touring',  label: 'Liste Touring (ancienne)', icon: Shield,       requires: '/facturation', heading: 'Plus', onlyWhenFlag: 'ma_journee' },
       { href: '/services/tgr',         label: 'TGR Touring',              icon: Shield,       i18nKey: 'nav.services_tgr', requires: '/services/tgr' },
       { href: '/admin/tgr',            label: 'TGR Gestion',              icon: ClipboardList, requires: '/admin/tgr' },
       { href: '/stats/touring',        label: 'Stats Touring',            icon: BarChart3,    requires: '/stats' },
@@ -310,6 +319,7 @@ export function buildNavTree(visible: NavItem[], userRole: string, userModules: 
       && (!s.superadminOnly || isSuperadmin)
       && (!s.requiresRoles || isAdmin || s.requiresRoles.includes(userRole))
       && (!s.hiddenWhenFlag || !flags[s.hiddenWhenFlag])
+      && (!s.onlyWhenFlag || !!flags[s.onlyWhenFlag])
       && (!s.requiresModules || isAdmin || s.requiresModules.some(m => userModules.includes(m))),
     )
     if (sections.length === 0) continue

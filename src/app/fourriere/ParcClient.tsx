@@ -20,7 +20,7 @@ import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 import VehicleFicheSheet from './VehicleFicheSheet'
 import TabLegend from '@/components/ui/TabLegend'
 
-interface V {
+export interface V {
   id: string; mission_number: number | null; external_id: string | null; dossier_number: string | null
   source: string | null; status: string; mission_type: string | null
   plate: string | null; vin: string | null; brand: string | null; model: string | null
@@ -60,16 +60,16 @@ const SOURCE_LABEL: Record<string, string> = { police_saisie: 'Saisie', police_a
 const srcLabel = (s: string | null) => SOURCE_LABEL[String(s || '')] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : '—')
 
 // ── Lecture d'un véhicule ────────────────────────────────────────────────────
-type Who = 'nous' | 'robot' | 'eux' | 'veille'
+export type Who = 'nous' | 'robot' | 'eux' | 'veille'
 type StepState = 'done' | 'now' | 'todo' | 'bad' | 'wait'
 interface Step { key: string; label: string; state: StepState; note?: string }
-interface Reading {
+export interface Reading {
   who: Who; headline: string; detail?: string
   primary?: { label: string; kind: 'place' | 'locate' | 'officer' | 'relance' | 'qualify' | 'destruction' | 'restitute' | 'sell' | 'link' | 'fiche'; href?: string; tone?: 'brand' | 'ghost' | 'sky' }
   steps: Step[]
 }
 
-function readVehicle(v: V): Reading {
+export function readVehicle(v: V): Reading {
   const src = String(v.source || '').toLowerCase()
   const fam = familyOf(src)
   const legacy = fam === 'legacy' || !src
@@ -155,7 +155,7 @@ function Timeline({ steps }: { steps: Step[] }) {
 }
 
 type Filter = 'all' | Who
-export default function ParcClient({ userRole, userName, userEmail, userModules }: { userRole: string; userName: string; userEmail?: string | null; userModules: string[] }) {
+export default function ParcClient({ userRole, userName, userEmail, userModules, journee = false }: { userRole: string; userName: string; userEmail?: string | null; userModules: string[]; journee?: boolean }) {
   const [rows, setRows] = useState<V[]>([])
   const [zones, setZones] = useState<{ key: string; label: string }[]>([])
   const [loading, setLoading] = useState(true)
@@ -163,6 +163,8 @@ export default function ParcClient({ userRole, userName, userEmail, userModules 
   const [fam, setFam] = useState<string>('all')
   const [zone, setZone] = useState<string>('all')
   const [q, setQ] = useState('')
+  // Arrivée depuis « Ma journée » : /fourriere?q=PLAQUE ouvre la liste déjà filtrée (11/11/2026).
+  useEffect(() => { try { const p = new URLSearchParams(window.location.search).get('q'); if (p) setQ(p) } catch {} }, [])
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [fiche, setFiche] = useState<string | null>(null)
   const [officerFor, setOfficerFor] = useState<string | null>(null)
@@ -250,6 +252,9 @@ export default function ParcClient({ userRole, userName, userEmail, userModules 
           <Link href="/fourriere/plan" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Plan</Link>
           <Link href="/fourriere/controle" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Contrôle du parc</Link>
           <Link href="/fourriere/non-localises" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Non localisés{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length}` : ''}</Link>
+          {/* Préversion « Ma journée » (Olivier seul, 11/11/2026) : Relevé et Accident quittent le menu et deviennent des vues de Parc. */}
+          {journee && <Link href="/fourriere/releve" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Relevé sans étiquette</Link>}
+          {journee && <Link href="/taches" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Accident</Link>}
           <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Recherche avancée</Link>
         </div>
 

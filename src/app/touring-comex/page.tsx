@@ -8,6 +8,8 @@ import { getServerSession } from 'next-auth'
 import { redirect }         from 'next/navigation'
 import { authOptions }      from '@/lib/auth'
 import TouringComexClient   from './TouringComexClient'
+import TouringValiderClient from './TouringValiderClient'
+import { isPreviewOn }      from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +21,10 @@ export default async function TouringComexPage() {
   const canAccess = ['admin', 'superadmin'].includes(user.role) || modules.includes('facturation')
   if (!canAccess) redirect('/dashboard?error=access_denied')
 
+  // Préversion « Ma journée » (Olivier seul, 11/11/2026) : nouvel habillage, mêmes fonctions.
+  if (await isPreviewOn('ma_journee', user.role, user.id)) {
+    return <TouringValiderClient userRole={user.role} userName={user.name || ''} userEmail={user.email || ''} userModules={user.modules || []} />
+  }
   return (
     <TouringComexClient
       userRole={user.role}
