@@ -94,7 +94,7 @@ const Plaque = ({ m }: { m: M }) => m.vehicle_plate
   : <span className="text-ink-muted text-xs">plaque inconnue</span>
 const Btn = ({ children, onClick, ton = 'o', disabled, grand }: { children: React.ReactNode; onClick: () => void; ton?: 'p' | 'g' | 'o' | 'd'; disabled?: boolean; grand?: boolean }) => (
   <button type="button" onClick={e => { e.stopPropagation(); onClick() }} disabled={disabled}
-    className={`min-h-[44px] px-3.5 rounded-xl font-bold text-sm disabled:opacity-50 ${grand ? 'flex-1' : ''} ${
+    className={`min-h-[44px] px-3.5 rounded-xl font-bold text-sm disabled:opacity-50 ${grand ? 'flex-1 basis-full lg:basis-0' : 'flex-1 lg:flex-none'} ${
       ton === 'p' ? 'bg-stone-900 text-white' : ton === 'g' ? 'bg-emerald-700 text-white' : ton === 'd' ? 'bg-red-100 text-red-800' : 'bg-white border border-stone-300 text-stone-900'}`}>
     {children}
   </button>
@@ -146,6 +146,13 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const [message, setMessage] = useState<{ txt: string; ton: 'ok' | 'info' | 'err' } | null>(null)
   const [picker, setPicker] = useState<M | null>(null)
   const [selId, setSelId] = useState<string | null>(null)
+  // Téléphone (garde) : un onglet à la fois, rien d'épinglé (Olivier 11/11).
+  const [ongletTel, setOngletTel] = useState<'traiter' | 'cours' | 'chauffeurs'>('traiter')
+  const [etatsChauffeurs, setEtatsChauffeurs] = useState<any[] | null>(null)
+  useEffect(() => {
+    if (ongletTel !== 'chauffeurs') return
+    fetch('/api/users/driver-status', { cache: 'no-store' }).then(r => r.json()).then(d => setEtatsChauffeurs(Array.isArray(d) ? d : (d?.drivers || []))).catch(() => setEtatsChauffeurs([]))
+  }, [ongletTel, board])
   const [complete, setComplete] = useState<{ id: string; titre: string } | null>(null)   // fiche complète embarquée (indépendante de la sélection)
   const choisir = (m: M) => setSelId(m.id)   // fermeture par le ✕ du volet
   // Arrivée depuis la création rapide : /dispatch?ouvrir=<id> ouvre la mission dans le volet.
@@ -343,12 +350,18 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           <span className="flex-1" />
           <Link href="/dispatch/new" className="min-h-[44px] px-4 rounded-xl bg-white text-red-900 font-extrabold text-sm inline-flex items-center">+ Nouvelle mission</Link>
         </div>
+        <div className="lg:hidden grid grid-cols-3 gap-1 bg-stone-100 rounded-xl p-1" role="tablist" aria-label="Vue">
+          {([['traiter', `À traiter · ${n}`], ['cours', `En cours · ${board?.lances.length ?? 0}`], ['chauffeurs', 'Chauffeurs']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={ongletTel === k} onClick={() => setOngletTel(k)}
+              className={`min-h-[44px] rounded-lg font-bold text-[13.5px] ${ongletTel === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}`}>{l}</button>
+          ))}
+        </div>
         {erreur && <div className="rounded-xl bg-red-100 text-red-900 px-4 py-2.5 text-sm font-semibold">Les données n'ont pas pu être relues ({erreur}). Nouvel essai dans quelques secondes.</div>}
         {message && <div className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${message.ton === 'err' ? 'bg-red-100 text-red-900' : message.ton === 'info' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{message.txt}</div>}
 
         <div className={`grid gap-2.5 lg:h-[calc(100vh-170px)] ${sel ? 'lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]' : 'lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)]'}`}>
           {/* Colonne « À traiter » */}
-          <section className="rounded-2xl border bg-surface flex flex-col min-h-0">
+          <section className={`rounded-2xl border bg-surface flex-col min-h-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="flex items-center justify-between px-3 pt-3 pb-2"><b className="text-[16px] text-ink">À traiter · {n}</b><span className="text-stone-500 text-[13px]">le plus pressé en haut</span></header>
             {!board ? <p className="px-3 pb-3 text-stone-500">Chargement…</p> : <>
               <div className="px-3 pb-2 flex flex-col gap-2 lg:max-h-[66%] lg:overflow-y-auto lg:flex-none lg:border-b-2 lg:border-dashed lg:border-stone-200">
@@ -362,7 +375,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           </section>
 
           {/* Liste des missions lancées */}
-          <section className="rounded-2xl border bg-surface flex flex-col min-h-0 min-w-0">
+          <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'cours' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="px-3 pt-3 pb-2 flex flex-col gap-2">
               <b className="text-[16px] text-ink">Missions</b>
               <input value={q} onChange={e => setQ(e.target.value)} type="search" placeholder="Plaque, client, adresse, n° de fiche…" aria-label="Chercher une mission"
@@ -377,7 +390,16 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
             </header>
             <div className="overflow-auto min-h-0 px-1">
               {!liste ? <p className="px-3 py-2 text-stone-500">Chargement…</p> : liste.length === 0 ? <p className="px-3 py-2 text-stone-500">{q ? 'Aucune mission ne correspond.' : filtre === 'cours' ? 'Aucune mission lancée pour l\'instant.' : 'Rien dans cette vue.'}</p> : (
-                <table className="w-full min-w-[520px] text-[13.5px]">
+                <>
+                <div className="lg:hidden flex flex-col gap-2 px-2 pb-2">
+                  {liste.map(m => { const e = etat(m); return (
+                    <button key={m.id} type="button" onClick={() => choisir(m)} className="text-left rounded-xl border border-stone-200 bg-white p-2.5 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2"><b className="text-stone-900 text-[14px]">{m.assigned_user?.name || 'Sans chauffeur'}</b><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${e.cls}`}>{e.txt}</span></div>
+                      <div className="flex items-center gap-1.5 min-w-0"><Source m={m} sources={sources} /><span className="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 text-[11.5px] font-bold">{typeCourt(m)}</span><Plaque m={m} /><span className="text-stone-600 text-[13px] truncate">{trajetCourt(m)}</span></div>
+                      {m.status === 'assigned' && m.assigned_at && <span className={`text-[12.5px] font-bold ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>pas encore acceptée · {duree(minutesDepuis(m.assigned_at, now))}</span>}
+                    </button>) })}
+                </div>
+                <table className="hidden lg:table w-full min-w-[520px] text-[13.5px]">
                   <thead><tr className="text-left text-[11.5px] uppercase tracking-wide text-stone-500"><th className="px-2 py-2">État</th><th className="px-2 py-2">Mission</th><th className="px-2 py-2">Trajet</th><th className="px-2 py-2">Chauffeur</th></tr></thead>
                   <tbody>
                     {liste.map(m => {
@@ -397,9 +419,27 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     })}
                   </tbody>
                 </table>
+                </>
               )}
             </div>
           </section>
+
+          {/* Chauffeurs (téléphone) : mêmes états que l'écran actuel, missions en cours de chacun */}
+          {ongletTel === 'chauffeurs' && (
+            <section className="lg:hidden rounded-2xl border bg-surface p-3 flex flex-col gap-2">
+              {!etatsChauffeurs ? <p className="text-stone-500">Chargement…</p> : etatsChauffeurs.length === 0 ? <p className="text-stone-500">Aucun chauffeur.</p> : etatsChauffeurs.map((d: any) => {
+                const ms = (board?.lances || []).filter(m => m.assigned_to === d.id)
+                const st = d.on_conge ? ['En congé', 'bg-stone-200 text-stone-700'] : d.manual_offline ? ['Hors ligne', 'bg-red-100 text-red-800'] : d.status === 'en_mission' ? ['En mission', 'bg-amber-100 text-amber-900'] : d.status === 'en_service' ? ['Libre', 'bg-emerald-100 text-emerald-800'] : ['Hors service', 'bg-stone-200 text-stone-700']
+                return (
+                  <div key={d.id} className="rounded-xl border border-stone-200 bg-white p-2.5 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2"><b className="text-stone-900">{d.name}</b><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${st[1]}`}>{st[0]}</span></div>
+                    {(d.schedule_day || d.schedule_night) && <span className="text-stone-500 text-[12.5px]">De garde {d.schedule_day && d.schedule_night ? 'jour et nuit' : d.schedule_day ? 'de jour' : 'de nuit'}</span>}
+                    {ms.map(m => <button key={m.id} type="button" onClick={() => choisir(m)} className="min-h-[44px] rounded-lg border border-stone-200 px-2.5 text-left text-[13px] text-stone-800"><b>{m.vehicle_plate || '—'}</b> · {etat(m).txt} · {trajetCourt(m)}</button>)}
+                  </div>
+                )
+              })}
+            </section>
+          )}
 
           {/* Volet de droite : le détail de la mission choisie (première version ; complète à l'étape 2). */}
           {sel && (
