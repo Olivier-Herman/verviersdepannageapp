@@ -287,7 +287,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
                 <Link href="/fourriere/non-localises" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Non localisés{rows.some(v => v.unlocated) ? ` · ${rows.filter(v => v.unlocated).length}` : ''}</Link>
               </>}
           {journee && <Link href="/taches" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Accident</Link>}
-          <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">Recherche avancée</Link>
+          <Link href="/fourriere/recherche" className="px-3 py-1.5 rounded-lg text-ink-secondary hover:text-ink">{journee ? 'Historique' : 'Recherche avancée'}</Link>
         </div>
 
         {journee ? (
@@ -323,7 +323,7 @@ export default function ParcClient({ userRole, userName, userEmail, userModules,
         <div className={journee ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>
         {loading ? <div className="text-center py-16 text-ink-faint text-sm">Chargement du parc…</div>
           : visible.length === 0 ? (
-            <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted"><p className="text-4xl mb-2">{filter === 'nous' ? '🎉' : '🚓'}</p><p className="font-medium text-ink">{filter === 'nous' ? 'Rien ne nous attend' : 'Aucun véhicule ici'}</p></div>
+            <div className="bg-surface border rounded-2xl p-10 text-center text-ink-muted"><p className="text-4xl mb-2">{filter === 'nous' ? '🎉' : '🚓'}</p><p className="font-medium text-ink">{q ? 'Aucun véhicule au parc pour cette recherche' : filter === 'nous' ? 'Rien ne nous attend' : 'Aucun véhicule ici'}</p>{journee && q && <Link href={`/fourriere/recherche?q=${encodeURIComponent(q)}`} className="inline-flex items-center mt-3 min-h-[44px] px-4 rounded-xl bg-brand text-white text-sm font-bold">Chercher aussi dans les véhicules sortis</Link>}</div>
           ) : visible.map(v => {
             const r = readings.get(v.id)!; const who = WHO[r.who]; const isOpen = open.has(v.id); const p = r.primary
             return (

@@ -54,6 +54,8 @@ interface Props {
   userName:    string
   userEmail?:  string | null
   userModules: string[]
+  /** Préversion ma_journee (Q9, 11/11/2026) : « Recherche dans l'historique », véhicules sortis inclus, sans barre de boutons. */
+  historique?: boolean
 }
 
 
@@ -70,7 +72,7 @@ function daysInParc(parked_at: string | null): number | null {
   return Math.max(0, Math.floor((Date.now() - d) / (1000 * 60 * 60 * 24)))
 }
 
-export default function FourriereSearchClient({ userRole, userName, userEmail, userModules }: Props) {
+export default function FourriereSearchClient({ userRole, userName, userEmail, userModules, historique = false }: Props) {
   const [plate,    setPlate]    = useState('')
   const [vin,      setVin]      = useState('')
   const [pv,       setPv]       = useState('')
@@ -80,7 +82,9 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
   const [address,  setAddress]  = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
-  const [includeHistory, setIncludeHistory] = useState(false)
+  const [includeHistory, setIncludeHistory] = useState(historique)
+  // Arrivée depuis le Parc (« Chercher aussi dans les véhicules sortis ») : /fourriere/recherche?q=…
+  useEffect(() => { if (!historique) return; try { const q = new URLSearchParams(window.location.search).get('q'); if (q) setPlate(q) } catch {} }, [historique])
   const [showCancelled, setShowCancelled] = useState(false)
   const [results,  setResults]  = useState<SearchResult[]>([])
   const [loading,  setLoading]  = useState(false)
@@ -139,8 +143,9 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <Search size={20} className="text-brand" />
-              <h1 className="font-display text-xl font-bold text-ink">Recherche fourrière</h1>
+              <h1 className="font-display text-xl font-bold text-ink">{historique ? 'Recherche dans l\'historique' : 'Recherche fourrière'}</h1>
             </div>
+            {!historique && <>
             <Link
               href="/fourriere/migration"
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold shadow-sm transition"
@@ -187,6 +192,7 @@ export default function FourriereSearchClient({ userRole, userName, userEmail, u
               <MapIcon size={16} />
               Accéder aux parcs
             </button>
+            </>}
           </div>
 
           {/* Formulaire de recherche */}

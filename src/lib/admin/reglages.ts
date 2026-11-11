@@ -188,6 +188,7 @@ export const RANGE: ReglageLien[] = [
   { href: '/admin/dispatch',              label: 'Dispatch (ancienne page)', desc: 'Raccourcis vers des pages rangées ailleurs dans Réglages.' },
   { href: '/admin/garage-cancellations',  label: 'Annulations garage',       desc: 'Demandes d’annulation des garages après acceptation. Aucune reçue à ce jour.' },
   { href: '/admin/vetements',             label: 'Pulls et t-shirts',        desc: 'Commande d’octobre 2026, passée.' },
+  { href: '/fourriere/migration',         label: 'Migration TowSoft',        desc: 'Reprise de l’ancien logiciel fourrière, terminée en juin 2026.' },
   { href: '/admin/boutades',              label: 'Boutades',                 desc: 'Historique des vannes affichées à Franck.', superadminOnly: true },
 ]
 
