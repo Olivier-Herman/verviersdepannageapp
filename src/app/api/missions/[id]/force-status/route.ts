@@ -50,6 +50,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Scénario Siabis choisi dans la fenêtre « Forcer la clôture » quand il manque (Olivier 01/11/2026, Momo bloqué
     // 4 fois sur X222VJ).
     snc_scenario?:     string | null
+    // R6 (Olivier 11/11/2026) : pourquoi la fiche est forcée « à facturer ».
+    raison?:           string | null
   }
   if (!body.status || !(ALLOWED_STATUS as readonly string[]).includes(body.status)) {
     return NextResponse.json({ error: `Status invalide. Allowed: ${ALLOWED_STATUS.join(', ')}` }, { status: 400 })
@@ -282,8 +284,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     mission_id: params.id,
     actor_id:   userId,
     action:     `force_status_${body.status}`,
-    notes:      `Statut force par dispatcher → ${body.status}`,
-    metadata:   { forced_by_role: role, ...(update.assigned_to === null ? { assignment_reset: true } : {}) },
+    notes:      `Statut force par dispatcher → ${body.status}${body.raison ? ` · ${String(body.raison).slice(0, 200)}` : ''}`,
+    metadata:   { forced_by_role: role, ...(body.raison ? { raison: String(body.raison).slice(0, 200) } : {}), ...(update.assigned_to === null ? { assignment_reset: true } : {}) },
   })
 
   // Olivier 2026-06-18 : clôture FORCÉE par le dispatch d'une mission Kaze →

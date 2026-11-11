@@ -2,6 +2,7 @@
 
 import { SNC_SUPPLEMENTS, normSupplements } from '@/lib/snc/supplements'
 import SamConversations from '@/components/sam/SamConversations'
+import RaisonForcage from '@/components/missions/RaisonForcage'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import EtapeVrVab from '@/components/mission/EtapeVrVab'
 import { useRouter }   from 'next/navigation'
@@ -889,6 +890,8 @@ export default function MissionDetailClient({
   reportClient?: string | null // rapport d'intervention joint à la facture (EBAC, Centracar — 29/09/2026)
 }) {
   const [forceScen, setForceScen] = useState(false)   // choix du scénario Siabis au forçage (01/11/2026)
+  const [forceRaison, setForceRaison] = useState(false)
+  const [forcingRaison, setForcingRaison] = useState(false)
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
   const nextRouter = useRouter()
@@ -4505,18 +4508,8 @@ export default function MissionDetailClient({
                       onClick={async () => {
                         // Siabis sans scénario : on le choisit ici, dans le même geste (Olivier 01/11/2026).
                         if (['police_snc', 'sia_couvert'].includes(String((M as any).source)) && !(M as any).snc_scenario) { setForceScen(true); return }
-                        if (!confirm('Forcer la clôture (passe en "À facturer") sans pointage ni photo ?')) return
-                        try {
-                          const r = await fetch(`/api/missions/${initialMission.id}/force-status`, {
-                            method:  'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body:    JSON.stringify({ status: 'to_invoice' }),
-                          })
-                          if (!r.ok) { const j = await r.json().catch(() => ({})); if (j.scenario_required) { setForceScen(true); return } alert(j.error || 'Clôture refusée'); return }
-                          setStatus('to_invoice')
-                          setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
-                          router.refresh()
-                        } catch (e: any) { alert('Erreur : ' + e.message) }
+                        // R6 (11/11/2026) : la raison est demandée dans la page avant de forcer.
+                        setForceRaison(true)
                       }}
                       className="w-full flex items-center gap-3 px-4 py-3 bg-success/10 hover:bg-success/20 border border-success/30 rounded-xl text-left transition">
                       <span className="text-xl flex-shrink-0">✅</span>
@@ -4525,6 +4518,21 @@ export default function MissionDetailClient({
                         <p className="text-ink-muted text-xs">Passe en "À facturer" sans pointage ni photos</p>
                       </div>
                     </button>
+                    {forceRaison && <RaisonForcage busy={forcingRaison} onAnnuler={() => setForceRaison(false)} onChoix={async (raison) => {
+                        setForcingRaison(true)
+                        try {
+                          const r = await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body:    JSON.stringify({ status: 'to_invoice', raison }),
+                          })
+                          if (!r.ok) { const j = await r.json().catch(() => ({})); if (j.scenario_required) { setForceRaison(false); setForceScen(true); return } alert(j.error || 'Clôture refusée'); return }
+                          setForceRaison(false)
+                          setStatus('to_invoice')
+                          setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
+                          router.refresh()
+                        } catch (e: any) { alert('Erreur : ' + e.message) } finally { setForcingRaison(false) }
+                      }} />}
                     {forceScen && (
                       <div className="rounded-xl border-2 border-success/40 bg-success/5 p-3 space-y-2">
                         <div className="flex items-start gap-2">

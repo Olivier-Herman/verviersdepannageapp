@@ -35,10 +35,11 @@ export async function blocagesAFacturer(): Promise<{ groupes: GroupeAF[]; total:
   const fiches = ms || []
   const ids = fiches.map(m => m.id)
   const forcees = new Set<string>()
+  const raisons = new Map<string, string>()
   for (let i = 0; i < ids.length; i += 200) {
     // Seul le forçage à la main compte : une sortie de parc (restitution, abandon) passe aussi par ce journal.
-    const { data } = await sb.from('mission_logs').select('mission_id, notes').eq('action', 'force_status_to_invoice').in('mission_id', ids.slice(i, i + 200))
-    for (const l of data || []) if (/statut forc/i.test(String(l.notes || ''))) forcees.add(l.mission_id)
+    const { data } = await sb.from('mission_logs').select('mission_id, notes, metadata').eq('action', 'force_status_to_invoice').in('mission_id', ids.slice(i, i + 200))
+    for (const l of data || []) if (/statut forc/i.test(String(l.notes || ''))) { forcees.add(l.mission_id); if ((l as any).metadata?.raison) raisons.set(l.mission_id, (l as any).metadata.raison) }
   }
   const { data: cx } = await sb.from('touring_comex_dossiers').select('mission_id, mission_ids, in_comex, accepted_at, verdict')
   const comex = new Map<string, any>()
@@ -56,7 +57,7 @@ export async function blocagesAFacturer(): Promise<{ groupes: GroupeAF[]; total:
     if (jours > 21) plus21++
     const c = comex.get(m.id)
     let cle: CleGroupe, detail = TYPE[m.mission_type] || m.mission_type || ''
-    if (forcees.has(m.id)) { cle = 'forcees'; detail += ' — statut forcé' }
+    if (forcees.has(m.id)) { cle = 'forcees'; detail += raisons.has(m.id) ? ` — forcé : ${raisons.get(m.id)}` : ' — statut forcé (sans raison)' }
     else if (src.startsWith('police_')) cle = 'saisies'
     else if (src === 'sia_couvert') cle = 'siabis'
     // Dossier Touring « BX » : reçu par mail, jamais dans COMEX → facture ordinaire (Olivier 03/11/2026, 2GDM957 resté

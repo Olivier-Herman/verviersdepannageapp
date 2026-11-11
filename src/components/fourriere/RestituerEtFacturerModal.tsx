@@ -286,7 +286,7 @@ export default function RestituerEtFacturerModal({ mission, onClose, onSuccess }
       const forceRes = await fetch(`/api/missions/${mission.id}/force-status`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 'to_invoice' }),
+        body:    JSON.stringify({ status: 'to_invoice', raison: 'Restitution au comptoir (restituer et facturer)' }),
       })
       if (!forceRes.ok) {
         const j = await forceRes.json().catch(() => ({}))
