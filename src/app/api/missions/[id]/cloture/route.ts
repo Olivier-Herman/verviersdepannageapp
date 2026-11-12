@@ -121,7 +121,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const priorMotifKey = priorMotif && findMotif('remorquage', priorMotif) ? priorMotif : null
 
   // Adresse de livraison de la fiche : sans rue, l'écran la fait compléter au chauffeur (2JXX385, 09/11/2026).
-  const ficheDest = String((m as any).destination_address || '').trim() || null
+  // Il ne manque que le code postal : la carte le donne, on ne le redemande pas au chauffeur (12/11/2026, 1VGN930).
+  let ficheDest = String((m as any).destination_address || '').trim() || null
+  if (ficheDest && !adresseComplete(ficheDest)) {
+    const { completerAdresseParCarte } = await import('@/lib/cloture/completer-adresse')
+    ficheDest = (await completerAdresseParCarte(sb, (m as any).id)) || ficheDest
+  }
 
   return NextResponse.json({
     hasPrefill,

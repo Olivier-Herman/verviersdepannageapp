@@ -16,6 +16,19 @@ export const maxDuration = 300
 
 const BUREAU = ['dispatcher', 'admin', 'superadmin']
 
+/** Avant de demander l'adresse : il ne manque peut-être que le code postal, que la carte donne (12/11/2026). */
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const sb = createAdminClient()
+  const { data: m } = await sb.from('incoming_missions').select('id, destination_address').eq('id', params.id).maybeSingle()
+  if (!m) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
+  if (adresseComplete((m as any).destination_address)) return NextResponse.json({ complete: true, address: (m as any).destination_address })
+  const { completerAdresseParCarte } = await import('@/lib/cloture/completer-adresse')
+  const address = await completerAdresseParCarte(sb, (m as any).id)
+  return NextResponse.json({ complete: !!address, address: address || (m as any).destination_address || null })
+}
+
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

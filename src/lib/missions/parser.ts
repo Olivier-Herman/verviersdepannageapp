@@ -37,6 +37,8 @@ export interface ParsedMission {
   underground:          boolean | null
   /** Type de document quand la source en envoie plusieurs (ANWB : transfert, depannage_pec, gardiennage…). */
   document_kind?:       string | null
+  /** false = le document n'est PAS une demande d'intervention (courrier facture, paiement, sinistre…). Olivier 12/11/2026. */
+  est_ordre_intervention?: boolean | null
   confidence:           number
 }
 
@@ -241,8 +243,11 @@ Extrais les données de cette mission et retourne ce JSON (null si absent):
   "client_language": "fr|nl|de|en ou null",
   "underground": null,
   "document_kind": null,
+  "est_ordre_intervention": true,
   "confidence": 0.9
 }
+
+est_ordre_intervention (OBLIGATOIRE, toutes sources) : true si le document DEMANDE une intervention (dépannage, remorquage, transport, relivraison, trajet à vide, garantie de prise en charge d'une intervention). false si c'est un courrier qui ne demande aucune intervention : facture, rappel ou relance de paiement, avis de paiement, réclamation, gestion de sinistre (« Claim Case »), question administrative, relevé. En cas de doute → true.
 
 CONTENU:`
 }
@@ -353,6 +358,7 @@ export async function parseMissionContent(
     incident_country:     (parsed.incident_country     as string)        || 'BE',
     destination_name:     (parsed.destination_name     as string | null) || null,
     document_kind:        (parsed.document_kind        as string | null) || null,
+    est_ordre_intervention: parsed.est_ordre_intervention === false ? false : true,
     destination_address:  (parsed.destination_address  as string | null) || null,
     amount_guaranteed:    parsed.amount_guaranteed != null
                             ? parseFloat(String(parsed.amount_guaranteed)) || null
