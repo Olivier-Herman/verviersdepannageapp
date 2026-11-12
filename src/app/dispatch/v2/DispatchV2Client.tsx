@@ -226,15 +226,29 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
     <div className="flex items-center gap-1.5 min-w-0">
       <Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span><Plaque m={m} />
       {Array.isArray(m.warnings) && m.warnings.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold" title={m.warnings.join(', ')}>⚠ {m.warnings.length}</span>}
-      <span className="text-stone-600 text-[13px] truncate min-w-0">{detail ?? trajetCourt(m)}</span>
+      <span className={`text-stone-600 text-[13px] truncate min-w-0 ${detail ? '' : 'lg:hidden'}`}>{detail ?? trajetCourt(m)}</span>
     </div>
     {/* Téléphone : pas de volet à côté, la carte porte le détail utile (Olivier 11/11 : « les infos sont trop limitées »). Sur PC, il est dans le volet de droite. */}
     {!detail && <DetailTel m={m} />}
+    {!detail && <ResumeBureau m={m} />}
     {children && <div className="flex gap-1.5 flex-wrap">{children}</div>}
   </div>
 )
 // Détail d'une mission sur téléphone (pas de volet à côté) : adresse, destination, panne, véhicule,
 // réception, client et téléphone, avertissements. Sur PC, ce détail est dans le volet de droite.
+// Grand écran : deux lignes courtes (adresse → destination ; panne · client · réception), coupées
+// au bout de la ligne, texte complet au survol. Le détail complet reste dans le volet de droite.
+const ResumeBureau = ({ m }: { m: M }) => {
+  const l1 = [court(m.incident_address) || m.incident_city, m.destination_name || m.destination_address ? '→ ' + [court(m.destination_name), court(m.destination_address)].filter(Boolean).join(', ') : ''].filter(Boolean).join(' ')
+  const recue = m.received_at ? 'reçue ' + new Date(m.received_at).toLocaleString('fr-BE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''
+  const l2 = [panneLisible(m.incident_description), m.assisted_name || m.client_name, recue].filter(Boolean).join(' · ')
+  return (
+    <div className="hidden lg:flex flex-col text-[13px] min-w-0">
+      {l1 && <span className="text-stone-800 truncate" title={l1}>{l1}</span>}
+      {l2 && <span className="text-stone-500 truncate" title={l2}>{l2}</span>}
+    </div>
+  )
+}
 const DetailTel = ({ m }: { m: M }) => (
   <>
     <dl className="lg:hidden grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
