@@ -78,6 +78,7 @@
     { "path": "/api/cron/payment-advices",           "schedule": "0 3,4,10,11 * * *" },
     { "path": "/api/cron/scrada-coda",               "schedule": "0 4 * * *"    },
     { "path": "/api/cron/aurelie-sel",               "schedule": "0 4-17 * * *" },
+    { "path": "/api/cron/as24-domiciliations",       "schedule": "30 7 * * 1-5" },
     { "path": "/api/cron/especes",                   "schedule": "*/15 * * * *" },
     { "path": "/api/cron/mail-folders-learn",        "schedule": "30 1 * * *"   },
     { "path": "/api/cron/telegram-bot-photo",       "schedule": "1 * * * *"  },

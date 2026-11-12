@@ -516,11 +516,11 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     await odooRpcCompany(company, 'account.move', 'action_post', [[b.id]])
     let paiement = ''
     if (domicilie) {
-      const [journal, method] = await Promise.all([getBusinessNumber('odoo_journal_paiement_fournisseurs'), getBusinessNumber('odoo_methode_domiciliation')])
-      const ctx = { context: { active_model: 'account.move', active_ids: [b.id], active_id: b.id } }
-      const wiz = await odooRpcCompany<number>(company, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: method, payment_date: b.invoice_date || today(), communication: `${b.ref || ''} — domiciliation AS 24`.trim() }], ctx)
-      await odooRpcCompany(company, 'account.payment.register', 'action_create_payments', [[wiz]], ctx)
-      paiement = ` — ${swf ? 'Viapass passée sur AS 24 - Belgium, ' : ''}payée par domiciliation`
+      // Plus de paiement créé d'avance (Olivier 12/11/2026) : il n'était relié à aucun mouvement de banque
+      // (« payé sans mouvement banque = pas payé »). La facture reste ouverte jusqu'au prélèvement, que
+      // le rapprochement AS 24 (src/lib/as24/domiciliation.ts, cron as24-domiciliations) relie au relevé.
+      // Elle n'apparaît pas dans les paiements à trier (réglage paiements_exclus_partner_ids).
+      paiement = ` — ${swf ? 'Viapass passée sur AS 24 - Belgium, ' : ''}payée au prochain prélèvement AS 24`
     }
     const after = await readBill(company, b.id)
     return { note: `Facture validée : ${after?.name || b.id}${paiement}`, facture: after?.name }
