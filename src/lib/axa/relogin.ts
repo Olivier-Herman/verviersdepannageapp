@@ -13,7 +13,7 @@
 
 import { launchBrowser } from '@/lib/vab/sign-browser'
 import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
-import { waitAxaMfaCode } from '@/lib/axa/mfa-code'
+import { waitAxaMfaCode, deleteAxaMfaMails } from '@/lib/axa/mfa-code'
 
 const PORTAL = 'https://go-and-assist.axapartners.com'
 
@@ -153,7 +153,13 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     for (let i = 0; i < 20 && !tok; i++) { tok = await readRefreshToken(page); if (!tok) await new Promise(r => setTimeout(r, 1000)) }
     if (!tok) return { ok: false, steps, error: 'refresh token introuvable dans le stockage du portail' }
     steps.push('refresh token lu')
-    return await seed(tok, steps, email)
+    const res = await seed(tok, steps, email)
+    // Connexion établie : le mail du code n'a plus d'utilité, on le supprime.
+    if (res.ok && codeSent) {
+      const n = await deleteAxaMfaMails(mfaSince).catch(() => 0)
+      steps.push(n ? `mail du code supprimé (${n})` : 'mail du code non supprimé')
+    }
+    return res
   } catch (e: any) {
     return { ok: false, steps, error: e?.message || String(e) }
   } finally {
