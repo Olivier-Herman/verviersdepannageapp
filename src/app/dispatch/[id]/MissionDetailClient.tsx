@@ -73,6 +73,8 @@ const sb = createClient(
 interface Mission {
   id: string
   mission_number: number | null
+  created_at?: string | null
+  offline_created_at?: string | null   // fiche faite hors ligne par le chauffeur (12/11/2026)
   external_id: string
   dossier_number: string | null
   source: string
@@ -2856,6 +2858,23 @@ export default function MissionDetailClient({
               </div>
               <span className="text-slate-400 text-lg flex-shrink-0">⌄</span>
             </button>
+          </div>
+        )}
+
+        {/* Fiche faite hors ligne par le chauffeur (Olivier 12/11/2026) : l'heure réelle et l'heure d'arrivée. */}
+        {initialMission.offline_created_at && (
+          <div className="px-4 lg:px-8 pt-4">
+            <div className="border-2 border-amber-400 bg-amber-50 rounded-xl p-4 flex items-start gap-3">
+              <span className="text-2xl">📵</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-800 text-sm font-bold uppercase tracking-wide">Fiche faite hors ligne</p>
+                <p className="text-amber-900 text-xs mt-1">
+                  Enregistrée dans le téléphone le {new Date(initialMission.offline_created_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })}
+                  {initialMission.created_at ? `, arrivée dans le programme le ${new Date(initialMission.created_at).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })}` : ''}.
+                  {' '}À relire : l’adresse vient de la position du téléphone, et la marque et le modèle ont été choisis sans la recherche par plaque.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

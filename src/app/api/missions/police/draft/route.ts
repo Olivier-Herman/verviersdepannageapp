@@ -15,6 +15,7 @@
 
 import { estimateMissionPrice } from '@/lib/missions/estimate-price'
 import { withBrusselsOffset } from '@/lib/time/bxl-offset'
+import { readOffline } from '@/lib/missions/offline'
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
@@ -143,6 +144,13 @@ export async function POST(req: Request) {
         ? await mgDeplacementTvac()
         : null
 
+  // Fiche faite hors ligne (Olivier 12/11/2026) : jamais créée deux fois.
+  const offline = readOffline(body)
+  if (offline) {
+    const { data: deja } = await supabase.from('incoming_missions').select('id, mission_number, amount_to_collect').eq('offline_id', offline.id).maybeSingle()
+    if (deja) return NextResponse.json({ ok: true, missionId: deja.id, missionNumber: deja.mission_number, amountToCollect: deja.amount_to_collect, duplicate_prevented: true })
+  }
+
   // Olivier 2026-06-04 : anti-doublon (double-tap, retry reseau).
   // Si meme chauffeur a deja cree une mission pour la meme plaque < 2 min,
   // on retourne la mission existante au lieu d en creer une nouvelle.
@@ -212,6 +220,8 @@ export async function POST(req: Request) {
       assigned_at:         nowIso,
       // Pas de mission avec chauffeur sans camion (Olivier 26/10/2026) : son camion du moment.
       truck_id:            user.id ? ((await supabase.from('users').select('current_truck_id').eq('id', user.id).maybeSingle()).data?.current_truck_id || null) : null,
+      offline_id:          offline?.id ?? null,
+      offline_created_at:  offline?.createdAt ?? null,
       created_at:          nowIso,
       updated_at:          nowIso,
     })

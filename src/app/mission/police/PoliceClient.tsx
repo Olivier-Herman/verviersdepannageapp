@@ -13,6 +13,7 @@ import type { VehicleMatch } from '@/types/vehicles'
 import { useT } from '@/lib/i18n/I18nProvider'
 import { T }    from '@/lib/i18n/T'
 import { normalizePlate } from '@/lib/plate'
+import { pluginHorsLigne, type FicheHorsLigne } from '@/lib/client/fiches-hors-ligne'
 
 type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'siabis' | 'appel_prive' | 'avp'
 
@@ -590,6 +591,39 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
   }
 
 
+  // ── Fiche gardée dans le téléphone quand le réseau manque (Olivier 12/11/2026) ──
+  const [horsLigneDispo, setHorsLigneDispo] = useState(false)
+  const [gardeEnCours, setGardeEnCours] = useState(false)
+  const [gardee, setGardee] = useState(false)
+  const garderHorsLigne = async () => {
+    const p = pluginHorsLigne(); if (!p || !selectedType) return
+    setGardeEnCours(true)
+    try {
+      const enBase64 = (f: File) => new Promise<string>((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result || '')); r.onerror = ko; r.readAsDataURL(f) })
+      const photosB64 = await Promise.all(photos.map(enBase64))
+      const [dd, mm, yyyy] = (date || '').split('-'); const [hh, mn] = (time || '00:00').split(':')
+      const interventionAt = dd && mm && yyyy ? new Date(`${yyyy}-${mm}-${dd}T${hh}:${mn}:00`).toISOString() : new Date().toISOString()
+      const motif = saisieMotifs.find(m => m.code === saisieMotifCode)
+      await p.save({
+        fiche: {
+          id: (crypto as any).randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          createdAt: new Date().toISOString(),
+          type: (['snc', 'sc', 'siabis'].includes(selectedType) ? 'siabis' : selectedType) as FicheHorsLigne['type'],
+          date, time, interventionAt,
+          plate, vin, brand, model, location, lat: locationLat, lng: locationLng,
+          policeZone, officerName, ownerFirstName, ownerLastName, ownerPhone, remarks,
+          policeBlocked, sncRequiresBalisage, malGareeScenario,
+          appelPriveType, appelPriveDestination, destination, amountToCollect,
+          saisieMotifCode, saisieMotifLabel: motif?.label_short || motif?.label || '',
+        },
+        photos: photosB64,
+      })
+      setGardee(true); setErr('')
+    } catch (e: any) {
+      setErr(`La fiche n’a pas pu être gardée dans le téléphone : ${e?.message || 'erreur inconnue'}. Note les infos et appelle le dispatch.`)
+    } finally { setGardeEnCours(false) }
+  }
+
   const handleSubmit = async () => {
     // Garde synchrone anti double-soumission : le disabled={loading} ne suffit pas
     // contre le double-tap mobile (2 'click' avant le re-render) → 2 fiches créées.
@@ -828,6 +862,8 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       // Erreur reseau / serveur non-JSON / timeout
       console.error('[PoliceClient] handleSubmit echec:', e?.message || e)
       setErr(`Erreur reseau : ${e?.message || 'impossible de joindre le serveur'}. Verifie ta connexion et reessaie.`)
+      // Pas de réseau (Olivier 12/11/2026) : l'app peut garder la fiche et l'envoyer plus tard.
+      if (pluginHorsLigne()) setHorsLigneDispo(true)
     } finally {
       setLoading(false)
       submittingRef.current = false
@@ -1586,6 +1622,21 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         </Section>
 
         {err && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-critical text-sm">{err}</div>}
+        {horsLigneDispo && !gardee && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 space-y-2">
+            <p className="text-amber-900 text-sm">Pas de réseau ? Garde la fiche dans le téléphone : elle partira toute seule dès que le réseau revient, avec l’heure de maintenant.</p>
+            <button onClick={garderHorsLigne} disabled={gardeEnCours}
+              className="w-full min-h-[48px] rounded-xl bg-amber-600 text-white font-semibold disabled:opacity-60">
+              {gardeEnCours ? 'Enregistrement…' : '📵 Garder la fiche dans le téléphone'}
+            </button>
+          </div>
+        )}
+        {gardee && (
+          <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 space-y-2">
+            <p className="text-emerald-800 text-sm font-medium">✅ Fiche gardée dans le téléphone. Elle sera envoyée dès que le réseau revient.</p>
+            <button onClick={() => router.push('/dashboard')} className="w-full min-h-[48px] rounded-xl bg-emerald-700 text-white font-semibold">Retour à l’accueil</button>
+          </div>
+        )}
       </div>
 
       {/* Bottom button — label dynamique selon scenario.

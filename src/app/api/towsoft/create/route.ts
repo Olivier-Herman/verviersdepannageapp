@@ -7,6 +7,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sendPoliceEmail, buildPoliceEmailHtml } from '@/lib/emails'
 import { printVdSoftParcLabel } from '@/lib/missions/print-parc-label'
+import { readOffline } from '@/lib/missions/offline'
 import { plateOrVinTail }       from '@/lib/plate'
 import { FOURRIERE_TYPE_TO_SOURCE, PREFIX_BY_TYPE, zoneForType } from '@/lib/missions/police-mapping'
 import { getDefaultParcZone } from '@/lib/missions/parc-default'
@@ -119,6 +120,15 @@ export async function POST(req: Request) {
   const motifValue = isAssistance
     ? (interventionType === 'rem_parc' ? 'A Relivrer' : '')
     : config!.motif
+
+  // ── Fiche faite hors ligne (Olivier 12/11/2026) ──────────────────────────
+  // Le téléphone renvoie la fiche tant qu'il n'a pas reçu de réponse : son
+  // identifiant garantit qu'elle n'est créée qu'une fois.
+  const offline = readOffline(body)
+  if (offline) {
+    const { data: deja } = await supabase.from('incoming_missions').select('id, mission_number').eq('offline_id', offline.id).maybeSingle()
+    if (deja) return NextResponse.json({ ok: true, missionId: deja.id, missionNumber: deja.mission_number, duplicate_prevented: true })
+  }
 
   // ── Anti-doublon (Olivier 2026-07-03) ────────────────────────────────────
   // Double-tap mobile / retry réseau → 2 fiches identiques (incident : 2 fiches
@@ -442,6 +452,8 @@ export async function POST(req: Request) {
         // Persiste odoo_ticket_id pour reconstruire URL QR /v/[ticketId] plus tard.
         // Olivier 2026-05-27 : evite double-source (towsoft_queue + reverse lookup).
         odoo_ticket_id:     odooTicketId || null,
+        offline_id:         offline?.id ?? null,
+        offline_created_at: offline?.createdAt ?? null,
         created_at:         nowIso,
         updated_at:         nowIso,
       })
