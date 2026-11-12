@@ -239,14 +239,20 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
 // Grand écran : deux lignes courtes (adresse → destination ; panne · client · réception), coupées
 // au bout de la ligne, texte complet au survol. Le détail complet reste dans le volet de droite.
 const ResumeBureau = ({ m }: { m: M }) => {
-  const l1 = [court(m.incident_address) || m.incident_city, m.destination_name || m.destination_address ? '→ ' + [court(m.destination_name), court(m.destination_address)].filter(Boolean).join(', ') : ''].filter(Boolean).join(' ')
-  const recue = m.received_at ? 'reçue ' + new Date(m.received_at).toLocaleString('fr-BE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''
-  const l2 = [panneLisible(m.incident_description), m.assisted_name || m.client_name, recue].filter(Boolean).join(' · ')
+  // Une ligne par information (Olivier 12/11) : intervention, destination, panne, client.
+  // Pas d'heure de réception : le délai en haut à droite de la carte la donne déjà.
+  const lignes: [string, string][] = [
+    ['Intervention', court(m.incident_address) || m.incident_city || ''],
+    ['Destination', m.destination_name || m.destination_address ? [court(m.destination_name), court(m.destination_address)].filter(Boolean).join(', ') : ''],
+    ['Panne', panneLisible(m.incident_description)],
+    ['Client', [m.assisted_name || m.client_name, m.assisted_phone || m.client_phone].filter(Boolean).join(' · ')],
+  ]
   return (
-    <div className="hidden lg:flex flex-col text-[13px] min-w-0">
-      {l1 && <span className="text-stone-800 truncate" title={l1}>{l1}</span>}
-      {l2 && <span className="text-stone-500 truncate" title={l2}>{l2}</span>}
-    </div>
+    <dl className="hidden lg:grid grid-cols-[88px_minmax(0,1fr)] gap-x-2 text-[13px] min-w-0">
+      {lignes.filter(([, v]) => v).map(([k, v]) => (
+        <div key={k} className="contents"><dt className="text-stone-500">{k}</dt><dd className="text-stone-900 truncate" title={v}>{v}</dd></div>
+      ))}
+    </dl>
   )
 }
 const DetailTel = ({ m }: { m: M }) => (
@@ -430,7 +436,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const min = minutesDepuis(m.received_at, now)
     return (
       <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
-        titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : 'À valider'}
+        titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : (vehicule(m) || 'Véhicule non précisé')}
         delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${duree(min)}`}
         delaiCls={reste != null ? (reste < 180 ? 'text-red-800' : 'text-amber-800') : couleurAnciennete(min)}>
         <Btn ton="g" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Valider et affecter</Btn>
@@ -443,7 +449,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const prevue = m.intervention_date && new Date(m.intervention_date).getTime() > now
     const min = minutesDepuis(prevue ? null : (m.intervention_date || m.received_at), now)
     return (
-      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre="Sans chauffeur"
+      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre={vehicule(m) || 'Véhicule non précisé'}
         delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${duree(min)}`}
         delaiCls={prevue ? 'text-blue-800' : couleurAnciennete(min)}>
         <Btn ton="p" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Affecter un chauffeur</Btn>
