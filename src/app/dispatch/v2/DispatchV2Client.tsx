@@ -94,6 +94,8 @@ function couleurAnciennete(min: number) { return min >= 30 ? 'text-red-800' : mi
 // Adresse courte : sans le pays final ni ce qui suit un « | » (doublons d'adresse des assistances).
 const court = (a?: string | null) => String(a || '').replace(/\s*\|.*$/, '').replace(/,?\s*(BEL|Belgique|Belgium|BE)\s*$/i, '').replace(/\s+/g, ' ').trim()
 const trajet = (m: M) => [court(m.incident_address) || m.incident_city, m.destination_name || m.destination_address ? '→ ' + court(m.destination_name || m.destination_address) : ''].filter(Boolean).join(' ')
+// Titre de carte (Olivier 12/11) : « Plaque - Marque - Modèle ».
+const titreVehicule = (m: M) => [m.vehicle_plate, m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' - ') || 'Véhicule non précisé'
 const vehicule = (m: M) => [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
 
 // ── Planning des chauffeurs (étape 5) ─────────────────────────────────────────
@@ -175,6 +177,57 @@ function Planning({ missions, chauffeurs, etats, sources, now, selId, onSel, onD
   )
 }
 
+// ── Relivrer depuis le volet (Olivier 12/11), même action que le bouton de l'ancienne liste ──
+// Crée la fiche de relivraison à partir du véhicule au parc (POST /api/missions/[id]/relivrer),
+// puis ouvre le choix du chauffeur. Reprise par une assistance (privé, Siabis non couvert,
+// accident) : on demande la source, comme avant.
+function Relivrer({ m, onCree }: { m: M; onCree: (id: string) => void }) {
+  const [occupe, setOccupe] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [reprise, setReprise] = useState<string>('')
+  const [sources, setSources] = useState<{ key: string; label: string }[] | null>(null)
+  const src = String(m.source || '').toLowerCase()
+  const demandeSource = ['prive', 'police_snc', 'police_accident'].includes(src)
+  const adresse = String(m.redelivery_address || '').trim()
+  useEffect(() => {
+    if (!demandeSource || sources) return
+    fetch('/api/missions/sources').then(r => r.json()).then(d => {
+      const exclues = new Set([src, 'police_mg', 'police_rodeo', 'police_avp', 'police_saisie'])
+      setSources((Array.isArray(d?.sources) ? d.sources : []).filter((x: any) => !exclues.has(String(x.key || '').toLowerCase())))
+    }).catch(() => setSources([]))
+  }, [demandeSource, sources, src])
+  const go = async () => {
+    setOccupe(true); setErr(null)
+    try {
+      const r = await fetch(`/api/missions/${m.id}/relivrer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source_override: reprise && reprise !== '__meme__' ? reprise : null }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || `Erreur ${r.status}`); return }
+      if (j.mission_id) onCree(j.mission_id)
+    } catch (e: any) { setErr(e?.message || 'Erreur réseau') } finally { setOccupe(false) }
+  }
+  return (
+    <div className="basis-full rounded-xl border-2 border-violet-500 bg-violet-50 p-2.5 flex flex-col gap-2">
+      <span className="text-[11px] font-extrabold uppercase tracking-wider text-violet-800">Relivraison</span>
+      {adresse ? <span className="text-stone-900 text-[13.5px]"><span className="text-stone-500">Livrer à : </span><b>{adresse}</b></span>
+        : <span className="text-amber-900 text-[13.5px]">Adresse de relivraison manquante : renseignez-la dans « Tout le détail et les actions », rubrique Relivraison.</span>}
+      {demandeSource && adresse && (
+        <label className="flex flex-col gap-1 text-[13px]"><span className="font-bold text-stone-800">Reprise par</span>
+          <select value={reprise} onChange={e => setReprise(e.target.value)} className="min-h-[44px] rounded-xl border border-stone-300 bg-white px-3 text-stone-900">
+            <option value="">— à choisir —</option>
+            <option value="__meme__">Même source ({m.source})</option>
+            {(sources || []).map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+          </select>
+        </label>
+      )}
+      <button type="button" disabled={occupe || !adresse || (demandeSource && !reprise)} onClick={go}
+        className="min-h-[44px] rounded-xl bg-violet-700 text-white font-bold text-sm disabled:opacity-50">
+        {occupe ? 'Création…' : 'Relivrer et choisir le chauffeur'}
+      </button>
+      {err && <span className="text-red-800 text-[13px] font-semibold">{err}</span>}
+    </div>
+  )
+}
+
 // ── Morceaux d'affichage (hors du composant : pas recréés à chaque seconde) ──
 // Avancement : reçue, acceptée, en route, sur place, chargée ou réparée, livrée.
 const Avancement = ({ m }: { m: M }) => {
@@ -224,7 +277,7 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
       {delai && <span className={`font-extrabold text-[13px] tabular-nums whitespace-nowrap ${delaiCls || ''}`}>{delai}</span>}
     </div>
     <div className="flex items-center gap-1.5 min-w-0">
-      <Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span><Plaque m={m} />
+      <Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span>{!(m.vehicle_plate && titre.includes(m.vehicle_plate)) && <Plaque m={m} />}
       {Array.isArray(m.warnings) && m.warnings.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold" title={m.warnings.join(', ')}>⚠ {m.warnings.length}</span>}
       <span className={`text-stone-600 text-[13px] truncate min-w-0 ${detail ? '' : 'lg:hidden'}`}>{detail ?? trajetCourt(m)}</span>
     </div>
@@ -436,7 +489,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const min = minutesDepuis(m.received_at, now)
     return (
       <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
-        titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : (vehicule(m) || 'Véhicule non précisé')}
+        titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : titreVehicule(m)}
         delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${duree(min)}`}
         delaiCls={reste != null ? (reste < 180 ? 'text-red-800' : 'text-amber-800') : couleurAnciennete(min)}>
         <Btn ton="g" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Valider et affecter</Btn>
@@ -449,7 +502,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const prevue = m.intervention_date && new Date(m.intervention_date).getTime() > now
     const min = minutesDepuis(prevue ? null : (m.intervention_date || m.received_at), now)
     return (
-      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre={vehicule(m) || 'Véhicule non précisé'}
+      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre={titreVehicule(m)}
         delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${duree(min)}`}
         delaiCls={prevue ? 'text-blue-800' : couleurAnciennete(min)}>
         <Btn ton="p" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Affecter un chauffeur</Btn>
@@ -521,11 +574,10 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2"><b className="text-[16px] text-ink whitespace-nowrap">À traiter · {n}</b><span className="text-stone-500 text-[13px] truncate hidden sm:inline">le plus récent en haut</span></header>
             {!board ? <p className="px-3 pb-3 text-stone-500">Chargement…</p> : <>
-              <div className="px-3 pb-2 flex flex-col gap-2 lg:max-h-[66%] lg:overflow-y-auto lg:flex-none lg:border-b-2 lg:border-dashed lg:border-stone-200">
+              {/* Rien d'épinglé (Olivier 12/11) : En commande et En attente en tête, puis Alertes ; toute la colonne défile d'un bloc. */}
+              <div className="px-3 pb-3 flex flex-col gap-2 lg:overflow-y-auto min-h-0">
                 <Section titre="En commande" sous="à valider" nb={board.cmd.length} vide="Rien à valider.">{board.cmd.map(carteCmd)}</Section>
                 <Section titre="En attente" sous="à affecter" nb={board.att.length} vide="Toutes les missions ont un chauffeur.">{board.att.map(carteAtt)}</Section>
-              </div>
-              <div className="px-3 py-2 flex flex-col gap-2 lg:overflow-y-auto min-h-0">
                 <Section titre="Alertes" sous="missions déjà lancées" nb={board.alertes.length} vide="Aucune alerte.">{board.alertes.map(carteAlerte)}</Section>
               </div>
             </>}
@@ -687,6 +739,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 <div className="flex gap-1.5 flex-wrap">
                   {sel.status === 'new' && <><Btn grand disabled={occupe === sel.id} onClick={() => valider(sel)}>Valider sans affecter</Btn><Btn ton="d" disabled={occupe === sel.id} onClick={() => setRefus(sel)}>Refuser</Btn></>}
                   {['assigned', 'accepted', 'in_progress', 'delivering'].includes(sel.status) && <Btn grand onClick={() => setPicker(sel)}>Réaffecter</Btn>}
+                  {sel.status === 'parked' && <Relivrer m={sel} onCree={id => { dire('Relivraison créée. Choisissez le chauffeur.'); apres(); setSelId(id); setPicker({ id, status: 'dispatching', vehicle_plate: sel.vehicle_plate }) }} />}
                 </div>
                 <Avancement m={sel} />
                 <div className="flex gap-1.5 flex-wrap">
