@@ -177,6 +177,40 @@ function Planning({ missions, chauffeurs, etats, sources, now, selId, onSel, onD
   )
 }
 
+// ── Chauffeur mis en avant dans le volet (Olivier 12/11) ─────────────────────
+// Initiales, nom en gros, ce qu'il fait et depuis quand, Appeler et Réaffecter.
+function BlocChauffeur({ m, onReaffecter }: { m: M; onReaffecter: () => void }) {
+  const u = m.assigned_user || {}
+  const nom = String(u.name || '')
+  const hh = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }).replace(':', ' h ') : ''
+  const [txt, quand] = m.status === 'assigned' ? ['Pas encore acceptée', m.assigned_at]
+    : m.status === 'accepted' ? ['A accepté', m.accepted_at]
+    : m.status === 'in_progress' ? (m.on_site_at ? ['Sur place', m.on_site_at] : ['En route', m.on_way_at || m.accepted_at])
+    : m.status === 'delivering' ? ['En livraison', m.delivering_at || m.loaded_at]
+    : ['Affecté', m.assigned_at]
+  const enAttente = m.status === 'assigned'
+  const lancee = ['assigned', 'accepted', 'in_progress', 'delivering'].includes(m.status)
+  return (
+    <div className={`rounded-xl border-2 p-2.5 flex flex-col gap-2 ${enAttente ? 'border-amber-400 bg-amber-50' : 'border-emerald-500 bg-emerald-50'}`}>
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span className={`w-11 h-11 rounded-xl text-white font-extrabold text-sm flex items-center justify-center flex-none ${enAttente ? 'bg-amber-600' : 'bg-emerald-700'}`}>
+          {nom.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase()}
+        </span>
+        <span className="min-w-0">
+          <b className="block text-[18px] leading-tight text-stone-900 truncate">{nom}</b>
+          <span className={`text-[13px] font-semibold ${enAttente ? 'text-amber-900' : 'text-emerald-900'}`}>{txt}{quand ? ` depuis ${hh(quand)}` : ''}</span>
+        </span>
+      </div>
+      {(u.phone || lancee) && (
+        <div className="flex gap-1.5">
+          {u.phone && <a href={`tel:${u.phone}`} className="flex-1 min-h-[44px] rounded-xl border border-stone-300 bg-white font-bold text-sm text-stone-900 inline-flex items-center justify-center">Appeler {nom.split(' ')[0]}</a>}
+          {lancee && <button type="button" onClick={onReaffecter} className="flex-1 min-h-[44px] rounded-xl border border-stone-300 bg-white font-bold text-sm text-stone-900">Réaffecter</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Relivrer depuis le volet (Olivier 12/11), même action que le bouton de l'ancienne liste ──
 // Crée la fiche de relivraison à partir du véhicule au parc (POST /api/missions/[id]/relivrer),
 // puis ouvre le choix du chauffeur. Reprise par une assistance (privé, Siabis non couvert,
@@ -694,6 +728,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               </header>
               <div className="overflow-y-auto px-3 pb-3 flex flex-col gap-3 min-h-0">
                 <div className="flex items-center gap-1.5 flex-wrap"><Plaque m={sel} /><Source m={sel} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(sel).pastille}`} title={couleurType(sel).nom}>{typeCourt(sel)}</span><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${etat(sel).cls}`}>{etat(sel).txt}</span></div>
+                {sel.assigned_user?.name && <BlocChauffeur m={sel} onReaffecter={() => setPicker(sel)} />}
                 <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-[13.5px]">
                   {([
                     ['Client', [sel.client_name, sel.client_phone].filter(Boolean).join(' · ')],
@@ -703,7 +738,6 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     ['Vers', sel.destination_name || sel.destination_address ? [court(sel.destination_name), court(sel.destination_address)].filter(Boolean).join(', ') : ''],
                     ['Panne', panneLisible(sel.incident_description)],
                     ['Délai', sel.limite ? `accepter chez ${getSourceLabel(sel.source, sources)} avant ${hm(new Date(sel.limite))}` : sel.intervention_date && new Date(sel.intervention_date).getTime() > now ? `prévue à ${hm(new Date(sel.intervention_date))}` : ''],
-                    ['Chauffeur', sel.assigned_user?.name || 'Aucun'],
                     ['Dossier', sel.dossier_number || sel.external_id],
                   ] as const).filter(([, v]) => v).map(([k, v]) => (
                     <div key={k} className="contents"><dt className="text-stone-500">{k}</dt><dd className="text-stone-900 font-semibold break-words">{v}</dd></div>
@@ -738,7 +772,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 )}
                 <div className="flex gap-1.5 flex-wrap">
                   {sel.status === 'new' && <><Btn grand disabled={occupe === sel.id} onClick={() => valider(sel)}>Valider sans affecter</Btn><Btn ton="d" disabled={occupe === sel.id} onClick={() => setRefus(sel)}>Refuser</Btn></>}
-                  {['assigned', 'accepted', 'in_progress', 'delivering'].includes(sel.status) && <Btn grand onClick={() => setPicker(sel)}>Réaffecter</Btn>}
+                  {['assigned', 'accepted', 'in_progress', 'delivering'].includes(sel.status) && !sel.assigned_user?.name && <Btn grand onClick={() => setPicker(sel)}>Réaffecter</Btn>}
                   {sel.status === 'parked' && <Relivrer m={sel} onCree={id => { dire('Relivraison créée. Choisissez le chauffeur.'); apres(); setSelId(id); setPicker({ id, status: 'dispatching', vehicle_plate: sel.vehicle_plate }) }} />}
                 </div>
                 <Avancement m={sel} />
