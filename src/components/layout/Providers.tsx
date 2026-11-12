@@ -11,6 +11,7 @@ import type { Lang }                   from '@/lib/i18n/types'
 import { PwaNativeGuard }              from '@/components/PwaNativeGuard'
 import TalkieProvider                  from '@/components/talkie/TalkieProvider'
 import StaleVersionReload              from '@/components/layout/StaleVersionReload'
+import FichesHorsLigneSync             from '@/components/layout/FichesHorsLigneSync'
 import TalkieOverlay                   from '@/components/talkie/TalkieOverlay'
 import { usePathname }                 from 'next/navigation'
 import { useState }                    from 'react'
@@ -76,6 +77,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <SessionProvider>
         <AudioModeMount />
         <StaleVersionReload />
+        <FichesHorsLigneSync />
         <TruckConfirmModal />
         <I18nMount>
           <PwaNativeGuard>

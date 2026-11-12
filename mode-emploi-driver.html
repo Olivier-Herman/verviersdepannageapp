@@ -241,6 +241,7 @@
  <tr><td>18</td><td>Saisir une adresse avec autocomplete Google</td><td>p. 11</td></tr>
  <tr><td>19</td><td>Scanner la plaque ou le VIN avec la caméra (OCR)</td><td>p. 12</td></tr>
  <tr><td>20</td><td>Lookup véhicule (autocomplete par plaque)</td><td>p. 12</td></tr>
+ <tr><td>20b</td><td>Pas de réseau : créer une fiche hors ligne</td><td>p. 12</td></tr>
  </table>
 
  <h2>B3. Workflow d'une mission en cours</h2>
@@ -725,6 +726,21 @@
  <li>Si aucun match → tu choisis la marque puis le modèle dans la liste (elle s'affiche au-dessus du clavier, tape quelques lettres pour filtrer)</li>
  <li>Marque ou modèle absent de la liste → appuie sur « Autre ». Tu ne crées jamais de marque ni de modèle : le bureau crée le véhicule, et ce que tu avais tapé lui est transmis dans les remarques</li>
  </ol>
+</div>
+
+<div class="function">
+ <h3><span class="num">20b</span>Pas de réseau : créer une fiche hors ligne</h3>
+ <p class="desc">Quand l'internet du téléphone ne passe plus (panne de l'opérateur, zone sans couverture), tu peux quand même créer ta fiche d'appel police : accident, saisie, mal garée, rodéo, AVP, appel privé ou Siabis. Elle est gardée dans le téléphone et part toute seule dès que le réseau revient. Disponible dans l'app iPhone à partir de la version 1.2.1 (40).</p>
+ <p class="label">Comment faire</p>
+ <ol>
+ <li>Si VD Soft ne se charge pas, l'écran « La connexion est lente » apparaît : appuie sur « 📝 Créer une fiche hors ligne », puis « Nouvelle fiche »</li>
+ <li>Si tu étais déjà en train de créer ta fiche et que l'envoi échoue faute de réseau, appuie sur « 📵 Garder la fiche dans le téléphone » sous le message d'erreur</li>
+ <li>Remplis la fiche comme d'habitude : type, lieu, plaque, marque, modèle, policier, au moins 3 photos. Appuie sur « Prendre ma position » : le GPS marche sans internet, l'adresse exacte sera retrouvée à l'envoi</li>
+ <li>Appuie sur « Enregistrer la fiche ». Elle apparaît dans la liste « En attente d'envoi »</li>
+ <li>Dès que VD Soft se rouvre avec du réseau, les fiches partent toutes seules (étiquettes comprises) et un message te le confirme. La liste montre alors « Envoyée » et le numéro de fiche</li>
+ </ol>
+ <div class="tip">💡 L'heure de la fiche est celle où tu l'as faite, pas celle de l'envoi. Le dispatch voit la mention « Fiche faite hors ligne ».</div>
+ <div class="warn">⚠️ Sans réseau, pas de recherche de la plaque ni de paiement par carte : choisis la marque et écris le modèle. Pour une mal garée « déplacement payé » ou un appel privé, l'encaissement se fait sur la fiche une fois qu'elle est envoyée. Pour une mission déjà reçue, demande les infos au dispatch par téléphone.</div>
 </div>
 
 <h2 class="subsection">B3. Workflow d'une mission en cours</h2>
