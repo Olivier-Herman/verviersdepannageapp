@@ -6,6 +6,7 @@ import { sncDepotEstFinal } from '@/lib/snc/depot-final'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { formatEur } from '@/lib/format'
+import PhotosApresPaiement, { photosApresPaiementOuvert } from './PhotosApresPaiement'
 import { buildEncaissementUrl } from '@/lib/missions/encaissement-url'
 import { useGarageClosure } from '@/lib/useGarageClosures'
 import AmbientBackground from '@/components/AmbientBackground'
@@ -4065,15 +4066,22 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   if (M.status === 'completed' || M.status === 'to_invoice') return (
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4 px-4 py-12">
       <div className="w-16 h-16 bg-green-600/20 border border-green-500/30 rounded-full flex items-center justify-center text-3xl">✅</div>
-      <h1 className="text-ink font-semibold text-xl">Mission terminée</h1>
+      <h1 className="text-ink font-semibold text-xl">{t('finished_missions.mission_done')}</h1>
       <p className="text-ink-muted text-sm">{M.client_name} · {plate(M.vehicle_plate)}</p>
+      {/* Fiche fermée par le paiement : on montre ce qui est enregistré et on laisse
+          ajouter des photos 30 minutes (2KEG242, Olivier 12/11/2026). */}
+      {!isReadOnly && photosApresPaiementOuvert(M as any) && (
+        <PhotosApresPaiement missionId={M.id} completedAt={(M as any).completed_at}
+          amount={Number(M.payment_amount || 0)} mode={(M as any).payment_mode || null}
+          photos={Array.isArray((M as any).driver_photos) ? (M as any).driver_photos : []} />
+      )}
       {/* Remorquage livré à une adresse sans rue : l'assistance ne peut pas clôturer, le chauffeur la complète
           (notification « Adresse de livraison à compléter », Olivier 09/11/2026). Missions des 14 derniers jours. */}
       {isRemorquage(mType) && !!M.destination_address && !adresseComplete(M.destination_address)
         && (!M.completed_at || Date.now() - Date.parse(M.completed_at) < 14 * 864e5) && (
         <CompleterAdresseTerminee missionId={M.id} current={M.destination_address || null} />
       )}
-      <button onClick={() => router.push('/mission')} className="w-full max-w-xs py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">← Mes missions</button>
+      <button onClick={() => router.push('/mission')} className="w-full max-w-xs min-h-[44px] py-3 bg-surface border border text-ink-secondary rounded-2xl text-sm">{t('finished_missions.back')}</button>
       <MamieJosiane step={josianeStep} missionId={M.id} onClose={() => setJosianeStep(null)} />
     </div>
   )

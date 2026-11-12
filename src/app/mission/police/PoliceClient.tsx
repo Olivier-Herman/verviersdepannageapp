@@ -928,7 +928,11 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         + `&prefill_location=${encodeURIComponent(location || '')}`
         + (motifLabel ? `&prefill_motif_label=${encodeURIComponent(motifLabel)}` : '')
         + `&prefill_motif_precision=${encodeURIComponent(motifPrecision)}`
-        + `&return_to=/dashboard`
+        // Paiement immédiat : retour sur la fiche, qui montre « Mission terminée »,
+        // le paiement reçu et les photos (ajout encore possible 30 min). Avant,
+        // retour au tableau de bord : le chauffeur ne revoyait jamais sa fiche
+        // et croyait ses photos perdues (2KEG242, Olivier 12/11/2026).
+        + `&return_to=${needsImmediatePaymentSuccess ? `/mission/${createdMissionId}` : '/dashboard'}`
       : null
     return (
     <div className="min-h-screen bg-page flex flex-col items-center justify-center px-4">
