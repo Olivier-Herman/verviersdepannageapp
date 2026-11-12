@@ -32,7 +32,7 @@ export function peppolOrderRef(justinvoiceRef?: string | null): string {
   return ji ? `${TAXATION_OFFICE_REF} JINV${ji.replace(/^JINV/i, '')}` : TAXATION_OFFICE_REF
 }
 
-export interface SaisieInvoiceResult { ok: boolean; odooId?: number; url?: string; error?: string }
+export interface SaisieInvoiceResult { ok: boolean; odooId?: number; url?: string; error?: string; piecesManquantes?: string[] }
 
 const fmtD = (ymd?: string | null) => (ymd ? String(ymd).slice(0, 10).split('-').reverse().join('/') : '')
 
@@ -114,28 +114,60 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string, efI
     const [signed, req] = await Promise.all([dl(sb, ef.validation_doc_path), dl(sb, reqPath)])
     const ext = (p?: string | null) => (String(p || '').split('.').pop() || 'pdf').toLowerCase()
     const mime = (e: string) => e === 'pdf' ? 'application/pdf' : e === 'png' ? 'image/png' : (e === 'jpg' || e === 'jpeg') ? 'image/jpeg' : 'application/octet-stream'
-    if (signed) {
-      await attachToOdoo({
+    // Une pièce non jointe se dit (EDF-2026-0071, 12/11/2026 : PJ absentes sans aucune trace) : 2 essais chacune.
+    const piecesManquantes: string[] = []
+    const joindre = async (label: string, fn: () => Promise<any>) => {
+      for (let essai = 0; essai < 2; essai++) { try { await fn(); return } catch (e: any) { console.warn(`[saisie-invoice] PJ ${label} KO :`, e?.message) } }
+      piecesManquantes.push(label)
+    }
+    if (!signed) piecesManquantes.push('état de frais approuvé (introuvable)')
+    if (!req) piecesManquantes.push('réquisitoire (introuvable)')
+    if (signed) await joindre('état de frais approuvé', () => attachToOdoo({
         resModel: 'account.move', resId: inv.id,
         filename: `etat-de-frais-${ef.numero}-approuve.${ext(ef.validation_doc_path)}`,
         base64Data: signed.toString('base64'), mimetype: mime(ext(ef.validation_doc_path)),
         description: `État de frais ${ef.numero} approuvé par le Parquet (JustInvoice ${jiRef})`,
-      }).catch((e: any) => console.warn('[saisie-invoice] PJ état de frais KO :', e?.message))
-    }
-    if (req) {
-      await attachToOdoo({
+      }))
+    if (req) await joindre('réquisitoire', () => attachToOdoo({
         resModel: 'account.move', resId: inv.id,
         filename: `requisitoire-${d.vehicle_plate || 'saisie'}.${ext(reqPath)}`,
         base64Data: req.toString('base64'), mimetype: mime(ext(reqPath)),
         description: 'Réquisitoire',
-      }).catch((e: any) => console.warn('[saisie-invoice] PJ réquisitoire KO :', e?.message))
-    }
+      }))
 
     const now = new Date().toISOString()
     await sb.from('saisie_etats_frais').update({ status: 'facture', odoo_invoice_id: inv.id }).eq('id', ef.id)
     await sb.from('saisie_dossiers').update({ odoo_invoice_id: inv.id, state: 'facture', updated_at: now }).eq('id', dossierId)
-    return { ok: true, odooId: inv.id, url: inv.url }
+    return { ok: true, odooId: inv.id, url: inv.url, piecesManquantes }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Création facture Odoo échouée' }
   }
+}
+
+/**
+ * Consigne d'Olivier (12/11/2026, EDF-2026-0070/0071) : une fois le dossier JustInvoice « Transféré au bureau de
+ * liquidation », la facture part seule : validée puis envoyée par Peppol (jamais par e-mail : la Justice ne lit que
+ * Peppol, n° de commande ROJ-FJGK13 JINV…). Uniquement si l'état de frais approuvé ET le réquisitoire sont joints
+ * et que Peppol est disponible pour le client ; sinon la facture reste en brouillon et le bureau est prévenu.
+ */
+export async function validerEtEnvoyerPeppol(odooId: number): Promise<{ ok: boolean; facture?: string; error?: string }> {
+  const { odooRpc } = await import('@/lib/odoo')
+  const att = await odooRpc<any[]>('ir.attachment', 'search_read', [[['res_model', '=', 'account.move'], ['res_id', '=', odooId]]], { fields: ['name'] })
+  const noms = att.map(a => String(a.name).toLowerCase())
+  if (!noms.some(n => n.includes('etat-de-frais')) || !noms.some(n => n.includes('requisitoire'))) return { ok: false, error: 'pièces jointes incomplètes' }
+  const [m] = await odooRpc<any[]>('account.move', 'read', [[odooId]], { fields: ['state', 'ref', 'invoice_date'] })
+  if (!String(m?.ref || '').startsWith(TAXATION_OFFICE_REF)) return { ok: false, error: `n° de commande inattendu (${m?.ref})` }
+  if (m.state === 'draft') {
+    if (!m.invoice_date) await odooRpc('account.move', 'write', [[odooId], { invoice_date: new Date().toISOString().slice(0, 10) }])
+    await odooRpc('account.move', 'action_post', [[odooId]])
+  }
+  const ctx = { context: { active_model: 'account.move', active_ids: [odooId], active_id: odooId } }
+  const wiz = await odooRpc<number>('account.move.send.wizard', 'create', [{ move_id: odooId }], ctx)
+  const [w] = await odooRpc<any[]>('account.move.send.wizard', 'read', [[wiz]], { fields: ['sending_method_checkboxes'], ...ctx })
+  const boxes = w?.sending_method_checkboxes || {}
+  if (!boxes.peppol || boxes.peppol.readonly) return { ok: false, error: 'Peppol indisponible pour ce client : facture validée, pas envoyée' }
+  await odooRpc('account.move.send.wizard', 'write', [[wiz], { sending_method_checkboxes: Object.fromEntries(Object.entries<any>(boxes).map(([k, v]) => [k, { ...v, checked: k === 'peppol' }])), sending_methods: ['peppol'] }], ctx)
+  await odooRpc('account.move.send.wizard', 'action_send_and_print', [[wiz]], ctx)
+  const [f] = await odooRpc<any[]>('account.move', 'read', [[odooId]], { fields: ['name'] })
+  return { ok: true, facture: f?.name }
 }
