@@ -94,17 +94,28 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
 
   // L'ERP : pièces comptables et lettrages, par Mobi d'un côté, par les automatismes de l'autre.
   try {
-    const { odooRpc } = await import('@/lib/odoo')
+    // Les trois sociétés : Verviers Dépannage, Riga et DGJ (Olivier 12/11/2026 : « la partie administrative pour VD,
+    // Riga, DGJ »). odooRpc seul ne voit que VD : on compte société par société et on additionne.
+    const { odooRpcCompany, ODOO_COMPANIES } = await import('@/lib/odoo')
+    const societes = [...new Set(Object.values(ODOO_COMPANIES).map(Number))]
     const dt = (iso: string) => iso.slice(0, 19).replace('T', ' ')
-    const compte = async (model: string, uids: number[]) => uids.length ? Number(await odooRpc(model, 'search_count', [[['create_uid', 'in', uids], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]])) : 0
+    const compterDomaine = async (model: string, dom: any[]) => {
+      let n = 0
+      for (const c of societes) {
+        try { n += Number(await odooRpcCompany(c, model, 'search_count', [[['company_id', '=', c], ...dom]])) }
+        catch (e: any) { console.warn('[journal-mobi] ERP société', c, e?.message) }
+      }
+      return n
+    }
+    const compte = async (model: string, uids: number[]) => uids.length ? compterDomaine(model, [['create_uid', 'in', uids], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]) : 0
     const mUids = (await liste('mobi_odoo_uids')).map(Number), aUids = (await liste('auto_odoo_uids')).map(Number)
     const lignes: [string, 'mobi' | 'auto', string, number][] = [
       ['erp_pieces', 'mobi', 'Comptabilité : pièces encodées dans l’ERP (factures, achats, notes de crédit, opérations diverses)', await compte('account.move', mUids)],
       ['erp_lettrages', 'mobi', 'Comptabilité : paiements lettrés et rapprochements bancaires', await compte('account.partial.reconcile', mUids)],
       ['erp_pieces_auto', 'auto', 'Comptabilité automatique : pièces créées seules (factures, achats reçus, relevés)', await compte('account.move', aUids)],
       ['erp_lettrages_auto', 'auto', 'Comptabilité automatique : paiements lettrés et rapprochements', await compte('account.partial.reconcile', aUids)],
-      ['erp_paiements_fourn', 'mobi', 'Paiements fournisseurs préparés (lots de virements)', mUids.length ? Number(await odooRpc('account.payment', 'search_count', [[['create_uid', 'in', mUids], ['payment_type', '=', 'outbound'], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]])) : 0],
-      ['erp_paiements_fourn_auto', 'auto', 'Paiements fournisseurs préparés (lots de virements)', aUids.length ? Number(await odooRpc('account.payment', 'search_count', [[['create_uid', 'in', aUids], ['payment_type', '=', 'outbound'], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]])) : 0],
+      ['erp_paiements_fourn', 'mobi', 'Paiements fournisseurs préparés (lots de virements)', mUids.length ? await compterDomaine('account.payment', [['create_uid', 'in', mUids], ['payment_type', '=', 'outbound'], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]) : 0],
+      ['erp_paiements_fourn_auto', 'auto', 'Paiements fournisseurs préparés (lots de virements)', aUids.length ? await compterDomaine('account.payment', [['create_uid', 'in', aUids], ['payment_type', '=', 'outbound'], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]) : 0],
     ]
     for (const [cle, type, titre, n] of lignes) if (n > 0) rows.push({ jour, type, domaine: cle, titre, quantite: n, ref: `${type}:${jour}:${cle}` })
   } catch (e: any) { console.warn('[journal-mobi] ERP', e?.message) }
