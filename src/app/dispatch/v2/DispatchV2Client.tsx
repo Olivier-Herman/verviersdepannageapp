@@ -179,7 +179,7 @@ function Planning({ missions, chauffeurs, etats, sources, now, selId, onSel, onD
 
 // ── Chauffeur mis en avant dans le volet (Olivier 12/11) ─────────────────────
 // Initiales, nom en gros, ce qu'il fait et depuis quand, Appeler et Réaffecter.
-function BlocChauffeur({ m, onReaffecter }: { m: M; onReaffecter: () => void }) {
+function BlocChauffeur({ m, now, onReaffecter }: { m: M; now: number; onReaffecter: () => void }) {
   const u = m.assigned_user || {}
   const nom = String(u.name || '')
   const hh = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }).replace(':', ' h ') : ''
@@ -198,7 +198,11 @@ function BlocChauffeur({ m, onReaffecter }: { m: M; onReaffecter: () => void }) 
         </span>
         <span className="min-w-0">
           <b className="block text-[18px] leading-tight text-stone-900 truncate">{nom}</b>
-          <span className={`text-[13px] font-semibold ${enAttente ? 'text-amber-900' : 'text-emerald-900'}`}>{txt}{quand ? ` depuis ${hh(quand)}` : ''}</span>
+          <span className={`text-[13px] font-semibold ${enAttente ? 'text-amber-900' : 'text-emerald-900'}`}>
+            {enAttente && m.assigned_at
+              ? <>Pas encore acceptée · {duree(minutesDepuis(m.assigned_at, now))} · {m.accept_call_at ? 'appel automatique fait' : 'appel à 10 min'}</>
+              : <>{txt}{quand ? ` depuis ${hh(quand)}` : ''}</>}
+          </span>
         </span>
       </div>
       {(u.phone || lancee) && (
@@ -303,9 +307,10 @@ const commune = (adr?: string | null, ville?: string | null) => {
 const trajetCourt = (m: M) => [commune(m.incident_address, m.incident_city), m.destination_name || m.destination_address ? commune(m.destination_name ? null : m.destination_address, null) || court(m.destination_name) : ''].filter(Boolean).join(' → ')
 
 // Carte de la file : juste de quoi reconnaître la mission et agir. Le détail est dans le volet de droite.
-const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau, detail, children, glissable }: { m: M; sources: SourceDisplay[]; occupe: string | null; sel: boolean; onSel: (m: M) => void; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode; glissable?: boolean }) => (
+const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau, detail, children, glissable, dansVolet, motifs }: { m: M; sources: SourceDisplay[]; occupe: string | null; sel: boolean; onSel: (m: M) => void; titre: string; delai?: string; delaiCls?: string; niveau: 'r' | 'a' | 'b'; detail?: React.ReactNode; children?: React.ReactNode; glissable?: boolean; dansVolet?: boolean; motifs?: string[] }) => (
   <div role="button" tabIndex={0} onClick={() => onSel(m)} draggable={glissable} onDragStart={glissable ? e => { e.dataTransfer.setData('text/vd-mission', m.id); e.dataTransfer.effectAllowed = 'move' } : undefined} onKeyDown={e => { if (e.key === 'Enter') onSel(m) }}
-    className={`cursor-pointer min-w-0 rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600' : niveau === 'a' ? 'border-l-amber-500' : 'border-l-sky-500'} ${couleurType(m).fond} ${sel ? 'ring-2 ring-stone-900' : ''} ${occupe === m.id ? 'opacity-60' : ''}`}>
+    className={`cursor-pointer min-w-0 rounded-xl border border-stone-200 border-l-[5px] p-2.5 flex flex-col gap-1.5 ${niveau === 'r' ? 'border-l-red-600' : niveau === 'a' ? 'border-l-amber-500' : 'border-l-sky-500'} ${couleurType(m).fond} ${sel ? 'ring-2 ring-stone-900' : ''} ${occupe === m.id ? 'opacity-60' : ''} ${motifs?.length ? 'vd-clignote ring-2 ring-amber-500' : ''}`}>
+    {motifs?.map(x => <span key={x} className="text-[13px] font-extrabold text-amber-900">⚠ {x}</span>)}
     <div className="flex items-start justify-between gap-2 min-w-0">
       <b className="text-[14px] text-stone-900 min-w-0">{titre}</b>
       {delai && <span className={`font-extrabold text-[13px] tabular-nums whitespace-nowrap ${delaiCls || ''}`}>{delai}</span>}
@@ -316,8 +321,8 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
       <span className={`text-stone-600 text-[13px] truncate min-w-0 ${detail ? '' : 'lg:hidden'}`}>{detail ?? trajetCourt(m)}</span>
     </div>
     {/* Téléphone : pas de volet à côté, la carte porte le détail utile (Olivier 11/11 : « les infos sont trop limitées »). Sur PC, il est dans le volet de droite. */}
-    {!detail && <DetailTel m={m} />}
-    {!detail && <ResumeBureau m={m} />}
+    {!detail && !dansVolet && <DetailTel m={m} />}
+    {!detail && !dansVolet && <ResumeBureau m={m} />}
     {children && <div className="flex gap-1.5 flex-wrap">{children}</div>}
   </div>
 )
@@ -497,7 +502,23 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   }
 
   // ── Rendu ────────────────────────────────────────────────────────────────
-  const n = board ? board.cmd.length + board.att.length + board.alertes.length : 0
+  const n = board ? board.cmd.length + board.att.length : 0
+  // Alertes (Olivier 12/11) : plus de section à gauche ; la mission concernée clignote là où elle est
+  // (liste du centre, ou sa carte à gauche si elle n'est pas encore lancée) et remonte en tête.
+  const alertesPar = useMemo(() => {
+    const mp = new Map<string, Alerte[]>()
+    for (const a of board?.alertes || []) mp.set(a.mission.id, [...(mp.get(a.mission.id) || []), a])
+    return mp
+  }, [board])
+  const nAlertes = alertesPar.size
+  const motifAlerte = (a: Alerte): string => ({
+    pas_acceptee: `Pas encore acceptée · ${duree(minutesDepuis(a.depuis, now))}${a.appel_fait ? ' · appel fait' : ' · appel à 10'}`,
+    adresse: `Adresse modifiée par ${getSourceLabel(a.mission.source, sources)}`,
+    derogation: 'Dérogation de paiement à décider',
+    autoroute: 'Autoroute : tarif à trancher',
+    pause_depassee: 'Pause dépassée',
+    annulee_ima: 'Annulée par IMA : trajet à vide',
+  } as Record<string, string>)[a.type] || 'À regarder'
   const enRetard = board ? [...board.cmd.filter(m => m.limite ? new Date(m.limite).getTime() < now + 2 * 60_000 : minutesDepuis(m.received_at, now) >= 15),
     ...board.att.filter(m => minutesDepuis(m.intervention_date && new Date(m.intervention_date).getTime() < now ? m.intervention_date : m.received_at, now) >= 15)].length : 0
   const sel = selId ? ([...(board?.cmd || []), ...(board?.att || []), ...(board?.lances || []), ...(autres || []), ...(board?.planning || [])].find(m => m.id === selId) || null) : null
@@ -513,16 +534,17 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   const liste = useMemo(() => {
     if (!listeBrute) return null
     const s = q.trim().toLowerCase().replace(/[-\s.]/g, '')
-    if (!s) return listeBrute
-    return listeBrute.filter(m => [m.vehicle_plate, m.client_name, m.assisted_name, m.incident_address, m.destination_address, m.mission_number, m.dossier_number, m.external_id, getSourceLabel(m.source, sources), m.assigned_user?.name]
+    const tri = (l: M[]) => [...l].sort((a, b) => Number(alertesPar.has(b.id)) - Number(alertesPar.has(a.id)))
+    if (!s) return tri(listeBrute)
+    return tri(listeBrute).filter(m => [m.vehicle_plate, m.client_name, m.assisted_name, m.incident_address, m.destination_address, m.mission_number, m.dossier_number, m.external_id, getSourceLabel(m.source, sources), m.assigned_user?.name]
       .join(' ').toLowerCase().replace(/[-\s.]/g, '').includes(s))
-  }, [listeBrute, q, sources])
+  }, [listeBrute, q, sources, alertesPar])
 
   const carteCmd = (m: M) => {
     const reste = m.limite ? Math.round((new Date(m.limite).getTime() - now) / 1000) : null
     const min = minutesDepuis(m.received_at, now)
     return (
-      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
+      <Carte glissable motifs={(alertesPar.get(m.id) || []).map(motifAlerte)} sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau="r"
         titre={m.limite ? `À accepter chez ${getSourceLabel(m.source, sources)}` : titreVehicule(m)}
         delai={reste != null ? (reste > 0 ? `reste ${Math.floor(reste / 60)} min ${String(reste % 60).padStart(2, '0')}` : 'délai dépassé') : `reçue il y a ${duree(min)}`}
         delaiCls={reste != null ? (reste < 180 ? 'text-red-800' : 'text-amber-800') : couleurAnciennete(min)}>
@@ -536,43 +558,43 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     const prevue = m.intervention_date && new Date(m.intervention_date).getTime() > now
     const min = minutesDepuis(prevue ? null : (m.intervention_date || m.received_at), now)
     return (
-      <Carte glissable sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre={titreVehicule(m)}
+      <Carte glissable motifs={(alertesPar.get(m.id) || []).map(motifAlerte)} sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={m.id} m={m} niveau={prevue ? 'b' : 'r'} titre={titreVehicule(m)}
         delai={prevue ? `prévue à ${hm(new Date(m.intervention_date))}` : `depuis ${duree(min)}`}
         delaiCls={prevue ? 'text-blue-800' : couleurAnciennete(min)}>
         <Btn ton="p" grand disabled={occupe === m.id} onClick={() => setPicker(m)}>Affecter un chauffeur</Btn>
       </Carte>
     )
   }
-  const carteAlerte = (a: Alerte) => {
+  const carteAlerte = (a: Alerte, dansVolet = false) => {
     const m = a.mission, min = minutesDepuis(a.depuis, now), fiche = () => { window.location.href = `/dispatch/${m.id}?fiche=1` }
     const prenom = (m.assigned_user?.name || 'le chauffeur').split(' ')[0]
     switch (a.type) {
       case 'autoroute': return (
-        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="r" titre="Autoroute : tarification à trancher">
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="r" titre="Autoroute : tarification à trancher">
           <Btn ton="p" grand onClick={() => setSiabis({ m, next: null })}>Trancher</Btn>
         </Carte>)
       case 'adresse': return (
-        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre={`Adresse modifiée par ${getSourceLabel(m.source, sources)}`} delai={a.depuis ? `depuis ${duree(min)}` : undefined} delaiCls="text-amber-800"
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre={`Adresse modifiée par ${getSourceLabel(m.source, sources)}`} delai={a.depuis ? `depuis ${duree(min)}` : undefined} delaiCls="text-amber-800"
           detail={<>nouvelle : <b className="text-stone-900">{commune(a.nouvelle, null)}</b></>}>
           <Btn ton="p" grand disabled={occupe === m.id} onClick={() => adresse(a, 'apply')}>Appliquer</Btn>
           <Btn grand disabled={occupe === m.id} onClick={() => adresse(a, 'keep')}>Garder l'actuelle</Btn>
         </Carte>)
       case 'pas_acceptee': return (
-        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre={`Pas encore acceptée par ${prenom}`}
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre={`Pas encore acceptée par ${prenom}`}
           delai={`${duree(min)} · ${a.appel_fait ? 'appel automatique fait' : 'appel à 10'}`} delaiCls={min >= 10 ? 'text-red-800' : 'text-amber-800'}>
           {m.assigned_user?.phone && <a href={`tel:${m.assigned_user.phone}`} onClick={e => e.stopPropagation()} className="flex-1 min-h-[44px] px-3.5 rounded-xl font-bold text-sm bg-white border border-stone-300 text-stone-900 inline-flex items-center justify-center">Appeler {prenom}</a>}
           <Btn grand onClick={() => setPicker(m)}>Réaffecter</Btn>
         </Carte>)
       case 'derogation': return (
-        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Dérogation de paiement" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls={couleurAnciennete(min)}>
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Dérogation de paiement" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls={couleurAnciennete(min)}>
           <Btn ton="p" grand onClick={fiche}>Décider</Btn>
         </Carte>)
       case 'pause_depassee': return (
-        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls="text-red-800">
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls="text-red-800">
           <Btn grand onClick={fiche}>Ouvrir la fiche</Btn>
         </Carte>)
       case 'annulee_ima': return (
-        <Carte sources={sources} occupe={occupe} sel={selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Annulée par IMA après acceptation" detail="devient un trajet à vide">
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Annulée par IMA après acceptation" detail="devient un trajet à vide">
           <Btn grand onClick={fiche}>Ouvrir la fiche</Btn>
         </Carte>)
     }
@@ -582,7 +604,10 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
   return (
     <AppShell title="Dispatch" userName={userName} userEmail={userEmail} userId={userId} userRole={userRole} userModules={userModules}>
       {/* Téléphone : le rappel des espèces et la pastille de Max passaient par-dessus les cartes (Olivier 11/11). Masqués ici seulement. */}
-      <style>{`@media (max-width: 1023px) { [data-flottant="especes"], [data-flottant="max"] { display: none !important; } }`}</style>
+      <style>{`@media (max-width: 1023px) { [data-flottant="especes"], [data-flottant="max"] { display: none !important; } }
+        @keyframes vd-clignote { 0%, 100% { background-color: #fef3c7; } 50% { background-color: #ffffff; } }
+        .vd-clignote { animation: vd-clignote 1.4s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .vd-clignote { animation: none; background-color: #fef3c7; } }`}</style>
       <div className="p-2.5 lg:p-3 flex flex-col gap-2.5 min-w-0 max-w-full [contain:inline-size]">
         {/* Repères du jour */}
         <div className="flex flex-wrap gap-2 items-center rounded-2xl px-3 py-2.5 text-white" style={{ background: 'linear-gradient(135deg,#1b1220 0%,#4a1230 55%,#E11D2E 100%)' }}>
@@ -591,11 +616,15 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               {c && <i className="w-2 h-2 rounded-full" style={{ background: c }} />}{l} <b className="text-base tabular-nums">{v}</b>
             </span>
           ))}
+          <button type="button" onClick={() => { setFiltre('cours'); setVueCentre('liste'); setOngletTel('cours') }}
+            className={`inline-flex items-center gap-2 min-h-[36px] px-3 rounded-full font-semibold text-sm whitespace-nowrap ${nAlertes ? 'bg-amber-400 text-stone-900 vd-clignote' : 'bg-white/15 ring-1 ring-white/25'}`}>
+            ⚠ Alertes <b className="text-base tabular-nums">{nAlertes}</b>
+          </button>
           <span className="flex-1" />
           <Link href="/dispatch/new" className="min-h-[44px] px-4 rounded-xl bg-white text-red-900 font-extrabold text-sm inline-flex items-center">+ Nouvelle mission</Link>
         </div>
         <div className="lg:hidden grid grid-cols-3 gap-1 bg-stone-100 rounded-xl p-1" role="tablist" aria-label="Vue">
-          {([['traiter', `À traiter · ${n}`], ['cours', `En cours · ${board?.lances.length ?? 0}`], ['chauffeurs', 'Chauffeurs']] as const).map(([k, l]) => (
+          {([['traiter', `À traiter · ${n}`], ['cours', `En cours · ${board?.lances.length ?? 0}${nAlertes ? ` · ⚠ ${nAlertes}` : ''}`], ['chauffeurs', 'Chauffeurs']] as const).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={ongletTel === k} onClick={() => setOngletTel(k)}
               className={`min-h-[44px] rounded-lg font-bold text-[13.5px] ${ongletTel === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}`}>{l}</button>
           ))}
@@ -612,7 +641,6 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               <div className="px-3 pb-3 flex flex-col gap-2 lg:overflow-y-auto min-h-0">
                 <Section titre="En commande" sous="à valider" nb={board.cmd.length} vide="Rien à valider.">{board.cmd.map(carteCmd)}</Section>
                 <Section titre="En attente" sous="à affecter" nb={board.att.length} vide="Toutes les missions ont un chauffeur.">{board.att.map(carteAtt)}</Section>
-                <Section titre="Alertes" sous="missions déjà lancées" nb={board.alertes.length} vide="Aucune alerte.">{board.alertes.map(carteAlerte)}</Section>
               </div>
             </>}
           </section>
@@ -659,7 +687,8 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 <>
                 <div className="lg:hidden flex flex-col gap-2 px-2 pb-2">
                   {liste.map(m => { const e = etat(m); return (
-                    <div key={m.id} role="button" tabIndex={0} onClick={() => choisir(m)} onKeyDown={ev => { if (ev.key === 'Enter') choisir(m) }} className={`cursor-pointer text-left rounded-xl border border-stone-200 p-2.5 flex flex-col gap-1.5 min-w-0 ${couleurType(m).fond}`}>
+                    <div key={m.id} role="button" tabIndex={0} onClick={() => choisir(m)} onKeyDown={ev => { if (ev.key === 'Enter') choisir(m) }} className={`cursor-pointer text-left rounded-xl border p-2.5 flex flex-col gap-1.5 min-w-0 ${alertesPar.has(m.id) ? 'border-amber-500 border-2 vd-clignote' : `border-stone-200 ${couleurType(m).fond}`}`}>
+                      {(alertesPar.get(m.id) || []).map(a => <span key={a.type} className="text-[13px] font-extrabold text-amber-900">⚠ {motifAlerte(a)}</span>)}
                       <div className="flex items-center justify-between gap-2"><b className="text-stone-900 text-[14px]">{m.assigned_user?.name || 'Sans chauffeur'}</b><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${e.cls}`}>{e.txt}</span></div>
                       <div className="flex items-center gap-1.5 min-w-0"><Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span><Plaque m={m} /><span className="text-stone-600 text-[13px] truncate">{trajetCourt(m)}</span></div>
                       {m.status === 'assigned' && m.assigned_at && <span className={`text-[12.5px] font-bold ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>pas encore acceptée · {duree(minutesDepuis(m.assigned_at, now))}</span>}
@@ -676,8 +705,9 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     {liste.map(m => {
                       const e = etat(m)
                       return (
-                        <tr key={m.id} className="border-t border-stone-200 hover:bg-stone-50 cursor-pointer align-top" onClick={() => choisir(m)} style={selId === m.id ? { background: '#f5f5f4', boxShadow: 'inset 3px 0 0 #1c1917' } : undefined}>
+                        <tr key={m.id} className={`border-t border-stone-200 hover:bg-stone-50 cursor-pointer align-top ${alertesPar.has(m.id) ? 'vd-clignote' : ''}`} onClick={() => choisir(m)} style={selId === m.id ? { background: '#f5f5f4', boxShadow: 'inset 3px 0 0 #1c1917' } : alertesPar.has(m.id) ? { boxShadow: 'inset 4px 0 0 #f59e0b' } : undefined}>
                           <td className="px-2 py-2"><span className={`inline-block px-2 py-0.5 rounded-full text-[12px] font-bold whitespace-nowrap ${e.cls}`}>{e.txt}</span>
+                            {(alertesPar.get(m.id) || []).map(a => <div key={a.type} className="mt-1 text-[12.5px] font-extrabold text-amber-900">⚠ {motifAlerte(a)}</div>)}
                             {m.status === 'assigned' && m.assigned_at && <div className={`mt-1 text-[12.5px] font-bold tabular-nums ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>{duree(minutesDepuis(m.assigned_at, now))}</div>}
                             {m.intervention_date && new Date(m.intervention_date).getTime() > now && <div className="mt-1 text-[12.5px] text-stone-600">{new Date(m.intervention_date).toLocaleString('fr-BE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })}</div>}
                           </td>
@@ -728,7 +758,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               </header>
               <div className="overflow-y-auto px-3 pb-3 flex flex-col gap-3 min-h-0">
                 <div className="flex items-center gap-1.5 flex-wrap"><Plaque m={sel} /><Source m={sel} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(sel).pastille}`} title={couleurType(sel).nom}>{typeCourt(sel)}</span><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${etat(sel).cls}`}>{etat(sel).txt}</span></div>
-                {sel.assigned_user?.name && <BlocChauffeur m={sel} onReaffecter={() => setPicker(sel)} />}
+                {sel.assigned_user?.name && <BlocChauffeur m={sel} now={now} onReaffecter={() => setPicker(sel)} />}
                 <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-2 gap-y-1.5 text-[13.5px]">
                   {([
                     ['Client', [sel.client_name, sel.client_phone].filter(Boolean).join(' · ')],
@@ -744,7 +774,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                   ))}
                 </dl>
                 {Array.isArray(sel.warnings) && sel.warnings.length > 0 && <div className="flex flex-wrap gap-1">{sel.warnings.map((w: string) => <span key={w} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[12px] font-bold">⚠ {w}</span>)}</div>}
-                {alertesSel.map(a => <div key={a.type}>{carteAlerte(a)}</div>)}
+                {alertesSel.filter(a => !(a.type === 'pas_acceptee' && sel.assigned_user?.name)).map(a => <div key={a.type}>{carteAlerte(a, true)}</div>)}
                 {aAffecter && (
                   <div className="rounded-xl border-2 border-emerald-600 bg-emerald-50 p-2.5 flex flex-col gap-2">
                     <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">Chauffeur proposé</span>
