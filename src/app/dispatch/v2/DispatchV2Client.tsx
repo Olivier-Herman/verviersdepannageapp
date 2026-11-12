@@ -486,7 +486,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
         {erreur && <div className="rounded-xl bg-red-100 text-red-900 px-4 py-2.5 text-sm font-semibold">Les données n'ont pas pu être relues ({erreur}). Nouvel essai dans quelques secondes.</div>}
         {message && <div className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${message.ton === 'err' ? 'bg-red-100 text-red-900' : message.ton === 'info' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{message.txt}</div>}
 
-        <div className={`grid grid-cols-[minmax(0,1fr)] gap-2.5 min-w-0 lg:h-[calc(100vh-170px)] ${sel ? 'lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]' : 'lg:grid-cols-[minmax(340px,1fr)_minmax(0,1.6fr)]'}`}>
+        <div className={`grid grid-cols-[minmax(0,1fr)] gap-2.5 min-w-0 lg:h-[calc(100vh-170px)] lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]`}>
           {/* Colonne « À traiter » */}
           <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2"><b className="text-[16px] text-ink whitespace-nowrap">À traiter · {n}</b><span className="text-stone-500 text-[13px] truncate hidden sm:inline">le plus récent en haut</span></header>
@@ -596,7 +596,14 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
             </section>
           )}
 
-          {/* Volet de droite : le détail de la mission choisie (première version ; complète à l'étape 2). */}
+          {/* Volet de droite : toujours présent sur grand écran, même vide (Olivier 12/11). */}
+          {!sel && (
+            <aside className="hidden xl:flex rounded-2xl border border-dashed border-stone-300 bg-surface flex-col items-center justify-center text-center gap-2 p-6 min-h-0">
+              <b className="text-stone-700">Aucune mission ouverte</b>
+              <span className="text-stone-500 text-sm max-w-[260px]">Touchez une carte à gauche ou une ligne de la liste pour voir son détail, le chauffeur proposé et les actions.</span>
+            </aside>
+          )}
+          {/* Volet de droite : le détail de la mission choisie. */}
           {sel && (
             <aside className="rounded-2xl border bg-surface flex flex-col min-h-0 fixed inset-0 z-40 lg:inset-y-0 lg:left-auto lg:w-[420px] xl:static xl:w-auto xl:z-auto shadow-2xl xl:shadow-none">
               <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
