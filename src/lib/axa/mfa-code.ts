@@ -50,3 +50,32 @@ export async function waitAxaMfaCode(sinceMs: number, timeoutMs = 120_000): Prom
   }
   return null
 }
+
+/**
+ * Connexion établie : supprime de la boîte les mails de code AXA reçus depuis
+ * `sinceMs` (le code ne resservira jamais ; Olivier 12/11/2026 : la boîte ne
+ * doit pas se remplir de codes). Seuls les mails de l'expéditeur AXA qui
+ * contiennent un code sont supprimés. Renvoie le nombre supprimé ; jamais bloquant.
+ */
+export async function deleteAxaMfaMails(sinceMs: number): Promise<number> {
+  const box = await getBusinessText('axa_codes_boite')
+  const from = (await getBusinessText('axa_codes_expediteur')).toLowerCase()
+  if (!box || !from) return 0
+  const since = new Date(sinceMs).toISOString().replace(/\.\d+Z$/, 'Z')
+  const base = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(box)}/messages`
+  const j = await graphGet(`${base}?$filter=${encodeURIComponent(`receivedDateTime ge ${since}`)}&$select=id,from,subject,body&$top=50`)
+  let n = 0
+  for (const m of j?.value || []) {
+    if ((m.from?.emailAddress?.address || '').toLowerCase() !== from) continue
+    const text = String(m.body?.content || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ')
+    if (!CODE_RE.test(text) && !CODE_RE.test(String(m.subject || ''))) continue
+    let tok = await getAppOnlyToken()
+    let r = await fetch(`${base}/${encodeURIComponent(m.id)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${tok}` }, cache: 'no-store' })
+    if (r.status === 401) {
+      tok = await getAppOnlyToken(true)
+      r = await fetch(`${base}/${encodeURIComponent(m.id)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${tok}` }, cache: 'no-store' })
+    }
+    if (r.ok) n++
+  }
+  return n
+}
