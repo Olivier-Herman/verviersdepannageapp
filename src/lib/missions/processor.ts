@@ -1027,6 +1027,23 @@ async function processEmailMessageInner(messageId: string): Promise<ProcessResul
       }
     }
 
+    // ── Courrier qui n'est pas une demande d'intervention (Olivier 12/11/2026, KGZ18R : « Claim Case »
+    //    Allianz NL au sujet d'une facture payée, devenu une fiche « à valider » au dispatch) ──
+    if ((parsed as any).est_ordre_intervention === false && source !== 'police') {
+      const reason = `Pas une demande d'intervention (${source}) : ${String(parsed.incident_description || subject || '').slice(0, 120)}`
+      console.log(`[Processor] ${reason}`)
+      await markAsRead(token, messageId)
+      if (placeholderId) {
+        await supabase.from('incoming_missions').update({ status: 'ignored', updated_at: new Date().toISOString() })
+          .eq('id', placeholderId).in('status', ['new'])
+        await supabase.from('mission_logs').insert({
+          mission_id: placeholderId, action: 'ignored', notes: reason,
+          metadata: { from: fromEmail, subject, reason: 'courrier_pas_mission' },
+        }).then(() => {}, () => {})
+      }
+      return { status: 'skipped', reason }
+    }
+
     // Enrichissement automatique depuis le portail IMA
     console.log(`[Processor] step=ima_enrich messageId=${msgIdShort}`)
     const imaEnrichment = await enrichFromIMAPortal(content.rawContent, source, parsed)

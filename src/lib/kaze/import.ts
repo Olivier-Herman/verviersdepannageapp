@@ -234,12 +234,24 @@ export async function importKazeJob(
       // Adresse de livraison changée par IMA sur une fiche en cours (Olivier 05/10/2026) :
       // jamais d'office — on garde l'adresse actuelle, chauffeur + dispatch alertés.
       const { data: cur } = await sb.from('incoming_missions').select('status, destination_address').eq('id', existingId).maybeSingle()
-      const inProgress = cur && ['assigned', 'accepted', 'in_progress', 'delivering'].includes(String(cur.status))
-      if (inProgress && cur?.destination_address && payload.destination_address) {
+      const st = String(cur?.status || '')
+      const inProgress = ['assigned', 'accepted', 'in_progress', 'delivering'].includes(st)
+      // Mission livrée, au parc ou close : l'adresse de livraison est celle où le véhicule est, IMA n'y touche plus.
+      const fini = ['completed', 'to_invoice', 'invoiced', 'parked', 'gardiennage', 'cancelled', 'deleted', 'ignored'].includes(st)
+      const garderLaNotre = () => { for (const k of ['destination_address', 'destination_name', 'destination_lat', 'destination_lng']) delete payload[k] }
+      if (cur?.destination_address && payload.destination_address) {
         const { flagAddressChange, sameAddress } = await import('@/lib/missions/address-change')
-        if (!sameAddress(cur.destination_address, payload.destination_address)) {
+        const { adresseComplete } = await import('@/lib/address-parts')
+        if (fini) {
+          garderLaNotre()
+        } else if (sameAddress(cur.destination_address, payload.destination_address)) {
+          // Même adresse : la nôtre est vérifiée (code postal, position). IMA renvoie souvent la sienne sans
+          // code postal (« Rue Pisseroule 176, DISON, BEL ») : l'écraser faisait redemander l'adresse au
+          // chauffeur à la clôture (Olivier 12/11/2026, 1VGN930). On ne prend la sienne que si elle est plus complète.
+          if (adresseComplete(cur.destination_address) || !adresseComplete(String(payload.destination_address))) garderLaNotre()
+        } else if (inProgress) {
           const next = { address: String(payload.destination_address), name: payload.destination_name ?? null, lat: payload.destination_lat ?? null, lng: payload.destination_lng ?? null }
-          for (const k of ['destination_address', 'destination_name', 'destination_lat', 'destination_lng']) delete payload[k]
+          garderLaNotre()
           await flagAddressChange(sb, existingId, next, { source: 'IMA (Kaze)', ref: mapped.dossier_number || String(kazeJobId) }).catch(() => {})
         }
       }
