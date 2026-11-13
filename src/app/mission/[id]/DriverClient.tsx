@@ -257,6 +257,7 @@ const DPR_MOTIFS = [
   { id: 'refus_proprio',     icon: '🙅', label: 'Propriétaire refuse l\'intervention' },
   { id: 'acces_impossible',  icon: '🚧', label: 'Accès impossible (terrain privé, fourrière)' },
   { id: 'deja_deplace',      icon: '🚗', label: 'Véhicule déjà dépanné / déplacé' },
+  { id: 'deja_au_garage',    icon: '🏁', label: 'Véhicule déjà au garage' },   // Olivier 13/11/2026
   { id: 'pas_de_panne',      icon: '✅', label: 'Pas de panne constatée' },
   { id: 'annulation_client', icon: '📞', label: 'Demande d\'annulation client' },
   // Refus À DESTINATION (véhicule déjà chargé, revient en parc) — Olivier 2026-07-09
