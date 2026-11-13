@@ -138,6 +138,7 @@ export async function closeAxaBg(
   try {
     const { data: m } = await sb.from('incoming_missions')
       .select('id, mission_type, on_way_at, on_site_at, loaded_at, completed_at, delivering_at, client_name, client_phone, ' +
+              'destination_address, destination_name, destination_lat, destination_lng, ' +
               'incident_description, panne_motif, panne_motif_label, snc_km_total, axa_closed_at')
       .eq('id', missionId).maybeSingle()
 
@@ -232,7 +233,7 @@ export async function closeAxaBg(
       return { ok: true, steps, reported: false }
     }
 
-    const r = await closeMissionAuto(missionOrderId, { executedAt })
+    const r = await closeMissionAuto(missionOrderId, { executedAt, ourDestination: { address: m?.destination_address, name: m?.destination_name, lat: m?.destination_lat, lng: m?.destination_lng } })
     if (!r.ok) {
       await log('axa_sync_error', `AXA : séquence interrompue — ${r.error || 'raison inconnue'}`, { steps: r.steps })
       return { ok: false, steps: r.steps, error: r.error }
