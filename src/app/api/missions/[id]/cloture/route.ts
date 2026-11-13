@@ -110,7 +110,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       || allowedFins.includes(o.fin) || UNLOCKED_LATER.has(o.fin))
   const dprCodes = allowedFins.length === 0
     ? DPR_END_CODES
-    : DPR_END_CODES.filter(d => allowedFins.includes(d.code))
+    : DPR_END_CODES.filter(d => allowedFins.includes(d.fin || d.code))
 
   // Motif déjà choisi sur la 1re jambe (transformation en remorquage) : à la
   // livraison, on le REPROPOSE sélectionné au lieu de refaire choisir. Vu en test
@@ -376,11 +376,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     } else {
     const input = {
       outcome, motifKey, prefill,
-      dprCode: body?.dprCode ?? null,
+      // Motif VD Soft sans code propre chez l'assistance (« déjà au garage ») : son vrai code + la précision en commentaire.
+      dprCode: (DPR_END_CODES.find(x => x.code === String(body?.dprCode))?.fin) || (body?.dprCode ?? null),
       vin, km,
       toCidIntv: body?.toCidIntv ?? null,
       manualAddress: body?.manualAddress ?? null,
-      comment: body?.comment ?? null,
+      comment: [DPR_END_CODES.find(x => x.code === String(body?.dprCode))?.remarque, body?.comment].filter(Boolean).join(' ') || null,
       // Siabis non couvert (police_snc) : mise en parc = fin de tâche (00) chez
       // Touring, pas dépôt (05). Olivier 2026-09-24.
       nonCouvert: String((m as any)?.source || '') === 'police_snc',
