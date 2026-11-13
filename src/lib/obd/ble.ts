@@ -55,6 +55,24 @@ async function client(): Promise<Ble> {
 const enc = new TextEncoder(), dec = new TextDecoder()
 const BOITIER_MEMO = 'vd-obd-boitier'
 
+const SERVICES_OBD = ['0000fff0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '000018f0-0000-1000-8000-00805f9b34fb']
+const NOM_OBD = /obd|v-?link|vgate|icar|elm ?327|viecar|konnwei|veepeak|carista|kiwi|scan ?tool/i
+
+/** Boîtiers OBD à portée : un nom de boîtier connu ou un service OBD annoncé. Rien trouvé ou erreur : liste vide. */
+async function chercherBoitiers(ble: Ble, ms: number): Promise<{ deviceId: string; name?: string }[]> {
+  const vus = new Map<string, { deviceId: string; name?: string }>()
+  try {
+    await ble.requestLEScan({}, (r: any) => {
+      const nom = String(r?.localName || r?.device?.name || '')
+      const uuids: string[] = (r?.uuids || []).map((u: string) => String(u).toLowerCase())
+      if (r?.device?.deviceId && (NOM_OBD.test(nom) || uuids.some(u => SERVICES_OBD.includes(u)))) vus.set(r.device.deviceId, { deviceId: r.device.deviceId, name: nom || r.device.name })
+    })
+    await new Promise(ok => setTimeout(ok, ms))
+  } catch { /* balayage refusé : la liste du système prendra le relais */ }
+  await ble.stopLEScan().catch(() => {})
+  return [...vus.values()]
+}
+
 /** Recherche le boîtier (fenêtre de choix du système), s'y connecte et prépare le dialogue ELM327. */
 export async function connectObd(onStatus?: (s: string) => void): Promise<ObdLink> {
   const ble = await client()
@@ -79,7 +97,10 @@ export async function connectObd(onStatus?: (s: string) => void): Promise<ObdLin
   }
   if (!device) {
     onStatus?.('recherche')
-    device = await ble.requestDevice({ optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '000018f0-0000-1000-8000-00805f9b34fb'] })
+    // On cherche d'abord nous-mêmes le boîtier OBD (nom ou service connu) : s'il est seul, on s'y connecte sans montrer la
+    // liste du téléphone, où il se noie parmi les « Unknown » (iPhone de Franck, 13/11/2026). Sinon, liste du système.
+    const trouves = await chercherBoitiers(ble, 6000)
+    device = trouves.length === 1 ? trouves[0] : await ble.requestDevice({ optionalServices: SERVICES_OBD })
     onStatus?.('connexion')
     await ble.connect(device.deviceId, onDisconnect)
   }
