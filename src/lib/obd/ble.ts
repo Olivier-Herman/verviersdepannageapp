@@ -185,7 +185,11 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void,
   const temp = await val(0x05, E.coolant), regime = await val(0x0c, E.rpm)
   // Carburant : ce que dit la voiture, sinon son type d'allumage ; jamais la fiche (Olivier 06/11/2026).
   let carburant = await val(0x51, E.fuelType), carburant_source: 'voiture' | 'allumage' | null = carburant ? 'voiture' : null
-  if (!carburant && monitor?.allumage && sup.has(0x0c)) { carburant = monitor.allumage === 'compression' ? 'diesel' : 'essence'; carburant_source = 'allumage' }
+  // Allumage → carburant : seulement en CAN (≈ 2008 et après). Les anciens calculateurs (ISO 9141, KWP) ne remplissent pas ce
+  // bit : le VW Sharan 1.9 TDI de 2009 (D-0012/0013, 13/11/2026) se disait « essence », la liste des moteurs proposait de
+  // l'essence et la fiche aurait été corrigée à tort.
+  const enCan = /^[6-9A-C]$/.test(String(protocol || '').replace(/^A(?=.)/, ''))
+  if (!carburant && enCan && monitor?.allumage && sup.has(0x0c)) { carburant = monitor.allumage === 'compression' ? 'diesel' : 'essence'; carburant_source = 'allumage' }
   const volt = volt0 ?? await val(0x42, E.moduleVoltage)
 
   let freeze: ObdFreeze | null = null
