@@ -23,6 +23,12 @@ export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual'): Promis
     await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify(r) }, { onConflict: 'key' })
     return r
   }
+  // Panne Microsoft (13/11/2026) : le code AXA arrive par mail et ne peut pas être lu ;
+  // chaque essai ferait de plus apparaître un captcha. Seul le bouton manuel passe.
+  if (trigger !== 'manual') {
+    const { microsoftOutageSince } = await import('@/lib/microsoft-outage')
+    if (await microsoftOutageSince()) return { ok: false, steps: [], error: 'panne Microsoft en cours : le code AXA ne peut pas être lu, reconnexion automatique suspendue jusqu’au retour du service', at }
+  }
   // Pas deux reconnexions en même temps (cron + poll) : verrou 6 min (l'attente du code AXA peut durer 2 min).
   const { data: last } = await sb.from('app_settings').select('value').eq('key', AXA_RELOGIN_KEY).maybeSingle()
   try {
