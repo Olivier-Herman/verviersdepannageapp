@@ -16,6 +16,29 @@ import { setAxaRefreshToken, getAxaAccessToken } from '@/lib/axa/auth'
 import { waitAxaMfaCode, deleteAxaMfaMails } from '@/lib/axa/mfa-code'
 
 const PORTAL = 'https://go-and-assist.axapartners.com'
+const AUTH0  = 'https://axa-partners-eu-providers.eu.auth0.com'
+/** Session Auth0 du robot (cookies « auth0 », « did »…), gardée d'une connexion à l'autre comme dans un vrai navigateur :
+ *  AXA reconnaît l'appareil et la session encore ouverte, sans captcha ni code (Olivier 14/11/2026 : « je ne vais pas
+ *  m'amuser à faire ça tous les jours »). Stockée côté serveur seulement (app_settings, clé de service). */
+export const AXA_SESSION_KEY = 'axa_auth0_session'
+
+async function lireSession(): Promise<any[]> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase')
+    const { data } = await createAdminClient().from('app_settings').select('value').eq('key', AXA_SESSION_KEY).maybeSingle()
+    const v = data?.value ? JSON.parse(data.value) : null
+    return Array.isArray(v?.cookies) ? v.cookies : []
+  } catch { return [] }
+}
+async function garderSession(page: any): Promise<number> {
+  try {
+    const cookies = (await page.cookies(AUTH0 + '/', PORTAL + '/')).filter((c: any) => c?.name && c?.value)
+    if (!cookies.length) return 0
+    const { createAdminClient } = await import('@/lib/supabase')
+    await createAdminClient().from('app_settings').upsert({ key: AXA_SESSION_KEY, value: JSON.stringify({ at: new Date().toISOString(), cookies }) }, { onConflict: 'key' })
+    return cookies.length
+  } catch { return 0 }
+}
 
 export interface AxaReloginResult { ok: boolean; steps: string[]; error?: string; email?: string | null }
 
@@ -56,6 +79,11 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     const page = await browser.newPage()
     page.setDefaultTimeout(30000)
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36')
+    const gardes = await lireSession()
+    if (gardes.length) {
+      await page.setCookie(...gardes.map((c: any) => { const { size, session, partitionKey, sourceScheme, sourcePort, ...k } = c; return k })).catch(() => {})
+      steps.push(`session AXA reprise (${gardes.length} cookies)`)
+    }
     await page.goto(PORTAL, { waitUntil: 'domcontentloaded', timeout: 45000 })
     steps.push('portail ouvert')
     // Page d'accueil du portail : bandeau cookies (OneTrust), case de consentement,
@@ -76,7 +104,7 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     try { await page.waitForSelector(idSel, { timeout: 30000 }) } catch {
       // Déjà connecté (session Auth0 vivante) ? Alors le token est peut-être là.
       const tok = await readRefreshToken(page)
-      if (tok) { steps.push('session déjà ouverte'); return await seed(tok, steps) }
+      if (tok) { steps.push('session déjà ouverte'); const r = await seed(tok, steps); if (r.ok) { const n = await garderSession(page); if (n) steps.push('session AXA gardée') } return r }
       return { ok: false, steps, error: `page de connexion non reconnue (${page.url()})` }
     }
     steps.push('page de connexion Auth0')
@@ -189,6 +217,7 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     if (!tok) return { ok: false, steps, error: 'refresh token introuvable dans le stockage du portail' }
     steps.push('refresh token lu')
     const res = await seed(tok, steps, email)
+    if (res.ok) { const n = await garderSession(page); steps.push(n ? `session AXA gardée (${n} cookies)` : 'session AXA non gardée') }
     // Connexion établie : le mail du code n'a plus d'utilité, on le supprime.
     if (res.ok && codeSent) {
       const n = await deleteAxaMfaMails(mfaSince).catch(() => 0)
