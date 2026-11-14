@@ -180,6 +180,14 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
           steps.push('code reçu')
           await page.evaluate((sel: string) => { const el = [...document.querySelectorAll(sel)].find(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 }) as HTMLInputElement | undefined; el?.focus() }, codeSel)
           await page.keyboard.type(code, { delay: 30 })
+          // « Se souvenir de cet appareil » (Auth0 : 30 jours sans code) : cochée quand elle est proposée (14/11/2026).
+          const souvenir = await page.evaluate(() => {
+            const cases = [...document.querySelectorAll('input[type=checkbox]')] as HTMLInputElement[]
+            const c = cases.find(x => /remember|souvenir|trust|30|onthoud|vertrouw/i.test((x.closest('label')?.textContent || '') + ' ' + (document.querySelector(`label[for="${x.id}"]`)?.textContent || '') + ' ' + x.name))
+            if (c && !c.checked) { c.click(); return true }
+            return !!c?.checked
+          }).catch(() => false)
+          if (souvenir) steps.push('appareil mémorisé chez AXA')
           await Promise.all([
             page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
             page.keyboard.press('Enter'),
