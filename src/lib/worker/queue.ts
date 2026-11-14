@@ -19,7 +19,7 @@ export const HEARTBEAT_MAX_MS = 2 * 60 * 1000
 /** Une demande « en cours » depuis plus longtemps = worker tombé en pleine tâche. */
 export const RUNNING_MAX_MS   = 15 * 60 * 1000
 
-export type WorkerJobKind = 'vab_close' | 'vab_steps'
+export type WorkerJobKind = 'vab_close' | 'vab_steps' | 'axa_relogin'
 
 export interface WorkerHeartbeat {
   alive:   boolean
@@ -30,6 +30,8 @@ export interface WorkerHeartbeat {
   ageMs:   number | null
   /** Le worker a vérifié que Chrome démarre chez lui (false = il se déclare inapte). */
   chromeOk: boolean | null
+  /** Types de tâches que ce worker sait faire (axa_relogin seulement s'il a les identifiants du portail). */
+  kinds?: string[]
 }
 
 /**
@@ -50,6 +52,7 @@ export async function workerHeartbeat(sb: SupabaseClient): Promise<WorkerHeartbe
     return {
       alive: Number.isFinite(ageMs) && ageMs >= 0 && ageMs < HEARTBEAT_MAX_MS && chromeOk !== false,
       at: v.at, host: v.host || null, version: v.version || null, busy: v.busy || null, ageMs, chromeOk,
+      kinds: Array.isArray(v.kinds) ? v.kinds : undefined,
     }
   } catch { return none }
 }

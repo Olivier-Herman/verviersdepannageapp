@@ -39,9 +39,21 @@ export async function readAxaReloginLast(sb: any = createAdminClient()): Promise
   try { return data?.value ? JSON.parse(data.value) : null } catch { return null }
 }
 
-export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual'): Promise<{ ok: boolean; steps: string[]; error?: string; at: string }> {
+export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual', opts: { surServeur?: boolean } = {}): Promise<{ ok: boolean; steps: string[]; error?: string; at: string }> {
   const sb = createAdminClient()
   const at = new Date().toISOString()
+  // Reconnexion automatique confiée au serveur de secours quand il est en forme et qu'il sait la faire (Olivier
+  // 14/11/2026 : toujours depuis la même adresse, comme un PC — AXA ne doit plus voir un appareil inconnu chaque jour).
+  if (trigger !== 'manual' && !opts.surServeur) {
+    try {
+      const { workerHeartbeat, enqueueJob } = await import('@/lib/worker/queue')
+      const hb = await workerHeartbeat(sb as any)
+      if (hb.alive && hb.kinds?.includes('axa_relogin')) {
+        const q = await enqueueJob(sb as any, { kind: 'axa_relogin', dedupeKey: 'axa_relogin', payload: { trigger }, createdBy: `axa-${trigger}` })
+        return { ok: false, steps: [], error: q.existing ? 'reconnexion déjà en cours sur le serveur de secours' : 'reconnexion confiée au serveur de secours (1 à 2 min)', at }
+      }
+    } catch { /* file indisponible : on se reconnecte ici, comme avant */ }
+  }
   if (!axaReloginConfigured()) {
     const r = { ok: false, steps: [], error: 'Identifiants du portail absents (AXA_PORTAL_EMAIL / AXA_PORTAL_PASSWORD)', at, trigger }
     await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify(r) }, { onConflict: 'key' })
