@@ -1,6 +1,6 @@
 'use client'
 // Admin › AXA go&assist. Un seul écran : état, réamorçage, clôtures en attente.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Health = { ok: boolean; at: string; last_ok_at: string | null; error: string | null; consecutive_failures: number; awaiting?: number } | null
 type Me = { auth0Id: string | null; email: string | null; roles: string[]; canBeAssigned: boolean | null; providerId: string | null } | null
@@ -25,6 +25,10 @@ export default function AxaClient() {
   const [busy, setBusy]         = useState<string | null>(null)
   const [msg, setMsg]           = useState<{ ok: boolean; text: string } | null>(null)
   const [loaded, setLoaded]     = useState(false)
+  // Captcha AXA pendant la reconnexion (Olivier 14/11/2026 : reconnexion faisable depuis l'iPhone).
+  const [captcha, setCaptcha]   = useState<{ id: string; image: string } | null>(null)
+  const [capRep, setCapRep]     = useState('')
+  const [capEnvoi, setCapEnvoi] = useState<'' | 'envoi' | 'envoye'>('')
 
   const load = useCallback(async () => {
     const r = await fetch('/api/admin/axa', { cache: 'no-store' })
@@ -33,6 +37,30 @@ export default function AxaClient() {
     setHealth(j.health); setClosures(j.failed_closures || []); setTokenAt(j.token_updated_at); setMe(j.me || null); setTechs(j.technicians || []); setTech(j.technician || null); setCodes(j.problem_codes || []); setPmap(j.problem_map || {}); setMotifs(j.motifs || []); setRelogin(j.relogin || null); setLoaded(true)
   }, [])
   useEffect(() => { load() }, [load])
+  // Tant que l'écran est ouvert, on regarde toutes les 2 s si AXA demande un captcha : sur iPhone, la demande
+  // « Reconnecter » peut se couper si on change d'app, alors que le robot continue et attend la réponse.
+  useEffect(() => {
+    let stop = false
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/admin/axa/captcha', { cache: 'no-store' })
+        const j = await r.json()
+        if (stop) return
+        if (j.image) setCaptcha(c => c?.id === j.id ? c : (setCapRep(''), setCapEnvoi(''), { id: j.id, image: j.image }))
+        else setCaptcha(c => (c && capEnvoiRef.current === 'envoye') ? c : null)
+      } catch { /* nouvel essai au tour suivant */ }
+    }
+    const t = setInterval(tick, 2000); tick()
+    return () => { stop = true; clearInterval(t) }
+  }, [])
+  const capEnvoiRef = useRef(capEnvoi); capEnvoiRef.current = capEnvoi
+  useEffect(() => { if (!busy && capEnvoi === 'envoye') { setCaptcha(null); setCapEnvoi('') } }, [busy, capEnvoi])
+  const envoyerCaptcha = async () => {
+    if (!captcha || !capRep.trim()) return
+    setCapEnvoi('envoi')
+    const r = await fetch('/api/admin/axa/captcha', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: captcha.id, answer: capRep.trim() }) }).catch(() => null)
+    if (r?.ok) setCapEnvoi('envoye'); else { setCapEnvoi(''); setMsg({ ok: false, text: (await r?.json().catch(() => null))?.error || 'Envoi impossible, réessaie.' }) }
+  }
 
   const post = async (action: string, extra: any = {}) => {
     setBusy(action); setMsg(null)
@@ -108,9 +136,30 @@ export default function AxaClient() {
             {relogin.last?.at && <> Dernière tentative {fmt(relogin.last.at)} · {relogin.last.ok ? <span className="text-emerald-700 font-semibold">réussie</span> : <span className="text-red-700 font-semibold">échec : {relogin.last.error}</span>}</>}
           </p>
         )}
-        <button onClick={() => post('relogin')} disabled={!!busy || !relogin?.configured} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
-          {busy === 'relogin' ? 'Connexion en cours (1 min)…' : 'Reconnecter maintenant'}
+        <button onClick={() => post('relogin')} disabled={!!busy || !relogin?.configured} className="min-h-[44px] px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
+          {busy === 'relogin' ? 'Connexion en cours (1 à 3 min)…' : 'Reconnecter maintenant'}
         </button>
+        {busy === 'relogin' && !captcha && <p className="text-xs text-ink-secondary">Garde cet écran ouvert : si AXA affiche un code de sécurité en image, il apparaîtra ici.</p>}
+        {captcha && (
+          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
+            <p className="text-sm font-semibold text-amber-900">AXA demande de recopier les caractères de cette image</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`data:image/png;base64,${captcha.image}`} alt="Code de sécurité AXA" className="max-w-full rounded border border-amber-300 bg-white" />
+            {capEnvoi === 'envoye' ? (
+              <p className="text-sm text-amber-900">Envoyé. Le robot continue la connexion (code par mail, puis retour sur le portail)…</p>
+            ) : (
+              <div className="flex gap-2">
+                <input value={capRep} onChange={e => setCapRep(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') envoyerCaptcha() }}
+                  autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false} inputMode="text" placeholder="Caractères de l’image"
+                  className="flex-1 min-h-[44px] rounded-lg border border-amber-300 bg-white px-3 text-base text-gray-900" />
+                <button onClick={envoyerCaptcha} disabled={!capRep.trim() || capEnvoi === 'envoi'} className="min-h-[44px] px-4 rounded-lg bg-amber-600 text-white text-sm font-semibold disabled:opacity-50">
+                  {capEnvoi === 'envoi' ? 'Envoi…' : 'Envoyer'}
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-amber-800">Tu as 2 minutes. Si AXA refuse, une nouvelle image s’affiche ici.</p>
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-4 space-y-3">

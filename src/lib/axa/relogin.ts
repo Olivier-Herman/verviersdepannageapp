@@ -35,7 +35,14 @@ async function readRefreshToken(page: any): Promise<string | null> {
   }).catch(() => null)
 }
 
-export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | void): Promise<AxaReloginResult> {
+/**
+ * Captcha d'Auth0 (« Enter the code shown above ») : le robot ne le résout pas. En reconnexion manuelle,
+ * `askCaptcha` montre l'image à Mobi sur son téléphone et rend ce qu'il a tapé (Olivier 14/11/2026 : reconnexion
+ * impossible depuis l'iPhone avec la méthode du jeton). Sans `askCaptcha` (reconnexions automatiques) : on s'arrête.
+ */
+export interface ReloginOptions { askCaptcha?: (pngBase64: string) => Promise<string | null> }
+
+export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | void, opts: ReloginOptions = {}): Promise<AxaReloginResult> {
   const email = process.env.AXA_PORTAL_EMAIL, password = process.env.AXA_PORTAL_PASSWORD
   const raw: string[] = []
   // Chaque étape est écrite tout de suite (console + trace) : si la fonction est
@@ -74,17 +81,44 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     }
     steps.push('page de connexion Auth0')
     await page.type(idSel, email, { delay: 20 })
+    const capSel = 'input[name="captcha"], input#captcha, input[name*="captcha" i]'
+    const visible = (sel: string) => page.$$eval(sel, els => els.some(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 })).catch(() => false)
+    /** Captcha à l'écran : image envoyée à Mobi, sa réponse tapée. Rend un message d'erreur, ou null si rien à faire / fait. */
+    const resoudreCaptcha = async (): Promise<string | null> => {
+      if (!(await visible(capSel))) return null
+      if (!opts.askCaptcha) return 'captcha AXA à l’écran : reconnexion à faire depuis Admin › AXA go&assist (« Reconnecter maintenant », le captcha s’affiche sur ton téléphone)'
+      const img = await page.$('img[alt*="captcha" i], img[src*="captcha" i], .ulp-captcha img, [class*="captcha" i] img, img[src^="data:image"]')
+      const png = img ? await img.screenshot({ encoding: 'base64' }) as string : await page.screenshot({ encoding: 'base64' }) as string
+      steps.push('captcha affiché : réponse demandée à Mobi')
+      const rep = String(await opts.askCaptcha(png) || '').trim()
+      if (!rep) return 'personne n’a tapé le captcha dans les 2 minutes'
+      await page.$$eval(capSel, els => { for (const e of els) (e as HTMLInputElement).value = '' }).catch(() => {})
+      await page.evaluate((sel: string) => { const el = [...document.querySelectorAll(sel)].find(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 }) as HTMLInputElement | undefined; el?.focus() }, capSel)
+      await page.keyboard.type(rep, { delay: 40 })
+      steps.push('captcha tapé')
+      return null
+    }
     // Deux gabarits : identifiant + mot de passe sur la même page, ou en deux temps.
     const pwdSel = 'input[name="password"], input#password, input[type="password"]'
     // Universal Login « identifiant d'abord » : la page porte un champ mot de passe
     // CACHÉ. On ne s'y fie pas : seul un champ visible compte.
     const pwdVisible = async () => page.$$eval(pwdSel, els => els.some(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 })).catch(() => false)
     if (!(await pwdVisible())) {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
-        page.keyboard.press('Enter'),
-      ])
-      for (let i = 0; i < 20 && !(await pwdVisible()); i++) await new Promise(r => setTimeout(r, 1000))
+      // Un captcha mal lu revient avec une nouvelle image : jusqu'à 3 essais.
+      for (let tour = 0; tour < 3; tour++) {
+        const errCap = await resoudreCaptcha()
+        if (errCap) return { ok: false, steps, error: errCap }
+        await Promise.all([
+          page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
+          page.keyboard.press('Enter'),
+        ])
+        for (let i = 0; i < 20 && !(await pwdVisible()) && !(await visible(capSel)); i++) await new Promise(r => setTimeout(r, 1000))
+        if (await pwdVisible() || !(await visible(capSel))) break
+        steps.push('captcha refusé, nouvelle image')
+        const vide = await page.$$eval(idSel, els => els.some(e => !(e as HTMLInputElement).value)).catch(() => false)
+        if (vide) await page.type(idSel, email, { delay: 20 })
+      }
+      for (let i = 0; i < 10 && !(await pwdVisible()); i++) await new Promise(r => setTimeout(r, 1000))
       if (!(await pwdVisible())) {
         const txt = await page.evaluate(() => document.body?.innerText?.replace(/\s+/g, ' ').slice(0, 200) || '').catch(() => '')
         return { ok: false, steps, error: `pas de champ mot de passe après l'identifiant (${page.url()}) : ${txt}` }
@@ -93,6 +127,7 @@ export async function reloginAxa(onStep?: (steps: string[]) => Promise<void> | v
     }
     await page.evaluate((sel: string) => { const el = [...document.querySelectorAll(sel)].find(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 }) as HTMLInputElement | undefined; el?.focus() }, pwdSel)
     await page.keyboard.type(password, { delay: 20 })
+    { const errCap = await resoudreCaptcha(); if (errCap) return { ok: false, steps, error: errCap } }
     // Un code reçu avant cet instant appartient à une tentative précédente (marge horloge 15 s).
     const mfaSince = Date.now() - 15_000
     await Promise.all([

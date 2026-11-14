@@ -4,6 +4,30 @@ import { reloginAxa } from '@/lib/axa/relogin'
 import { recordAxaPollResult } from '@/lib/axa/health'
 
 export const AXA_RELOGIN_KEY = 'axa_relogin_last'
+export const AXA_CAPTCHA_KEY = 'axa_relogin_captcha'
+const CAPTCHA_ATTENTE_MS = 120_000   // + 2 min de code par mail : sous les 5 min de la fonction
+
+/** Captcha montré à Mobi (écran AXA de l'app) ; attend sa réponse 2 min au plus (Olivier 14/11/2026). */
+async function demanderCaptcha(png: string): Promise<string | null> {
+  const sb = createAdminClient()
+  const id = `${Date.now()}`
+  await sb.from('app_settings').upsert({ key: AXA_CAPTCHA_KEY, value: JSON.stringify({ id, image: png, at: new Date().toISOString(), answer: null }) }, { onConflict: 'key' })
+  try {
+    const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+    await sendNotificationToRoles(['superadmin'], 'axa_poll_down', { title: '🅰️ AXA : captcha à taper', body: 'Ouvre l’écran AXA go&assist et tape les caractères de l’image (2 minutes).', action_url: '/admin/axa' })
+  } catch {}
+  const fin = Date.now() + CAPTCHA_ATTENTE_MS
+  try {
+    while (Date.now() < fin) {
+      await new Promise(r => setTimeout(r, 2000))
+      const { data } = await sb.from('app_settings').select('value').eq('key', AXA_CAPTCHA_KEY).maybeSingle()
+      try { const v = data?.value ? JSON.parse(data.value) : null; if (v?.id === id && v.answer) return String(v.answer) } catch {}
+    }
+    return null
+  } finally {
+    await sb.from('app_settings').delete().eq('key', AXA_CAPTCHA_KEY).then(() => {}, () => {})
+  }
+}
 const POLL_RETRY_AFTER_FAIL_MS = 60 * 60_000
 
 export function axaReloginConfigured(): boolean {
@@ -29,7 +53,7 @@ export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual'): Promis
     const { microsoftOutageSince } = await import('@/lib/microsoft-outage')
     if (await microsoftOutageSince()) return { ok: false, steps: [], error: 'panne Microsoft en cours : le code AXA ne peut pas être lu, reconnexion automatique suspendue jusqu’au retour du service', at }
   }
-  // Pas deux reconnexions en même temps (cron + poll) : verrou 6 min (l'attente du code AXA peut durer 2 min).
+  // Pas deux reconnexions en même temps (cron + poll) : verrou 6 min (code AXA 2 min, captcha 3 min).
   const { data: last } = await sb.from('app_settings').select('value').eq('key', AXA_RELOGIN_KEY).maybeSingle()
   try {
     const l = last?.value ? JSON.parse(last.value) : null
@@ -44,7 +68,7 @@ export async function runAxaRelogin(trigger: 'cron' | 'poll' | 'manual'): Promis
   await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify({ running_since: at, trigger }) }, { onConflict: 'key' })
   const r = await reloginAxa(async steps => {
     await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify({ running_since: at, trigger, steps }) }, { onConflict: 'key' }).then(() => {}, () => {})
-  })
+  }, trigger === 'manual' ? { askCaptcha: demanderCaptcha } : {})
   const out = { ok: r.ok, steps: r.steps, error: r.error, at, trigger, email: r.email ?? null }
   await sb.from('app_settings').upsert({ key: AXA_RELOGIN_KEY, value: JSON.stringify(out) }, { onConflict: 'key' })
   if (r.ok) await recordAxaPollResult({ ok: true }).catch(() => {})
