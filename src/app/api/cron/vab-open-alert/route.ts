@@ -92,7 +92,10 @@ async function handleGET(req: Request) {
     try {
       const { workerHeartbeat } = await import('@/lib/worker/queue')
       const hb = await workerHeartbeat(sb)
-      if (!hb.alive) workerMot = hb.at ? ` · worker VPS silencieux depuis ${Math.round((hb.ageMs || 0) / 3600000)} h` : ' · worker VPS jamais vu'
+      // 14/11/2026 : le worker battait mais se déclarait inapte (Chrome) → « silencieux depuis 0 h », incompréhensible.
+      if (!hb.alive) workerMot = !hb.at ? ' · serveur de secours jamais vu'
+        : hb.chromeOk === false && (hb.ageMs || 0) < 5 * 60_000 ? ' · serveur de secours en ligne mais son navigateur ne démarre plus (les clôtures se font sans lui)'
+        : ` · serveur de secours muet depuis ${Math.max(1, Math.round((hb.ageMs || 0) / 3600000))} h`
     } catch { /* l'état du worker est un plus */ }
     const corpsComplet = corps + workerMot
 
