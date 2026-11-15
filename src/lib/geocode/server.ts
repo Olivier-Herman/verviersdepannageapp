@@ -170,12 +170,16 @@ export async function geocodeAddressServer(raw: string | null | undefined, city?
   // Google d'abord : c'est ce que fait le navigateur, et il lit les adresses
   // des assisteurs (« qteam, CHAINEUX,HERVE, BEL » → le garage QTeam, pas le
   // village). ORS reste en repli si Google est absent ou en erreur.
-  const g = await geocodeGoogle(text)
+  // La commune de la fiche accompagne toujours la recherche (Olivier 15/11/2026, 50HHK3 : « Place du Châtelet 2 » seul
+  // → Paris au lieu de Malmedy, 676 km facturés à Eurocross).
+  const c = String(city || '').trim()
+  const query = c && !text.toLowerCase().includes(c.toLowerCase()) ? `${text}, ${c}` : text
+  const g = await geocodeGoogle(query)
   if (g) return g
   if (lastFailure === 'not_found' && GOOGLE_KEY) return null   // Google a cherché, il n'y a rien : ORS ne fera pas mieux
 
   if (!ORS_KEY) return null
-  const url = `${ORS_BASE}/geocode/search?api_key=${encodeURIComponent(ORS_KEY)}&text=${encodeURIComponent(text)}&focus.point.lat=50.59&focus.point.lon=5.86&size=3`   // tous pays, proches de Verviers d'abord (27/10/2026)
+  const url = `${ORS_BASE}/geocode/search?api_key=${encodeURIComponent(ORS_KEY)}&text=${encodeURIComponent(query)}&focus.point.lat=50.59&focus.point.lon=5.86&size=3`   // tous pays, proches de Verviers d'abord (27/10/2026)
   let j: any = null
   try {
     const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
@@ -231,14 +235,18 @@ export async function depotCoordsFor(sb: any, address: string | null | undefined
 export async function ensureMissionCoords(sb: any, missionId: string): Promise<{ incident: boolean; destination: boolean }> {
   const out = { incident: false, destination: false }
   const { data: m } = await sb.from('incoming_missions')
-    .select('id, incident_address, incident_city, incident_lat, incident_lng, destination_address, destination_lat, destination_lng')
+    .select('id, incident_address, incident_city, incident_country, incident_lat, incident_lng, destination_address, destination_lat, destination_lng')
     .eq('id', missionId).maybeSingle()
   if (!m) return out
   const upd: Record<string, any> = {}
   const notes: string[] = []
   let transient = false
   if ((m.incident_lat == null || m.incident_lng == null) && m.incident_address) {
-    const h = (await depotCoordsFor(sb, m.incident_address)) || (await geocodeAddressServer(m.incident_address, m.incident_city))
+    let h = (await depotCoordsFor(sb, m.incident_address)) || (await geocodeAddressServer(m.incident_address, m.incident_city))
+    // Garde-fou : une intervention en Belgique placée à plus de 250 km de Verviers est une homonymie (Paris pour
+    // Malmedy) → on ne pose rien, la fiche reste « à géocoder » dans le navigateur plutôt que de facturer des centaines de km.
+    // Les interventions à l'étranger (rapatriements) ne sont pas concernées.
+    if (h && String(m.incident_country || 'BE').toUpperCase() === 'BE' && distKm(h.lat, h.lng, 50.59, 5.86) > 250) { notes.push(`intervention refusée : ${h.label} est à ${Math.round(distKm(h.lat, h.lng, 50.59, 5.86))} km`); h = null }
     if (h) { upd.incident_lat = h.lat; upd.incident_lng = h.lng; out.incident = true; notes.push(`intervention → ${h.label}`) }
     else if (lastFailure === 'transient') transient = true
   }
@@ -294,4 +302,10 @@ export async function placesCandidates(text: string, opts: { max?: number; proch
     }
     return out
   } catch { return [] }
+}
+
+/** Distance à vol d'oiseau (km). */
+function distKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const r = Math.PI / 180, d = Math.sin((lat2 - lat1) * r / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lng2 - lng1) * r / 2) ** 2
+  return 12742 * Math.asin(Math.sqrt(d))
 }
