@@ -38,7 +38,8 @@ export async function POST(req: Request) {
   const cookies = new Map<string, string>()
   async function cookieFor(label: string): Promise<string | null> {
     if (cookies.has(label)) return cookies.get(label)!
-    const acct = accounts.find(a => a.label === label)
+    // Le compte est noté « VERVIERS » sur les dossiers et « verviers » dans les réglages : sans casse (15/11/2026, 8 refus).
+    const acct = accounts.find(a => a.label.toLowerCase() === String(label || '').toLowerCase())
     if (!acct) return null
     // Clic humain (« Accepter ») : essaie même si le robot est en pause après échecs (11/11/2026).
     try { const c = await loginComexBko(acct, { force: !isInternal }); cookies.set(label, c); return c } catch { return null }
