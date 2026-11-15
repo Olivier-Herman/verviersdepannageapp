@@ -71,7 +71,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // et les rappels précédents du même type restés ouverts avec (Olivier 19/10/2026).
   if (body?.rappel_ack === true) {
     const { data: n } = await sb.from('notifications_log').select('id, notif_type').eq('id', params.id).eq('user_id', userId).maybeSingle()
-    if (!n || !['paiements_a_trier', 'paiements_lot_du_jour'].includes(n.notif_type)) return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
+    if (!n || !['paiements_a_trier', 'paiements_lot_du_jour', 'conges_en_attente'].includes(n.notif_type)) return NextResponse.json({ error: 'Notification inconnue' }, { status: 404 })
     const now = new Date().toISOString()
     await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('user_id', userId).eq('notif_type', n.notif_type).eq('channel', 'in_app').is('responded_at', null)
     return NextResponse.json({ ok: true })
