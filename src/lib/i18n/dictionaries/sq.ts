@@ -1281,4 +1281,9 @@ export const sq: Dictionary = {
     z5: 'Konsola qendrore',
     z6: 'Ana e pasagjerit',
   },
+  contrat: {
+    titre:       'Kontrata',
+    couvert:     'E mbuluar',
+    non_couvert: 'E pambuluar',
+  },
 }

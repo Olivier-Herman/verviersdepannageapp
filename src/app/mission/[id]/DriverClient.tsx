@@ -1,6 +1,7 @@
 'use client'
 // DriverClient v4 — spec figée — DSP/REM, stops, mise en parc, realtime
 
+import ContratAssistance from '@/components/missions/ContratAssistance'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { sncDepotEstFinal } from '@/lib/snc/depot-final'
 import { useRouter } from 'next/navigation'
@@ -5040,6 +5041,9 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
             )}
           </div>
         )}
+
+        {/* Contrat de l'assistance : son nom et Couvert / Non couvert (Olivier 15/11/2026) */}
+        <ContratAssistance contrat={(M as any).assistance_contrat} vue="chauffeur" />
 
         {/* Véhicule */}
         <button onClick={() => setShowVeh(true)} className="w-full bg-surface border border rounded-2xl p-4 text-left hover:border-zinc-600 transition">

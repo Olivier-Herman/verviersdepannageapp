@@ -1,5 +1,6 @@
 'use client'
 
+import ContratAssistance from '@/components/missions/ContratAssistance'
 import { SNC_SUPPLEMENTS, normSupplements } from '@/lib/snc/supplements'
 import SamConversations from '@/components/sam/SamConversations'
 import RaisonForcage from '@/components/missions/RaisonForcage'
@@ -3197,6 +3198,9 @@ export default function MissionDetailClient({
                   </div>
                 </div>
               )}
+
+              {/* Contrat de l'assistance (Olivier 15/11/2026) */}
+              <ContratAssistance contrat={(initialMission as any).assistance_contrat} vue="dispatch" />
 
               {/* Ligne 2 : Véhicule + Intervention */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">

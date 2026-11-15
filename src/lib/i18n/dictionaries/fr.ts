@@ -1297,6 +1297,11 @@ export const fr = {
     z5: 'Console centrale',
     z6: 'Côté passager',
   },
+  contrat: {
+    titre:       'Contrat',
+    couvert:     'Couvert',
+    non_couvert: 'Non couvert',
+  },
 }
 
 export type Dictionary = typeof fr
