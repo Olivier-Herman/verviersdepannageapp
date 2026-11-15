@@ -314,24 +314,37 @@ export async function importKazeJob(
     // Garde-fous : uniquement une RELIVRAISON, sur un parent EN PARC de la MÊME
     // plaque, qui n'a pas déjà une relivraison rattachée. Le moindre doute →
     // on ne touche à rien et le dispatcher tranche comme avant.
+    // 15/11/2026 (1PTV214, dossier B61275442AC) : IMA envoie aussi la relivraison comme un « Remorquage », 3e action
+    // (AC) au départ de NOTRE dépôt, pendant que le véhicule est encore sur le camion. On reconnaît donc aussi : une
+    // action suivante du même dossier (AB, AC, AD…), un départ d'un de nos dépôts ; et le parent peut être chargé /
+    // en route vers le dépôt, pas seulement garé.
+    const dossierStr = String(mapped.dossier_number || '')
+    const actionSuivante = /^[A-Z0-9]{6,}A[B-Z]$/i.test(dossierStr)
+    let departDepot = false
+    if (result.action === 'insert' && result.mission_id && !actionSuivante && mapped.incident_type !== 'relivraison') {
+      try { const { depotCoordsFor } = await import('@/lib/geocode/server'); departDepot = !!(await depotCoordsFor(sb, (mapped as any).incident_address)) } catch { /* sans incidence */ }
+    }
     if (result.action === 'insert' && result.mission_id
-        && (mapped.incident_type === 'relivraison' || /AB$/.test(String(mapped.dossier_number || '')))) {
+        && (mapped.incident_type === 'relivraison' || actionSuivante || departDepot)) {
       try {
         let parent: any = null
+        const eligible = (p: any) => p && !p.rel_kaze_job_id && !p.dossier_leg
+          && (p.status === 'parked' || (['in_progress', 'delivering'].includes(p.status) && !!p.loaded_at))
         if (parent_mission_id) {
           const { data } = await sb.from('incoming_missions')
-            .select('id, status, rel_kaze_job_id, dossier_leg').eq('id', parent_mission_id).maybeSingle()
-          if (data?.status === 'parked' && !data.rel_kaze_job_id && !data.dossier_leg) parent = data
+            .select('id, status, rel_kaze_job_id, dossier_leg, loaded_at').eq('id', parent_mission_id).maybeSingle()
+          if (eligible(data)) parent = data
         }
-        if (!parent && mapped.vehicle_plate) {
-          const { data } = await sb.from('incoming_missions')
-            .select('id, status, rel_kaze_job_id')
-            .eq('vehicle_plate', mapped.vehicle_plate).eq('status', 'parked')
-            .eq('dossier_leg', false)   // jamais un volet gardiennage (miroir Vue dossier)
-            .is('rel_kaze_job_id', null)
+        // Même dossier IMA (sans la lettre d'action), puis même plaque.
+        const base = dossierStr.replace(/A[A-Z]$/i, '')
+        for (const filtre of [base.length >= 6 ? { col: 'dossier_number', op: 'ilike', val: `${base}%` } : null, mapped.vehicle_plate ? { col: 'vehicle_plate', op: 'eq', val: mapped.vehicle_plate } : null]) {
+          if (parent || !filtre) continue
+          let q = sb.from('incoming_missions').select('id, status, rel_kaze_job_id, dossier_leg, loaded_at')
+            .in('status', ['parked', 'in_progress', 'delivering']).eq('dossier_leg', false).is('rel_kaze_job_id', null)
             .neq('id', result.mission_id)
-            .order('received_at', { ascending: false }).limit(1).maybeSingle()
-          if (data) parent = data
+          q = filtre.op === 'ilike' ? q.ilike(filtre.col, filtre.val) : q.eq(filtre.col, filtre.val)
+          const { data } = await q.order('received_at', { ascending: false }).limit(5)
+          parent = (data || []).find(eligible) || null
         }
         if (parent?.id) {
           const { mergeKazeRelIntoParked } = await import('@/lib/kaze/merge-rel')
