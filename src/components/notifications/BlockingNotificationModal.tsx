@@ -24,10 +24,79 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'snc_dpr_request') return <SncDprModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'rel_police_a_trancher') return <RelPoliceModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'conges_en_attente') return <CongesModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
+}
+
+// ── Véhicule au parc sur appel police (Olivier 16/11/2026, 1FEO036, maquette L3vU8S8RcApgXaXDBUswf5 validée) ──
+// Une assistance commande un véhicule qu'on garde après un appel police : relivraison (avec ou sans prise en charge de
+// l'appel police) ou mission à part. Le premier qui répond décide ; ✕ = « je décide plus tard » (l'alerte reste au dispatch).
+function RelPoliceModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const d = notif.payload?.data || {}
+  const [sending, setSending] = useState<null | string>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function send(choix: 'rel_pec' | 'rel' | 'isolee' | 'plus_tard') {
+    setSending(choix); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rel_police: choix }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  const entree = d.parent_entree ? new Date(d.parent_entree).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : '—'
+  const options: { k: 'rel_pec' | 'rel' | 'isolee'; titre: string; effet: string }[] = [
+    { k: 'rel_pec', titre: `La relivraison, et ${d.source || 'l’assistance'} prend aussi en charge l’appel police`, effet: `Rattachée au dossier. Le remorquage police et le gardiennage passent au nom de ${d.source || 'l’assistance'}.` },
+    { k: 'rel', titre: 'La relivraison seulement', effet: 'Rattachée au dossier. L’appel police et le gardiennage restent facturés comme prévu.' },
+    { k: 'isolee', titre: 'Une mission à part, sans lien avec ce véhicule', effet: 'Rien n’est rattaché. La mission reste dans le dispatch comme une mission normale.' },
+  ]
+  return (
+    <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+      <div className="w-full max-w-xl rounded-2xl bg-white border-4 border-amber-500 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-700">Nouvelle mission {d.source || ''}</p>
+            <p className="text-lg font-bold leading-tight text-slate-900">{d.plate || 'Ce véhicule'} est déjà au parc après un appel police</p>
+          </div>
+          <button type="button" aria-label="Décider plus tard" disabled={!!sending} onClick={() => send('plus_tard')} className="shrink-0 w-11 h-11 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-lg">✕</button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl bg-indigo-50 px-4 py-3 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-800">Au parc · {d.parent_source || 'appel police'}</p>
+              <p className="font-bold text-slate-900">#{d.parent_number}{d.parent_dossier ? ` · ${d.parent_dossier}` : ''}</p>
+              <p className="text-sm text-slate-700">{d.parent_lieu || '—'}</p>
+              <p className="text-sm text-slate-700">Entré le {entree} · {d.parent_nuits ?? 0} nuit{d.parent_nuits === 1 ? '' : 's'}{d.parent_zone ? ` · zone ${d.parent_zone}` : ''}{d.parent_facture ? ' · déjà facturé' : ''}</p>
+            </div>
+            <div className="rounded-xl bg-sky-50 px-4 py-3 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-800">Nouvelle commande · {d.source || 'assistance'}</p>
+              <p className="font-bold text-slate-900">#{d.mission_number}{d.ref ? ` · ${d.ref}` : ''}</p>
+              <p className="text-sm text-slate-700">De : {d.rel_depart || '—'}</p>
+              <p className="text-sm text-slate-700">Vers : {d.rel_destination || '—'}</p>
+            </div>
+          </div>
+          {Array.isArray(d.concordances) && d.concordances.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-sm text-slate-700 items-center">Concordances :{d.concordances.map((c: string) => <span key={c} className="rounded-full bg-emerald-50 text-emerald-800 font-semibold px-2.5 py-0.5">{c}</span>)}</div>
+          )}
+          <p className="font-bold text-slate-900">Cette commande, c’est quoi ?</p>
+          <div className="grid gap-2">
+            {options.map((o, i) => (
+              <button key={o.k} type="button" disabled={!!sending} onClick={() => send(o.k)}
+                className={`text-left rounded-xl border-2 px-4 py-3 min-h-[52px] ${i === 0 ? 'border-amber-500' : 'border-slate-300'} hover:border-amber-600 disabled:opacity-60`}>
+                <span className="block font-bold text-slate-900">{sending === o.k ? '…' : o.titre}</span>
+                <span className="block text-sm text-slate-700">{o.effet}</span>
+              </button>
+            ))}
+          </div>
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          <button type="button" disabled={!!sending} onClick={() => send('plus_tard')} className="min-h-[44px] text-sm text-slate-700 underline">Je décide plus tard (la mission garde l’alerte « à trancher » dans le dispatch)</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Adresse de livraison modifiée par l'assistance (Olivier 05/10/2026, 2DTV183) ──

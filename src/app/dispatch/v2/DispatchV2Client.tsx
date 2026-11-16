@@ -509,6 +509,13 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     catch (e: any) { dire(`La décision n'est pas passée : ${e.message}`, 'err') }
     finally { setOccupe(null); apres() }
   }
+  // Véhicule au parc sur appel police (16/11/2026) : le premier qui répond décide.
+  const relPolice = async (m: M, choix: 'rel_pec' | 'rel' | 'isolee') => {
+    setOccupe(m.id)
+    try { const d = await post(`/api/missions/${m.id}/rel-police`, { choix }); dire(d?.already ? 'Déjà tranché par quelqu’un d’autre.' : (d?.note || 'C’est noté.')) }
+    catch (e: any) { dire(`La décision n'est pas passée : ${e.message}`, 'err') }
+    finally { setOccupe(null); apres() }
+  }
 
   // ── Rendu ────────────────────────────────────────────────────────────────
   const n = board ? board.cmd.length + board.att.length : 0
@@ -527,6 +534,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     autoroute: 'Autoroute : tarif à trancher',
     pause_depassee: 'Pause dépassée',
     annulee_ima: 'Annulée par IMA : trajet à vide',
+    rel_police: 'Véhicule au parc · à trancher',
   } as Record<string, string>)[a.type] || 'À regarder'
   const enRetard = board ? [...board.cmd.filter(m => m.limite ? new Date(m.limite).getTime() < now + 2 * 60_000 : minutesDepuis(m.received_at, now) >= 15),
     ...board.att.filter(m => minutesDepuis(m.intervention_date && new Date(m.intervention_date).getTime() < now ? m.intervention_date : m.received_at, now) >= 15)].length : 0
@@ -601,6 +609,13 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
       case 'pause_depassee': return (
         <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre="Pause dépassée" detail={a.motif || undefined} delai={`depuis ${duree(min)}`} delaiCls="text-red-800">
           <Btn grand onClick={fiche}>Ouvrir la fiche</Btn>
+        </Carte>)
+      case 'rel_police': return (
+        <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="a" titre="Déjà au parc après un appel police" delai={a.depuis ? `depuis ${duree(min)}` : undefined} delaiCls="text-amber-800"
+          detail={<>fiche police <b className="text-stone-900">#{a.parent_number ?? '—'}</b> : relivraison ou mission à part ?</>}>
+          <Btn ton="p" grand disabled={occupe === m.id} onClick={() => relPolice(m, 'rel_pec')}>Relivraison + appel police pris en charge</Btn>
+          <Btn grand disabled={occupe === m.id} onClick={() => relPolice(m, 'rel')}>Relivraison seulement</Btn>
+          <Btn grand disabled={occupe === m.id} onClick={() => relPolice(m, 'isolee')}>Mission à part</Btn>
         </Carte>)
       case 'annulee_ima': return (
         <Carte dansVolet={dansVolet} sources={sources} occupe={occupe} sel={!dansVolet && selId === m.id} onSel={choisir} key={a.type + m.id} m={m} niveau="b" titre="Annulée par IMA après acceptation" detail="devient un trajet à vide">

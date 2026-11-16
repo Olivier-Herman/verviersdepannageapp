@@ -67,9 +67,9 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
     if (!assistanceLike && !manual) return { reserved: false, reason: 'source hors assistance' }
 
     const { data: parked } = manual
-      ? await sb.from('incoming_missions').select('id, mission_number, depot_depart_id, redelivery_address').eq('id', opts.parentId!).eq('status', 'parked').maybeSingle()
+      ? await sb.from('incoming_missions').select('id, mission_number, source, depot_depart_id, redelivery_address').eq('id', opts.parentId!).eq('status', 'parked').maybeSingle()
       : await sb.from('incoming_missions')
-        .select('id, mission_number, depot_depart_id, redelivery_address')
+        .select('id, mission_number, source, depot_depart_id, redelivery_address')
         .eq('vehicle_plate', plate).eq('status', 'parked').eq('dossier_leg', false).neq('id', m.id)
         .order('parked_at', { ascending: false }).limit(1).maybeSingle()
     if (!parked?.id) return { reserved: false, reason: 'véhicule pas au parc' }
@@ -79,6 +79,50 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
       .neq('status', 'cancelled').limit(1)
     if ((kids || []).length) return { reserved: false, reason: 'relivraison déjà rattachée', parentId: parked.id }
 
+    // Véhicule au parc sur un APPEL POLICE (Olivier 16/11/2026, 1FEO036) : on ne rattache pas tout seul. Le dispatch
+    // dit si c'est la relivraison (avec ou sans prise en charge de l'appel police) ou une mission à part.
+    if (!manual && isAppelPolice((parked as any).source)) {
+      const { signalerRelPolice } = await import('@/lib/missions/rel-police')
+      await signalerRelPolice(sb, m.id, parked.id)
+      return { reserved: false, reason: 'appel police : à trancher par le dispatch', parentId: parked.id }
+    }
+
+    const { zone, redelivery, res } = await appliquerRelivraisonAuParent(sb, parked, m, actorId, actorName)
+    const srcLabel = String(m.source || '').toUpperCase()
+
+    await sb.from('incoming_missions')
+      .update({ status: 'ignored', parent_mission_id: parked.id, mission_type: 'REL', incident_type: 'relivraison', assigned_to: null, updated_at: new Date().toISOString() })
+      .eq('id', m.id)
+    await sb.from('mission_logs').insert({
+      mission_id: m.id, actor_id: actorId, action: 'rel_reserved',
+      notes: `Remorquage ${srcLabel} mis en réserve sur la fiche en parc #${parked.mission_number ?? ''} : il sera repris tel quel à la création de la relivraison (procédure « À relivrer »).`,
+      metadata: { parent_mission_id: parked.id },
+    }).then(() => {}, () => {})
+    await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+      title: `🅿️ Remorquage ${srcLabel} pour un véhicule au parc`,
+      body:  `${plate} : la fiche principale #${parked.mission_number ?? ''} est en zone ${zone}, relivraison à créer depuis « À relivrer » quand le véhicule est prêt.`,
+      url:   '/relivraison',
+    }).catch(() => {})
+    console.log(`[REL-RESERVE] ${plate} (${m.source}) : réserve sur #${parked.mission_number ?? parked.id}, zone ${zone}`)
+    return { reserved: true, parentId: parked.id, parentNumber: parked.mission_number, zone, redelivery }
+  } catch (e: any) {
+    console.error('[REL-RESERVE] échec (fiche laissée en commande) :', e?.message || e)
+    return { reserved: false, reason: e?.message || String(e) }
+  }
+}
+
+/** Fiche d'un appel police (accident, saisie, Siabis, mal garée, AVP, rodéo…). */
+export function isAppelPolice(source?: string | null): boolean {
+  return /^police_/.test(String(source || ''))
+}
+
+/**
+ * La fiche principale en parc reçoit l'adresse de relivraison de la commande, passe en REM+REL et rejoint la file
+ * relivraison (zone K / K1) ; étiquette réimprimée si le lieu change. Partagé par la mise en réserve et par le
+ * rattachement d'une commande déjà donnée à un chauffeur (lib/missions/rel-police.ts).
+ */
+export async function appliquerRelivraisonAuParent(sb: Sb, parked: { id: string; mission_number?: number | null; depot_depart_id?: string | null; redelivery_address?: string | null }, m: { id?: string; source?: string | null; external_id?: string | null; destination_address?: string | null; destination_name?: string | null; destination_lat?: number | null; destination_lng?: number | null; vehicle_plate?: string | null }, actorId: string | null, actorName: string, enReserve = true): Promise<{ zone: string; redelivery: string | null; res: any }> {
+    const plate = String(m.vehicle_plate || '').replace(/\s/g, '').toUpperCase()
     const now = new Date().toISOString()
     let parcAddr: string | null = null
     if (parked.depot_depart_id) {
@@ -107,17 +151,8 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
     await sb.from('mission_logs').insert({
       mission_id: parked.id, actor_id: actorId, action: 'request_relivraison',
       notes: `Remorquage ${srcLabel} ${m.external_id || ''} rattaché → zone ${zone}${redelivery ? ' · ' + redelivery : ''} (${actorName}). `
-           + `La fiche ${srcLabel} reste en réserve : elle deviendra la relivraison quand le bureau la créera depuis « À relivrer ».`,
+           + (enReserve ? `La fiche ${srcLabel} reste en réserve : elle deviendra la relivraison quand le bureau la créera depuis « À relivrer ».` : `La fiche ${srcLabel} devient la relivraison active du dossier.`),
       metadata: { reserved_rel: m.id, redelivery_address: redelivery, source: m.source },
-    }).then(() => {}, () => {})
-
-    await sb.from('incoming_missions')
-      .update({ status: 'ignored', parent_mission_id: parked.id, mission_type: 'REL', incident_type: 'relivraison', assigned_to: null, updated_at: now })
-      .eq('id', m.id)
-    await sb.from('mission_logs').insert({
-      mission_id: m.id, actor_id: actorId, action: 'rel_reserved',
-      notes: `Remorquage ${srcLabel} mis en réserve sur la fiche en parc #${parked.mission_number ?? ''} : il sera repris tel quel à la création de la relivraison (procédure « À relivrer »).`,
-      metadata: { parent_mission_id: parked.id },
     }).then(() => {}, () => {})
 
     // Étiquette seulement si le lieu de relivraison change vraiment (sinon doublon dans le bac).
@@ -132,15 +167,5 @@ export async function reserveTowForParkedVehicle(opts: { sb: Sb; missionId: stri
         url:   '/relivraison',
       }).catch(() => {})
     }
-    await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
-      title: `🅿️ Remorquage ${srcLabel} pour un véhicule au parc`,
-      body:  `${plate} : la fiche principale #${parked.mission_number ?? ''} est en zone ${zone}, relivraison à créer depuis « À relivrer » quand le véhicule est prêt.`,
-      url:   '/relivraison',
-    }).catch(() => {})
-    console.log(`[REL-RESERVE] ${plate} (${m.source}) : réserve sur #${parked.mission_number ?? parked.id}, zone ${zone}`)
-    return { reserved: true, parentId: parked.id, parentNumber: parked.mission_number, zone, redelivery }
-  } catch (e: any) {
-    console.error('[REL-RESERVE] échec (fiche laissée en commande) :', e?.message || e)
-    return { reserved: false, reason: e?.message || String(e) }
-  }
+    return { zone, redelivery, res }
 }

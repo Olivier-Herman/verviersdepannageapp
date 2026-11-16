@@ -13,6 +13,7 @@ import { decideBureauAccess } from '@/lib/expert/access'
 import { decideSiabisCouvert } from '@/lib/missions/siabis-couvert-request'
 import { decideSncDpr } from '@/lib/missions/snc-dpr-request'
 import { decideAddressChange, ackAddressChange } from '@/lib/missions/address-change'
+import { deciderRelPoliceParNotif } from '@/lib/missions/rel-police'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +50,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const r = await decideSncDpr(sb, params.id, userId, body.dpr_decision, body?.pin ?? null)
     if (!r.ok) return NextResponse.json({ error: r.error, code: r.code }, { status: r.code === 'pin_invalid' ? 403 : 400 })
     return NextResponse.json({ ok: true, already: !!r.already, warning: r.warning || null })
+  }
+  // Véhicule au parc sur appel police (16/11/2026) : { rel_police: 'rel_pec' | 'rel' | 'isolee' | 'plus_tard' }.
+  if (['rel_pec', 'rel', 'isolee', 'plus_tard'].includes(String(body?.rel_police))) {
+    const r: any = await deciderRelPoliceParNotif(sb, params.id, userId, body.rel_police)
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
+    return NextResponse.json({ ok: true, already: !!r.already, note: r.note || null })
   }
   // Adresse de livraison modifiée par l'assistance (05/10/2026) : dispatch { address_decision: 'apply'|'keep' },
   // chauffeur { address_ack: true }.

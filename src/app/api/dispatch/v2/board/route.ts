@@ -39,7 +39,7 @@ export async function GET() {
       assigned_to, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, delivering_at,
       accept_call_at, kaze_cancelled_after_accept, needs_siabis_decision,
       paused_at, pause_until, pause_reason, pause_released_at, transfer_to,
-      address_change, truck_id, transport_priorite,
+      address_change, rel_police, truck_id, transport_priorite,
       assigned_user:users!assigned_to(id, name, phone)
     `)
     .in('status', ACTIFS)
@@ -92,6 +92,10 @@ export async function GET() {
     const ac = m.address_change || {}
     if (ac.new_address && !ac.decided_at)
       alertes.push({ type: 'adresse', depuis: ac.detected_at || null, notif_id: notifPar.get(m.id) || null, ancienne: ac.old_address || null, nouvelle: ac.new_address, nouveau_nom: ac.new_name || null, mission: carte })
+    // Véhicule au parc sur appel police : relivraison ou mission à part, à trancher (16/11/2026).
+    const rp = m.rel_police || {}
+    if (rp.parent_id && !rp.decided_at)
+      alertes.push({ type: 'rel_police', depuis: rp.detected_at || null, parent_number: rp.parent_number ?? null, mission: carte })
     if (derogPar.has(m.id)) {
       const d = derogPar.get(m.id)
       alertes.push({ type: 'derogation', depuis: d.requested_at, motif: d.motive || null, mission: carte })
@@ -110,7 +114,7 @@ export async function GET() {
   const delaiCourt = (m: any) => !!m.limite && t(m.limite) > maintenant
   cmd.sort((a, b) => (Number(delaiCourt(b)) - Number(delaiCourt(a))) || (delaiCourt(a) ? t(a.limite) - t(b.limite) : t(b.received_at) - t(a.received_at)))
   att.sort((a, b) => t(b.received_at) - t(a.received_at))
-  const poids: Record<string, number> = { autoroute: 0, adresse: 1, pas_acceptee: 2, derogation: 3, pause_depassee: 4, annulee_ima: 5 }
+  const poids: Record<string, number> = { autoroute: 0, rel_police: 1, adresse: 1, pas_acceptee: 2, derogation: 3, pause_depassee: 4, annulee_ima: 5 }
   alertes.sort((a, b) => (poids[a.type] - poids[b.type]) || (t(a.depuis) - t(b.depuis)))
   lances.sort((a, b) => t(a.assigned_at || a.received_at) - t(b.assigned_at || b.received_at))
 
