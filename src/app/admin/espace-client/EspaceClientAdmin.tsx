@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { verifyAddressViaPlaces } from '@/components/AddressField'
 
-interface Societe { id: string; nom: string; odoo_partner_id: number; source_key: string; appel_audio: string | null; couleur: string | null; active: boolean }
+interface Societe { id: string; nom: string; odoo_partner_id: number; source_key: string; appel_audio: string | null; couleur: string | null; active: boolean; formulaire?: 'standard' | 'transport' }
 interface Compte { id: string; nom: string; emails: string[]; role: 'societe' | 'gestionnaire' | 'collaborateur'; societe_ids: string[]; peut_inviter: boolean; invite_par: string | null; active: boolean; derniere_connexion: string | null }
 const ROLE: Record<Compte['role'], string> = { societe: 'Société : voit toutes les missions de ses sociétés', gestionnaire: 'Gestionnaire : voit tout et crée des collaborateurs', collaborateur: 'Collaborateur : une société, ses commandes seulement' }
 const APPEL: Record<string, string> = { lance: 'Appel lancé', decroche: 'Décroché, message joué', termine: 'Message entendu', echec: 'Appel impossible', echec_message: 'Message non joué' }
@@ -48,14 +48,23 @@ export default function EspaceClientAdmin({ dispatchSeul = false }: { dispatchSe
               <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ background: s.couleur || '#cc2222' }} /><span className="text-lg font-extrabold text-ink">{s.nom}</span>{!s.active && <span className="text-xs text-ink-muted">(inactive)</span>}</div>
               <div className="mt-1 text-sm text-ink-secondary">Client facturé n° {s.odoo_partner_id} · source {d.sources.find(x => x.key === s.source_key)?.label || s.source_key}</div>
               <div className="text-sm text-ink-secondary">Message d’appel : {s.appel_audio || 'message générique'}</div>
+              <div className="mt-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-ink-muted">Formulaire de commande</div>
+                <div className="mt-1 flex gap-2">
+                  {([['standard', 'Dépannage ou remorquage'], ['transport', 'Transport TGR']] as const).map(([k, l]) => {
+                    const on = (s.formulaire || 'standard') === k
+                    return <button key={k} disabled={on} onClick={() => act({ action: 'formulaire', id: s.id, formulaire: k }, `Formulaire de ${s.nom} : ${l}`)} className={`min-h-[44px] rounded-xl border px-3 text-sm font-bold ${on ? 'border-brand bg-brand text-white' : 'border-border text-ink'}`}>{l}</button>
+                  })}
+                </div>
+              </div>
               <div className="mt-3 space-y-1">
-                <div className="text-xs font-bold uppercase tracking-wider text-ink-muted">Garages de livraison (boutons proposés au client)</div>
+                <div className="text-xs font-bold uppercase tracking-wider text-ink-muted">{s.formulaire === 'transport' ? 'Adresses de prise en charge (boutons proposés au client)' : 'Garages de livraison (boutons proposés au client)'}</div>
                 {d.garages.filter(g => g.societe_id === s.id).map(g => (
                   <div key={g.id} className="flex items-center gap-2 text-sm text-ink"><span className="flex-1"><b>{g.nom}</b> — {g.adresse}</span><button onClick={() => act({ action: 'garage-suppr', id: g.id }, 'Garage retiré')} className="min-h-[36px] rounded-lg px-2 text-ink-muted">Retirer</button></div>
                 ))}
                 {gForm?.societe_id === s.id ? (
                   <div className="flex flex-wrap gap-2">
-                    <input className="min-h-[40px] flex-1 rounded-lg border border-border bg-surface px-2 text-sm text-ink" placeholder="Nom (ex. Centracar Aubel)" value={gForm.nom} onChange={e => setGForm({ ...gForm, nom: e.target.value })} />
+                    <input className="min-h-[40px] flex-1 rounded-lg border border-border bg-surface px-2 text-sm text-ink" placeholder={s.formulaire === 'transport' ? 'Nom (ex. Votre dépôt)' : 'Nom (ex. Centracar Aubel)'} value={gForm.nom} onChange={e => setGForm({ ...gForm, nom: e.target.value })} />
                     <input className="min-h-[40px] flex-[2] rounded-lg border border-border bg-surface px-2 text-sm text-ink" placeholder="Adresse complète" value={gForm.adresse} onChange={e => setGForm({ ...gForm, adresse: e.target.value })} />
                     <button onClick={async () => {
                       // Position du garage retrouvée ici (navigateur) : elle sert de destination aux remorquages des clients
@@ -65,7 +74,7 @@ export default function EspaceClientAdmin({ dispatchSeul = false }: { dispatchSe
                       if (await act({ action: 'garage', ...gForm, adresse: v.formatted, lat: v.lat, lng: v.lng }, 'Garage ajouté')) setGForm(null)
                     }} className="min-h-[44px] rounded-lg bg-brand px-3 text-sm font-bold text-white">Ajouter</button>
                   </div>
-                ) : <button onClick={() => setGForm({ societe_id: s.id, nom: '', adresse: '' })} className="min-h-[36px] text-sm font-semibold text-brand">+ Ajouter un garage</button>}
+                ) : <button onClick={() => setGForm({ societe_id: s.id, nom: '', adresse: '' })} className="min-h-[36px] text-sm font-semibold text-brand">{s.formulaire === 'transport' ? '+ Ajouter une adresse' : '+ Ajouter un garage'}</button>}
               </div>
               <button onClick={() => act({ action: 'tester-appel', id: s.id }, `Appel de test lancé pour ${s.nom} : le téléphone du dépannage va sonner.`)} className="mt-3 min-h-[44px] rounded-xl border border-strong bg-surface px-3 text-sm font-bold text-ink">📞 Tester l’appel</button>
             </div>

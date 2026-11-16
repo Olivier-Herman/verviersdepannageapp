@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useEspace } from '../EspaceShell'
 import { IMG, IcoPin, Plaque } from '../../_ui/suivi'
 import AdresseInline, { type AdresseChoisie } from '../../_ui/AdresseInline'
+import CommanderTransport from './CommanderTransport'
 
 const vide: AdresseChoisie = { texte: '', lat: null, lng: null }
 const PANNES = ['Ne démarre pas', 'Batterie', 'Crevaison', 'Accident', 'Bruit / fumée', 'Clés perdues ou enfermées', 'Autre']
@@ -49,6 +50,9 @@ export default function Commander() {
       setFait(j.numero); window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
+
+  // Société au formulaire « transport » (TGR Touring) : son propre parcours, en deux étapes.
+  if (societe?.formulaire === 'transport') return <CommanderTransport societe={societe} onChanger={societes.length > 1 ? () => setSocId('') : undefined} />
 
   if (fait) return (
     <div className="wrap">

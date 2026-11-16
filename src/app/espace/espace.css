@@ -287,3 +287,18 @@ to{opacity:1;transform:none}
 .esp .cl-seg button.on.p{color:#8a520a}
 .esp .cl-new{display:inline-block;background:#ffe9e7;color:#a61f1f;font-size:11px;font-weight:800;border-radius:8px;padding:2px 7px;margin-left:6px}
 .esp .cl-wrapx{overflow-x:auto}
+/* Transport TGR (Olivier 16/11/2026) : les trois priorités Touring et leur pastille. */
+.esp .prios{display:grid;gap:10px}
+.esp .prio{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;min-height:72px;border-radius:16px;border:2px solid var(--line);background:#fff;padding:10px 14px;text-align:left;width:100%}
+.esp .prio.on{border-color:var(--red);background:#fff6f4}
+.esp .prio .n{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font:800 18px var(--font-display);color:#fff}
+.esp .prio b{display:block;font-family:var(--font-display);font-size:16px}
+.esp .prio small{color:var(--ink2);font-size:13px}
+.esp .prio .d{font-size:13px;font-weight:700;color:var(--ink2);text-align:right;min-width:0}
+.esp .prio.p1 .n{background:#c8281f}
+.esp .prio.p2 .n{background:#d97a12}
+.esp .prio.p3 .n{background:#1f9d6b}
+@media(max-width:560px){.esp .prio{grid-template-columns:44px 1fr}.esp .prio .d{grid-column:2;text-align:left}}
+.esp .pp1{background:#ffe9e7;color:#a61f1f}
+.esp .pp2{background:#fff0dc;color:#8a4a06}
+.esp .pp3{background:#e5f6ee;color:#13704b}

@@ -15,7 +15,7 @@ export default async function EspacePriveLayout({ children }: { children: React.
   return (
     <EspaceShell
       compte={{ id: c.id, nom: c.nom, email: c.emails[0], role: c.role, peutInviter: c.role === 'gestionnaire' || c.peut_inviter, aMotDePasse: !!c.password_hash, mesClients: c.role !== 'collaborateur' && !!avecClients?.length }}
-      societes={societes.map(x => ({ id: x.id, nom: x.nom, couleur: x.couleur, garages: (garages || []).filter(g => g.societe_id === x.id).map(g => ({ nom: g.nom, adresse: g.adresse, lat: g.lat, lng: g.lng })) }))}
+      societes={societes.map(x => ({ id: x.id, nom: x.nom, couleur: x.couleur, formulaire: x.formulaire === 'transport' ? 'transport' as const : 'standard' as const, garages: (garages || []).filter(g => g.societe_id === x.id).map(g => ({ nom: g.nom, adresse: g.adresse, lat: g.lat, lng: g.lng })) }))}
     >
       {children}
     </EspaceShell>

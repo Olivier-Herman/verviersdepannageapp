@@ -4,6 +4,9 @@
 // stats/métriques. Réutilisé par la page publique tokenisée ET le mail mensuel.
 // Métriques : délai d'acceptation, date de clôture (mission dispatch liée),
 // respect de l'échéance (deadline). Olivier 2026-07-11.
+//
+// Depuis le 16/11/2026, les demandeurs TGR commandent par l'espace client : leurs transports sont des fiches
+// (incoming_missions avec une priorité de transport). Ils s'ajoutent ici aux anciennes demandes de l'écran TGR.
 
 type Sb = { from: (t: string) => any }
 
@@ -38,6 +41,45 @@ export interface TgrSupervData {
 
 const hoursBetween = (a: string, b: string): number =>
   Math.max(0, (new Date(b).getTime() - new Date(a).getTime()) / 3_600_000)
+
+/** Transports TGR commandés par l'espace client, ramenés au même format que les anciennes demandes. */
+async function transportsEspace(sb: Sb, opts: { from?: string | null; to?: string | null }): Promise<TgrSupervMission[]> {
+  let q = sb.from('incoming_missions')
+    .select('id, dossier_number, vehicle_plate, vehicle_brand, vehicle_model, incident_address, destination_address, billed_to_name, transport_priorite, transport_echeance, status, received_at, completed_at')
+    .not('transport_priorite', 'is', null)
+    .neq('status', 'cancelled')   // les demandes annulées (essais) n'apparaissent pas
+    .order('received_at', { ascending: false })
+    .limit(1000)
+  if (opts.from) q = q.gte('received_at', opts.from)
+  if (opts.to)   q = q.lt('received_at', opts.to)
+  const { data: rows } = await q
+  const list: any[] = rows || []
+  if (!list.length) return []
+
+  // Heure de validation par le dispatch = première entrée « dispatched » du journal de la fiche.
+  const valideLe = new Map<string, string>()
+  const { data: logs } = await sb.from('mission_logs')
+    .select('mission_id, created_at').eq('action', 'dispatched').in('mission_id', list.map(m => m.id)).order('created_at')
+  for (const l of logs || []) if (!valideLe.has(l.mission_id)) valideLe.set(l.mission_id, l.created_at)
+
+  return list.map(m => {
+    const refusee = m.status === 'ignored'
+    const finie = ['to_invoice', 'completed', 'invoiced'].includes(m.status)
+    const decided = valideLe.get(m.id) || null
+    const completed_at = finie ? (m.completed_at || null) : null
+    return {
+      id: m.id, reference: m.dossier_number || m.vehicle_plate, plate: m.vehicle_plate,
+      vehicle: [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' '),
+      pickup: m.incident_address, delivery: m.destination_address,
+      partner: m.billed_to_name || null, priority: m.transport_priorite,
+      status: refusee ? 'refused' : finie ? 'completed' : m.status === 'new' ? 'pending' : 'accepted',
+      created_at: m.received_at, decided_at: decided, completed_at,
+      deadline_date: m.transport_echeance ? String(m.transport_echeance).slice(0, 10) : null,
+      on_time: completed_at && m.transport_echeance ? new Date(completed_at) <= new Date(m.transport_echeance) : null,
+      accept_hours: decided && !refusee ? Math.round(hoursBetween(m.received_at, decided) * 10) / 10 : null,
+    }
+  })
+}
 
 export async function getTgrSupervisionData(
   sb: Sb,
@@ -80,6 +122,9 @@ export async function getTgrSupervisionData(
       deadline_date: m.deadline_date, on_time, accept_hours,
     }
   })
+
+  missions.push(...await transportsEspace(sb, opts))
+  missions.sort((a, b) => b.created_at.localeCompare(a.created_at))
 
   const by = (s: string) => missions.filter(m => m.status === s).length
   const acceptHrs = missions.map(m => m.accept_hours).filter((v): v is number => v != null)

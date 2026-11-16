@@ -43,6 +43,13 @@ export async function POST(req: Request) {
     return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
   }
 
+  // Formulaire de commande de la société : standard (dépannage ou remorquage) ou transport (TGR Touring).
+  if (b.action === 'formulaire') {
+    if (!b.id || !['standard', 'transport'].includes(b.formulaire)) return NextResponse.json({ error: 'Formulaire inconnu.' }, { status: 400 })
+    const r = await sb.from('espace_societes').update({ formulaire: b.formulaire }).eq('id', b.id)
+    return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
+  }
+
   if (b.action === 'compte') {
     const emails = [...new Set((Array.isArray(b.emails) ? b.emails : String(b.emails || '').split(/[\s,;]+/)).map(normEmail).filter((e: string) => e.includes('@')))]
     const row = { nom: String(b.nom || '').trim(), emails, role: b.role, societe_ids: Array.isArray(b.societe_ids) ? b.societe_ids : [], peut_inviter: b.role === 'gestionnaire' || b.peut_inviter === true, updated_at: new Date().toISOString() }

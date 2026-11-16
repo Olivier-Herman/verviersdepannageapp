@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 import { getBusinessText } from '@/lib/settings/business'
 import type { EspaceCompte, EspaceSociete } from './session'
+import { PRIORITES_TRANSPORT, echeanceTransport, lirePriorite, type PrioriteTransport } from './transport'
 
 export interface DemandeInput {
   type: 'DSP' | 'REM'
@@ -20,12 +21,15 @@ export interface DemandeInput {
   messageChauffeur?: string | null                 // affiché au chauffeur à l'acceptation, à confirmer
   reference?: string | null                        // référence du client (n° de dossier…)
   quand?: string | null                            // ISO ; vide = dès que possible
+  /** Transport TGR (société au formulaire « transport ») : véhicule roulant ou non, priorité Touring. */
+  transport?: { roulant: boolean; priorite: PrioriteTransport } | null
 }
 
 const txt = (v: unknown, n = 300) => { const s = String(v ?? '').trim(); return s ? s.slice(0, n) : null }
 const num = (v: unknown) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null)
 
-export function lireDemande(b: any): DemandeInput | string {
+export function lireDemande(b: any, formulaire: EspaceSociete['formulaire'] = 'standard'): DemandeInput | string {
+  if (formulaire === 'transport') return lireTransport(b)
   const type = String(b?.type || '').toUpperCase()
   if (type !== 'DSP' && type !== 'REM') return 'Choisissez dépannage sur place ou remorquage.'
   const plaque = String(b?.plaque || '').replace(/[\s.-]/g, '').toUpperCase().slice(0, 15)
@@ -45,13 +49,40 @@ export function lireDemande(b: any): DemandeInput | string {
   }
 }
 
+/** Transport TGR : toujours un remorquage d'une adresse à une autre, avec une priorité et l'état du véhicule. */
+function lireTransport(b: any): DemandeInput | string {
+  const plaque = String(b?.plaque || '').replace(/[\s.-]/g, '').toUpperCase().slice(0, 15)
+  if (!plaque) return 'La plaque est obligatoire.'
+  const adresse = txt(b?.adresse, 300)
+  if (!adresse) return 'Indiquez où prendre le véhicule.'
+  const destination = txt(b?.destination, 300)
+  if (!destination) return 'Indiquez où livrer le véhicule.'
+  if (typeof b?.roulant !== 'boolean') return 'Indiquez si le véhicule roule.'
+  const priorite = lirePriorite(b?.priorite)
+  if (!priorite) return 'Choisissez la priorité.'
+  const contactNom = txt(b?.contactNom, 120), contactTel = txt(b?.contactTel, 40)
+  if (!contactNom || !contactTel) return 'La personne à prévenir à la livraison et son numéro sont obligatoires.'
+  return {
+    type: 'REM', plaque, adresse, lat: num(b?.lat), lng: num(b?.lng),
+    marque: txt(b?.marque, 60) || undefined, modele: txt(b?.modele, 60) || undefined,
+    destination, destinationNom: txt(b?.destinationNom, 120), destLat: num(b?.destLat), destLng: num(b?.destLng),
+    contactNom, contactTel, panne: null, messageChauffeur: txt(b?.messageChauffeur, 1000), reference: txt(b?.reference, 80), quand: null,
+    transport: { roulant: b.roulant, priorite },
+  }
+}
+
 export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete, d: DemandeInput): Promise<{ id: string; mission_number: number }> {
   const sb = createAdminClient()
   const now = new Date().toISOString()
-  const quand = d.quand || now
+  // Transport TGR : la priorité fixe l'échéance et l'heure de placement au planning (le dispatch peut la changer en validant).
+  const tr = d.transport || null
+  const ech = tr ? echeanceTransport(tr.priorite) : null
+  const quand = ech?.rdv ? ech.rdv.toISOString() : d.quand || now
   const rdv = new Date(quand).getTime() > Date.now() + 30 * 60_000
   const remarques = [
-    `Contact sur place : ${d.contactNom} — ${d.contactTel}`,
+    tr ? `Transport TGR — ${PRIORITES_TRANSPORT.find(p => p.v === tr.priorite)!.titre} (${PRIORITES_TRANSPORT.find(p => p.v === tr.priorite)!.sous}) : ${tr.priorite === 3 ? 'dès que possible' : `à livrer ${ech!.libelle}`}` : null,
+    tr ? (tr.roulant ? 'Le véhicule roule' : 'Le véhicule ne roule pas') : null,
+    tr ? `À prévenir à la livraison : ${d.contactNom} — ${d.contactTel}` : `Contact sur place : ${d.contactNom} — ${d.contactTel}`,
     d.panne ? `Panne signalée : ${d.panne}` : null,
     d.messageChauffeur ? `Message pour le chauffeur (à confirmer à l’acceptation) : ${d.messageChauffeur}` : null,
     `Commandé depuis l’espace client par ${compte.nom}`,
@@ -80,6 +111,7 @@ export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete,
     amount_to_collect: null,
     remarks_general: remarques,
     espace_compte_id: compte.id,
+    ...(tr ? { is_rollable: tr.roulant, transport_priorite: tr.priorite, transport_echeance: ech!.echeance ? ech!.echeance.toISOString() : null } : {}),
     received_at: now, intervention_date: quand, incident_at: quand, rdv_at: rdv ? quand : null,
     created_at: now, updated_at: now,
   }).select('id, mission_number').single()
@@ -89,8 +121,8 @@ export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete,
   // Dispatch : notification (bandeau + push) — jamais bloquant.
   const veh = [d.marque, d.modele, d.plaque].filter(Boolean).join(' ')
   await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'espace_client_demande', {
-    title: `${d.type === 'DSP' ? '🔧 Dépannage' : '🚛 Remorquage'} — ${societe.nom}`,
-    body: `${veh} · ${d.adresse}${rdv ? ` · prévu le ${new Date(quand).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })}` : ''} — à valider dans les commandes`,
+    title: `${tr ? `🚛 Transport TGR, priorité ${tr.priorite}` : d.type === 'DSP' ? '🔧 Dépannage' : '🚛 Remorquage'} — ${societe.nom}`,
+    body: `${veh} · ${d.adresse}${tr && ech?.echeance ? ` · à livrer ${ech.libelle}` : rdv ? ` · prévu le ${new Date(quand).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })}` : ''} — à valider dans les commandes`,
     action_url: `/dispatch/${m.id}`, mission_id: m.id,
   }).catch(() => {})
 

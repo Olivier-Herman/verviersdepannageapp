@@ -16,7 +16,7 @@ export interface EspaceCompte {
   id: string; nom: string; emails: string[]; role: EspaceRole; societe_ids: string[]
   peut_inviter: boolean; invite_par: string | null; session_version: number; active: boolean; password_hash: string | null
 }
-export interface EspaceSociete { id: string; nom: string; odoo_partner_id: number; source_key: string; appel_audio: string | null; couleur: string | null }
+export interface EspaceSociete { id: string; nom: string; odoo_partner_id: number; source_key: string; appel_audio: string | null; couleur: string | null; formulaire: 'standard' | 'transport' }
 
 const secret = () => {
   const s = process.env.NEXTAUTH_SECRET
@@ -54,7 +54,7 @@ export async function getEspaceSession(): Promise<{ compte: EspaceCompte; societ
   const { data: compte } = await sb.from('espace_comptes').select('*').eq('id', t.c).maybeSingle()
   if (!compte || !compte.active || Number(compte.session_version) !== t.v) return null
   const { data: societes } = compte.societe_ids?.length
-    ? await sb.from('espace_societes').select('id, nom, odoo_partner_id, source_key, appel_audio, couleur').in('id', compte.societe_ids).eq('active', true).order('nom')
+    ? await sb.from('espace_societes').select('id, nom, odoo_partner_id, source_key, appel_audio, couleur, formulaire').in('id', compte.societe_ids).eq('active', true).order('nom')
     : { data: [] as any[] }
   if (!societes?.length) return null
   return { compte: compte as EspaceCompte, societes: societes as EspaceSociete[] }
