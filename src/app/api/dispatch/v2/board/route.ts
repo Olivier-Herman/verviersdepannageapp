@@ -39,7 +39,7 @@ export async function GET() {
       assigned_to, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, delivering_at,
       accept_call_at, kaze_cancelled_after_accept, needs_siabis_decision,
       paused_at, pause_until, pause_reason, pause_released_at, transfer_to,
-      address_change, truck_id,
+      address_change, truck_id, transport_priorite,
       assigned_user:users!assigned_to(id, name, phone)
     `)
     .in('status', ACTIFS)

@@ -50,6 +50,18 @@ export async function envoyerInvitation(to: string, nom: string, invitePar: stri
 <p style="margin:18px 0 0;font-size:13px;color:#6c7387;text-align:center">Connexion avec cette adresse mail : vous recevez un code à chaque connexion, ou vous choisissez un mot de passe une fois connecté.</p>`))
 }
 
+/** Invitation d'un demandeur de transports TGR (Olivier 16/11/2026) : la vidéo de présentation, puis l'accès. */
+export async function envoyerPresentationTransport(to: string, nom: string, societe: string) {
+  const point = (t: string, s: string) => `<tr><td style="width:30px;vertical-align:top;padding-top:2px"><div style="width:22px;height:22px;border-radius:99px;background:#e5f6ee;color:#13704b;font-weight:800;text-align:center;line-height:22px;font-size:13px">✓</div></td><td style="padding:0 0 12px"><b style="color:#151a2d">${t}</b><br><span style="font-size:14px">${s}</span></td></tr>`
+  const bouton = (href: string, libelle: string, plein: boolean) => `<table role="presentation" cellspacing="0" cellpadding="0" align="center" style="margin:0 auto 12px"><tr><td style="border-radius:14px;${plein ? 'background:#d42a2a' : 'background:#ffffff;border:2px solid #e3d9ce'}"><a href="${href}" style="display:inline-block;padding:${plein ? 15 : 13}px 30px;font-size:16px;font-weight:800;color:${plein ? '#ffffff' : '#151a2d'};text-decoration:none">${libelle}</a></td></tr></table>`
+  await sendEmail(to, 'Vos transports TGR : commandez-les désormais en ligne', cadre('mail-route.jpg', 'Transports TGR', 'Votre espace est prêt', `
+<p style="margin:0 0 18px">Bonjour,<br>pour vos transports TGR, <b>${esc(societe)}</b> dispose maintenant d’un espace en ligne chez Verviers Dépannage. Il remplace l’ancien formulaire.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 20px">${point('Commandez en deux étapes', 'Le véhicule, le trajet, la priorité : votre dépôt est déjà proposé.')}${point('Suivez en direct', 'Demande validée, chauffeur en route, véhicule livré.')}${point('Retrouvez vos documents', 'Le rapport avec les photos, et la facture.')}</table>
+${bouton(`${base()}/espace/presentation`, '▶ Voir la présentation (2 minutes)', true)}
+${bouton(`${base()}/espace/connexion?email=${encodeURIComponent(to)}`, 'Ouvrir mon espace', false)}
+<p style="margin:14px 0 0;font-size:13px;color:#6c7387;text-align:center">Connexion avec cette adresse mail (${esc(to)}) : vous recevez un code à chaque connexion, sans mot de passe à retenir.<br>Une question ? Appelez-nous, nous répondons 24 h/24.</p>`))
+}
+
 // ── Clients des garages (Olivier 10/10/2026) : le code d'inscription du client, et l'avis au garage. ──
 
 export async function envoyerCodeClient(to: string, prenomClient: string, code: string) {

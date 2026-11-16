@@ -3,8 +3,9 @@
 // Transport TGR commandé depuis l'espace client (Olivier 16/11/2026) : les trois priorités Touring et
 // l'échéance qui en découle. Utilisé par le formulaire (affichage) et par le serveur (enregistrement) :
 // une seule règle.
-//   Priorité 1 (Arval et Mercedes) : prochain jour ouvrable, avant midi.
-//   Priorité 2 (autres contrats)   : prochain jour ouvrable, dans la journée.
+//   Priorité 1 (Arval et Mercedes) : prochain jour ouvrable, avant midi. La fiche part DIRECTEMENT au dispatch,
+//                                    prête à attribuer, avec la mention « TGR Priorité 1 » (Olivier 16/11/2026).
+//   Priorité 2 (autres contrats)   : prochain jour ouvrable, dans la journée. À valider, placée au planning à 13 h.
 //   Priorité 3                     : dès que possible, sans échéance.
 // Jour ouvrable = ni dimanche ni jour férié légal belge.
 
@@ -46,8 +47,11 @@ export function echeanceTransport(priorite: PrioriteTransport, maintenant = new 
   if (priorite === 3) return { echeance: null, rdv: null, libelle: 'Dès que possible' }
   const jour = prochainJourOuvrable(maintenant)
   return priorite === 1
-    ? { echeance: aBruxelles(jour, 12), rdv: aBruxelles(jour, 8), libelle: `${jourLong(jour)}, avant midi` }
+    ? { echeance: aBruxelles(jour, 12), rdv: null, libelle: `${jourLong(jour)}, avant midi` }
     : { echeance: aBruxelles(jour, 23, 59), rdv: aBruxelles(jour, 13), libelle: `${jourLong(jour)}, dans la journée` }
 }
+
+/** Priorité 1 : pas de validation, la fiche est tout de suite à attribuer. */
+export const transportDirect = (priorite: PrioriteTransport) => priorite === 1
 
 export const lirePriorite = (v: unknown): PrioriteTransport | null => (v === 1 || v === 2 || v === 3 ? v : v === '1' ? 1 : v === '2' ? 2 : v === '3' ? 3 : null)

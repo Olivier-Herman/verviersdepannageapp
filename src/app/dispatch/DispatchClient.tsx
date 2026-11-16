@@ -64,6 +64,7 @@ interface Mission {
   source: string
   source_format?: string | null
   is_rollable?: boolean | null
+  transport_priorite?: number | null   // transport TGR commandé par l'espace client (1, 2 ou 3)
   mission_type: string | null
   incident_type: string | null
   client_name: string | null
@@ -212,6 +213,7 @@ function MobileRow({ m, activeTab, drivers, driverStatuses, sources, onRefresh, 
           <span className="text-ink font-bold font-mono text-sm">{m.mission_number != null ? `#${m.mission_number}` : (m.dossier_number || m.external_id)}</span>
           <span className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-extrabold text-white tracking-wide ${kindCls}`} title={typeLbl}>{kind}</span>
           <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold text-white ${srcInfo.color}`}>{srcInfo.label}</span>
+          {m.transport_priorite != null && <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-extrabold tracking-wide ${m.transport_priorite === 1 ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-900'}`}>TGR Priorité {m.transport_priorite}</span>}
           {m.source === 'touring' && (m.source_format === 'comex'
             ? <span className="px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-sky-100 text-sky-800" title="Importée depuis COMEX">🚗 COMEX</span>
             : <span className="px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-amber-100 text-amber-800" title="Parsée depuis un email Touring">📧 Mail</span>)}

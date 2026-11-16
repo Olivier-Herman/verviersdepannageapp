@@ -325,7 +325,7 @@ const Carte = ({ m, sources, occupe, sel, onSel, titre, delai, delaiCls, niveau,
       {delai && <span className={`font-extrabold text-[13px] tabular-nums whitespace-nowrap ${delaiCls || ''}`}>{delai}</span>}
     </div>
     <div className="flex items-center gap-1.5 min-w-0">
-      <Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span>{!(m.vehicle_plate && titre.includes(m.vehicle_plate)) && <Plaque m={m} />}
+      <Source m={m} sources={sources} />{m.transport_priorite != null && <span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-extrabold whitespace-nowrap ${m.transport_priorite === 1 ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-900'}`}>TGR Priorité {m.transport_priorite}</span>}<span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span>{!(m.vehicle_plate && titre.includes(m.vehicle_plate)) && <Plaque m={m} />}
       {Array.isArray(m.warnings) && m.warnings.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11.5px] font-bold" title={m.warnings.join(', ')}>⚠ {m.warnings.length}</span>}
       <span className={`text-stone-600 text-[13px] truncate min-w-0 ${detail ? '' : 'lg:hidden'}`}>{detail ?? trajetCourt(m)}</span>
     </div>

@@ -8,7 +8,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 import { getBusinessText } from '@/lib/settings/business'
 import type { EspaceCompte, EspaceSociete } from './session'
-import { PRIORITES_TRANSPORT, echeanceTransport, lirePriorite, type PrioriteTransport } from './transport'
+import { PRIORITES_TRANSPORT, echeanceTransport, lirePriorite, transportDirect, type PrioriteTransport } from './transport'
 
 export interface DemandeInput {
   type: 'DSP' | 'REM'
@@ -77,9 +77,11 @@ export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete,
   // Transport TGR : la priorité fixe l'échéance et l'heure de placement au planning (le dispatch peut la changer en validant).
   const tr = d.transport || null
   const ech = tr ? echeanceTransport(tr.priorite) : null
+  const direct = !!tr && transportDirect(tr.priorite)   // priorité 1 : droit au dispatch, sans validation
   const quand = ech?.rdv ? ech.rdv.toISOString() : d.quand || now
   const rdv = new Date(quand).getTime() > Date.now() + 30 * 60_000
   const remarques = [
+    direct ? `TGR PRIORITÉ 1 — à livrer ${ech!.libelle}` : null,
     tr ? `Transport TGR — ${PRIORITES_TRANSPORT.find(p => p.v === tr.priorite)!.titre} (${PRIORITES_TRANSPORT.find(p => p.v === tr.priorite)!.sous}) : ${tr.priorite === 3 ? 'dès que possible' : `à livrer ${ech!.libelle}`}` : null,
     tr ? (tr.roulant ? 'Le véhicule roule' : 'Le véhicule ne roule pas') : null,
     tr ? `À prévenir à la livraison : ${d.contactNom} — ${d.contactTel}` : `Contact sur place : ${d.contactNom} — ${d.contactTel}`,
@@ -96,7 +98,7 @@ export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete,
     external_id: `ESP-${Date.now().toString(36).toUpperCase()}`,
     source: societe.source_key,
     mission_type: d.type === 'DSP' ? 'depannage' : 'remorquage',
-    status: vhu ? 'dispatching' : 'new',
+    status: vhu || direct ? 'dispatching' : 'new',
     vehicle_plate: d.plaque, vehicle_brand: d.marque || null, vehicle_model: d.modele || null,
     incident_address: d.adresse, incident_lat: d.lat ?? null, incident_lng: d.lng ?? null,
     destination_address: d.destination || null, destination_name: d.destinationNom || null,
@@ -118,11 +120,14 @@ export async function creerDemande(compte: EspaceCompte, societe: EspaceSociete,
   if (error || !m) throw new Error(error?.message || 'Création impossible')
   await sb.from('mission_logs').insert({ mission_id: m.id, action: 'received', notes: `Demande passée depuis l’espace client par ${compte.nom} (${societe.nom}).` }).then(() => {}, () => {})
 
+  // Le journal garde l'heure de mise au dispatch (elle sert de délai de validation dans le bilan Touring).
+  if (direct) await sb.from('mission_logs').insert({ mission_id: m.id, action: 'dispatched', notes: 'Transport TGR priorité 1 : placé directement au dispatch, sans validation.' }).then(() => {}, () => {})
+
   // Dispatch : notification (bandeau + push) — jamais bloquant.
   const veh = [d.marque, d.modele, d.plaque].filter(Boolean).join(' ')
   await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'espace_client_demande', {
-    title: `${tr ? `🚛 Transport TGR, priorité ${tr.priorite}` : d.type === 'DSP' ? '🔧 Dépannage' : '🚛 Remorquage'} — ${societe.nom}`,
-    body: `${veh} · ${d.adresse}${tr && ech?.echeance ? ` · à livrer ${ech.libelle}` : rdv ? ` · prévu le ${new Date(quand).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })}` : ''} — à valider dans les commandes`,
+    title: `${direct ? '🚨 TGR PRIORITÉ 1' : tr ? `🚛 Transport TGR, priorité ${tr.priorite}` : d.type === 'DSP' ? '🔧 Dépannage' : '🚛 Remorquage'} — ${societe.nom}`,
+    body: `${veh} · ${d.adresse}${tr && ech?.echeance ? ` · à livrer ${ech.libelle}` : rdv ? ` · prévu le ${new Date(quand).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })}` : ''} — ${direct ? 'à attribuer tout de suite' : 'à valider dans les commandes'}`,
     action_url: `/dispatch/${m.id}`, mission_id: m.id,
   }).catch(() => {})
 

@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { normEmail } from '@/lib/espace/session'
-import { envoyerInvitation } from '@/lib/espace/mails'
+import { envoyerInvitation, envoyerPresentationTransport } from '@/lib/espace/mails'
 import { appelerDepannage } from '@/lib/espace/demande'
 
 export const dynamic = 'force-dynamic'
@@ -85,9 +85,12 @@ export async function POST(req: Request) {
   if (b.action === 'inviter') {
     const { data: c } = await sb.from('espace_comptes').select('nom, emails, societe_ids, active').eq('id', b.id).maybeSingle()
     if (!c?.active) return NextResponse.json({ error: 'Compte introuvable ou coupé' }, { status: 404 })
-    const { data: s } = await sb.from('espace_societes').select('nom').in('id', c.societe_ids)
+    const { data: s } = await sb.from('espace_societes').select('nom, formulaire').in('id', c.societe_ids)
+    // Demandeur de transports TGR : son invitation présente le formulaire transport, avec la vidéo.
+    const transport = !!s?.length && s.every((x: any) => x.formulaire === 'transport')
     const to = normEmail(b.email) && c.emails.includes(normEmail(b.email)) ? normEmail(b.email) : c.emails[0]
-    try { await envoyerInvitation(to, c.nom, 'Verviers Dépannage', (s || []).map((x: any) => x.nom).join(' et ')) }
+    const noms = (s || []).map((x: any) => x.nom).join(' et ')
+    try { if (transport) await envoyerPresentationTransport(to, c.nom, noms); else await envoyerInvitation(to, c.nom, 'Verviers Dépannage', noms) }
     catch (e: any) { return NextResponse.json({ error: `Mail non parti : ${e?.message || e}` }, { status: 502 }) }
     return NextResponse.json({ ok: true, to })
   }
