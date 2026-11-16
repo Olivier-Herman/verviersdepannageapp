@@ -524,6 +524,14 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    key:             'conges_en_attente',
+    label:           'Demandes de congé en attente',
+    description:     "10 h 45, jours ouvrables : écran des demandes de congé encore à traiter (valider, refuser ou répondre plus tard).",
+    category:        'admin',
+    applicableRoles: ['superadmin', 'admin', 'dispatcher'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'paiements_a_trier',
     label:           'Paiements fournisseurs : factures à trier',
     description:     "13 h 30, jours ouvrables : des factures fournisseur attendent ton tri avant la liste d'attente.",

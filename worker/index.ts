@@ -20,7 +20,9 @@ import { createClient } from '@supabase/supabase-js'
 
 const VERSION      = process.env.WORKER_VERSION || 'dev'
 const HOST         = process.env.WORKER_NAME || os.hostname()
-const KINDS        = ['vab_close', 'vab_steps']
+// axa_relogin (Olivier 14/11/2026) : la reconnexion go&assist part d'ici — adresse fixe, comme un PC de bureau.
+// Seulement si le serveur a les identifiants du portail ; sinon Vercel la garde.
+const KINDS        = ['vab_close', 'vab_steps', ...(process.env.AXA_PORTAL_EMAIL && process.env.AXA_PORTAL_PASSWORD ? ['axa_relogin'] : [])]
 const POLL_MS      = 20_000
 const HEARTBEAT_MS = 30_000
 const JOB_MAX_MS   = 12 * 60 * 1000
@@ -47,7 +49,7 @@ const log = (msg: string) => console.log(`[worker ${new Date().toISOString()}] $
 async function heartbeat() {
   try {
     await sb.from('app_settings').upsert(
-      { key: 'worker_vps_heartbeat', value: JSON.stringify({ at: new Date().toISOString(), host: HOST, version: VERSION, busy, chromeOk }), updated_at: new Date().toISOString() },
+      { key: 'worker_vps_heartbeat', value: JSON.stringify({ at: new Date().toISOString(), host: HOST, version: VERSION, busy, chromeOk, kinds: KINDS }), updated_at: new Date().toISOString() },
       { onConflict: 'key' },
     )
   } catch (e: any) { log(`heartbeat KO : ${e?.message || e}`) }
@@ -115,12 +117,20 @@ async function runVabSteps(job: any) {
   return { ok, result: { ok, upTo, seconds: Math.round((Date.now() - t0) / 1000) } }
 }
 
+/** Reconnexion go&assist (cron 5 h / 17 h, ou jeton refusé). Le captcha reste réservé à la reconnexion manuelle. */
+async function runAxaReloginJob(job: any) {
+  const { runAxaRelogin } = await import('@/lib/axa/relogin-run')
+  const trigger = job.payload?.trigger === 'poll' ? 'poll' : 'cron'
+  const r = await runAxaRelogin(trigger, { surServeur: true })
+  return { ok: r.ok, result: { ok: r.ok, error: r.error || null, steps: r.steps.slice(-4) } }
+}
+
 async function runJob(job: any) {
   busy = job.id
   log(`▶ ${job.kind} ${job.dedupe_key || job.id} (essai ${job.attempts})`)
   const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`délai dépassé (${JOB_MAX_MS / 60000} min)`)), JOB_MAX_MS))
   try {
-    const out = await Promise.race([job.kind === 'vab_close' ? runVabClose(job) : job.kind === 'vab_steps' ? runVabSteps(job) : Promise.reject(new Error(`type inconnu : ${job.kind}`)), timeout])
+    const out = await Promise.race([job.kind === 'vab_close' ? runVabClose(job) : job.kind === 'vab_steps' ? runVabSteps(job) : job.kind === 'axa_relogin' ? runAxaReloginJob(job) : Promise.reject(new Error(`type inconnu : ${job.kind}`)), timeout])
     await finish(job, out.ok, out.result, out.ok ? undefined : 'non soldé chez VAB — détail dans mission_logs')
     log(`${out.ok ? '✔' : '✖'} ${job.dedupe_key || job.id} ${JSON.stringify(out.result)}`)
   } catch (e: any) {

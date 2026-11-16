@@ -59,7 +59,12 @@ async function mails(): Promise<Bloc> {
   const tok = await getAppOnlyToken()
   if (!tok) throw new Error('jeton de messagerie indisponible')
   const h = { Authorization: `Bearer ${tok}` }
-  const g = async (u: string) => (await fetch('https://graph.microsoft.com/v1.0' + u, { headers: h, cache: 'no-store' })).json()
+  // 13/11/2026 (panne Microsoft) : une boîte qui ne répond pas affichait « Boîtes vides ». Une erreur se dit.
+  const g = async (u: string) => {
+    const r = await fetch('https://graph.microsoft.com/v1.0' + u, { headers: h, cache: 'no-store' })
+    if (!r.ok) throw new Error(r.status >= 500 ? `messagerie Microsoft indisponible (${r.status}) — panne chez Microsoft, les boîtes ne peuvent pas être lues` : `messagerie : erreur ${r.status}`)
+    return r.json()
+  }
   const findFolder = async (box: string, name: string): Promise<any> => {
     const go = async (url: string): Promise<any> => {
       const j = await g(url)

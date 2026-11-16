@@ -261,9 +261,10 @@ const VAB_SOLUTION_DPR: Record<string, string> = {
   '20': '815|298',    // Le client est parti avant mon arrivée → Client pas trouvé
   '29': '815|298',    // Mauvaise adresse → Client pas trouvé
   '36': '815|15107',  // Garage fermé / refuse le véhicule → Renvoyé par le garage
+  '20g': '815|298',   // Véhicule déjà au garage (13/11/2026) → comme « client parti »
 }
 export function vabSolutionTrajetVide(panneMotif: string | null | undefined): string | null {
-  const code = String(panneMotif || '').match(/^dpr_(\d+)$/)?.[1]
+  const code = String(panneMotif || '').match(/^dpr_(\d+g?)$/)?.[1]
   return (code && VAB_SOLUTION_DPR[code]) || null
 }
 

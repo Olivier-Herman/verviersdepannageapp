@@ -82,10 +82,12 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       directWhy = 'hors Peppol, lecture certaine (autonomie du 20/10/2026)'
     }
     // Autonomie complète (Olivier 02/11/2026, 44 validations sur 44 sans correction ni refus en 30 jours) : Florent
-    // valide seul toute facture d'achat de VD. Restent chez Olivier : le doute d'avance de fonds (stop) et le doublon possible.
-    if (company === 1 && !directAllowed && body?.stop !== true) {
+    // valide seul toute facture d'achat de VD. Étendue le 12/11/2026 à Riga (Rémi) et DGJ (Gaëtan) : « validation
+    // des factures d'achat autonome ok » (11 validées, 25 faites seules, 0 correction, 0 refus en 30 jours).
+    // Restent chez Olivier : le doute d'avance de fonds (stop) et le doublon possible non récurrent.
+    if ([1, 2, 3].includes(company) && !directAllowed && body?.stop !== true) {
       directAllowed = true
-      directWhy = 'autonomie complète (02/11/2026)'
+      directWhy = company === 1 ? 'autonomie complète (02/11/2026)' : 'autonomie complète (12/11/2026)'
     }
     // Exception (Olivier 10/11/2026) : facture mensuelle récurrente. Même fournisseur, même montant qu'une pièce d'au moins
     // 20 jours d'écart, mais référence différente, et reçue par Peppol = facture du mois, pas un doublon : Florent (VD) et
@@ -516,11 +518,11 @@ export async function execute(kind: ProposalKind, company: number, payload: any)
     await odooRpcCompany(company, 'account.move', 'action_post', [[b.id]])
     let paiement = ''
     if (domicilie) {
-      const [journal, method] = await Promise.all([getBusinessNumber('odoo_journal_paiement_fournisseurs'), getBusinessNumber('odoo_methode_domiciliation')])
-      const ctx = { context: { active_model: 'account.move', active_ids: [b.id], active_id: b.id } }
-      const wiz = await odooRpcCompany<number>(company, 'account.payment.register', 'create', [{ journal_id: journal, payment_method_line_id: method, payment_date: b.invoice_date || today(), communication: `${b.ref || ''} — domiciliation AS 24`.trim() }], ctx)
-      await odooRpcCompany(company, 'account.payment.register', 'action_create_payments', [[wiz]], ctx)
-      paiement = ` — ${swf ? 'Viapass passée sur AS 24 - Belgium, ' : ''}payée par domiciliation`
+      // Plus de paiement créé d'avance (Olivier 12/11/2026) : il n'était relié à aucun mouvement de banque
+      // (« payé sans mouvement banque = pas payé »). La facture reste ouverte jusqu'au prélèvement, que
+      // le rapprochement AS 24 (src/lib/as24/domiciliation.ts, cron as24-domiciliations) relie au relevé.
+      // Elle n'apparaît pas dans les paiements à trier (réglage paiements_exclus_partner_ids).
+      paiement = ` — ${swf ? 'Viapass passée sur AS 24 - Belgium, ' : ''}payée au prochain prélèvement AS 24`
     }
     const after = await readBill(company, b.id)
     return { note: `Facture validée : ${after?.name || b.id}${paiement}`, facture: after?.name }

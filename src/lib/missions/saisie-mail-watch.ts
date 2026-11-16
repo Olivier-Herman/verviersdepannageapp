@@ -19,7 +19,7 @@
 import { listInboxMessages, getMessageBody, getPdfAttachments, moveMessageToFolder, AUTO_MANAGED_FOLDER, type GraphMessage } from '@/lib/requisitoire/graph'
 import { FOURRIERE_MAILBOX } from '@/lib/requisitoire/intake'
 import { splitAndDispatch } from '@/lib/missions/saisie-scan-split'
-import { createSaisieParquetInvoice } from '@/lib/missions/saisie-odoo-invoice'
+import { createSaisieParquetInvoice, validerEtEnvoyerPeppol } from '@/lib/missions/saisie-odoo-invoice'
 import { depositEtatFrais } from '@/lib/justinvoice/deposit'
 import { sendNotificationToRoles } from '@/lib/notifications/send'
 
@@ -94,8 +94,14 @@ async function handleStatut(sb: any, msg: GraphMessage, ref: string, out: Saisie
     let factureMsg = ''
     if (['depose', 'accepte', 'liquide'].includes(ef.status)) {
       const inv = await createSaisieParquetInvoice(sb, ef.dossier_id, ef.id)
-      factureMsg = inv.ok ? `facture Odoo brouillon #${inv.odooId} créée` : `facture Odoo NON créée : ${inv.error}`
-      if (!inv.ok) out.errors.push(`${ef.numero} : ${inv.error}`)
+      if (!inv.ok) { factureMsg = `facture NON créée : ${inv.error}`; out.errors.push(`${ef.numero} : ${inv.error}`) }
+      else if (inv.piecesManquantes?.length) factureMsg = `facture brouillon #${inv.odooId} créée, PAS envoyée : il manque ${inv.piecesManquantes.join(' et ')}`
+      else {
+        // Consigne d'Olivier du 12/11/2026 : validée et envoyée par Peppol sans attendre.
+        const env = await validerEtEnvoyerPeppol(inv.odooId!).catch((e: any) => ({ ok: false, error: e?.message || 'erreur' }))
+        factureMsg = env.ok ? `facture ${(env as any).facture} créée et envoyée par Peppol` : `facture brouillon #${inv.odooId} créée, PAS envoyée : ${(env as any).error}`
+        if (!env.ok) out.errors.push(`${ef.numero} : ${(env as any).error}`)
+      }
     } else factureMsg = `déjà « ${ef.status} »`
     await recordEvent(sb, msg, 'liquidation', ref, factureMsg, ef.id)
     out.liquidated++
@@ -107,7 +113,7 @@ async function handleStatut(sb: any, msg: GraphMessage, ref: string, out: Saisie
     }
     await sendNotificationToRoles(['admin', 'superadmin'], 'saisie_facturation', {
       title: `Saisie ${d?.vehicle_plate || ''} : liquidation OK`,
-      body: `${ef.numero} (JustInvoice ${ref}) — ${factureMsg}. À poster dans Odoo.`,
+      body: `${ef.numero} (JustInvoice ${ref}) — ${factureMsg}.`,
       action_url: '/fourriere/saisies',
     }).catch(() => {})
     return

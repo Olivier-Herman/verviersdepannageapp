@@ -95,7 +95,17 @@ export async function GET(req: Request) {
       parc_zone_key: g.parc_zone_key, parc_row_number: g.parc_row_number, parc_slot_index: g.parc_slot_index,
       parked_at: g.parked_at, updated_at: g.updated_at,
       leg_id: g.id, regime: g.mission_type, key_location: g.key_location,
-    })).filter((m: any) => m.vehicle_plate || m.vehicle_vin)
+    }))
+    // Véhicules encore physiquement au parc dont le gardiennage est clos (adresse de relivraison connue, règle
+    // d'Olivier) : plus de volet ouvert, mais ils sont là (15/11/2026, 8 véhicules en K absents de la liste).
+    let q3 = sb.from('incoming_missions')
+      .select('id, mission_number, external_id, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, status, source, odoo_vehicle_id, odoo_helpdesk_id, client_name, migration_pending, migration_pending_reason, parc_zone_key, parc_row_number, parc_slot_index, parked_at, updated_at, key_location, mission_type')
+      .eq('status', 'parked').eq('dossier_leg', false).is('archived_at', null).not('parc_zone_key', 'is', null).limit(2000)
+    if (zoneFilter) q3 = q3.eq('parc_zone_key', zoneFilter)
+    const { data: garees } = await q3
+    const dejaLa = new Set(rootIds)
+    for (const r of (garees || []) as any[]) if (!dejaLa.has(r.id)) missions.push({ ...r, leg_id: null, regime: r.mission_type })
+    missions = missions.filter((m: any) => m.vehicle_plate || m.vehicle_vin)
       .sort((a: any, b: any) => String(a.parc_zone_key).localeCompare(String(b.parc_zone_key)) || String(a.vehicle_plate || '').localeCompare(String(b.vehicle_plate || '')))
   } else {
     const r1 = await query

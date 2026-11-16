@@ -9,6 +9,9 @@ services:
         WORKER_VERSION: ${WORKER_VERSION:-dev}
     container_name: vdsoft-worker
     restart: unless-stopped
+    # Un vrai processus d'init (tini) ramasse les Chrome terminés. Sans lui, npm (PID 1) les laissait en zombies :
+    # 9 400 accumulés du 27/10 au 14/11/2026, limite de processus atteinte, Chrome ne démarrait plus.
+    init: true
     env_file: .env
     environment:
       # Chrome sous Docker : pas de bac à sable (le conteneur l'est déjà).

@@ -82,6 +82,16 @@ export function CompleterAdresseTerminee({ missionId, current }: { missionId: st
   const [busy, setBusy]   = useState(false)
   const [done, setDone]   = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // null = vérification en cours : la carte complète peut-être seule le code postal (12/11/2026).
+  const [aDemander, setADemander] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let vivant = true
+    fetch(`/api/missions/${missionId}/adresse-livraison`, { cache: 'no-store' })
+      .then(r => r.json()).then(j => { if (vivant) setADemander(!j?.complete) })
+      .catch(() => { if (vivant) setADemander(true) })
+    return () => { vivant = false }
+  }, [missionId])
 
   async function envoyer() {
     if (!dest) return
@@ -99,6 +109,7 @@ export function CompleterAdresseTerminee({ missionId, current }: { missionId: st
     } finally { setBusy(false) }
   }
 
+  if (aDemander !== true && !done) return null
   if (done) return (
     <div className="w-full max-w-sm bg-green-50 border border-green-300 text-green-800 rounded-2xl px-3 py-3 text-sm font-semibold dark:bg-green-500/10 dark:text-green-300">
       ✅ {t('cloture.dest_saved')}

@@ -60,7 +60,10 @@ export async function mergeKazeRelIntoParked(opts: {
   // 2. Compléter la fiche parc parent + transfert du lien Kaze.
   // Une vraie adresse déjà saisie n'est pas écrasée (même lieu écrit autrement → pas de nouvelle
   // étiquette ; autre lieu → signalé au dispatch). 2EXG520, Olivier 08/10/2026.
-  const { data: pAddr } = await sb.from('incoming_missions').select('redelivery_address').eq('id', parentId).maybeSingle()
+  const { data: pAddr } = await sb.from('incoming_missions').select('redelivery_address, status').eq('id', parentId).maybeSingle()
+  // Véhicule encore sur le camion (chargé, en route vers un dépôt — 1PTV214, 15/11/2026) : sa destination et sa
+  // zone ne changent pas ; la mise en parc posera la zone K comme d'habitude (adresse de relivraison connue).
+  const auParc = (pAddr as any)?.status === 'parked'
   const { relivraisonZoneFor, resolveRedelivery } = await import('@/lib/parc/relivraison-zone')
   const res = await resolveRedelivery(sb, (pAddr as any)?.redelivery_address, rel.destination_address)
   const redelivery = res.address
@@ -68,15 +71,13 @@ export async function mergeKazeRelIntoParked(opts: {
   // (absente ou = un de nos dépôts), sinon K.
   const relZone = await relivraisonZoneFor(sb, redelivery)
   const updParent: Record<string, any> = {
-    parc_zone_key:   relZone,
-    parc_row_number: null,
-    parc_slot_index: null,
+    ...(auParc ? { parc_zone_key: relZone, parc_row_number: null, parc_slot_index: null } : {}),
     mission_type:    'REM+REL',
     rel_kaze_job_id: rel.kaze_job_id || null,
     updated_at:      now,
   }
   if (redelivery)                  updParent.redelivery_address  = redelivery
-  if (parcAddr)                    updParent.destination_address = parcAddr
+  if (parcAddr && auParc)          updParent.destination_address = parcAddr
   if (res.fromIncoming && rel.destination_lat != null) updParent.redelivery_lat = rel.destination_lat
   if (res.fromIncoming && rel.destination_lng != null) updParent.redelivery_lng = rel.destination_lng
   await sb.from('incoming_missions').update(updParent).eq('id', parentId)
@@ -102,7 +103,7 @@ export async function mergeKazeRelIntoParked(opts: {
 
   // 4. Étiquette REL du parent (best-effort).
   let labelPrinted = false
-  if (res.changed) { try { const r = await reprintLabelForMission({ kind: 'uuid', value: parentId }); labelPrinted = !!r.ok } catch { /* non bloquant */ } }
+  if (res.changed && auParc) { try { const r = await reprintLabelForMission({ kind: 'uuid', value: parentId }); labelPrinted = !!r.ok } catch { /* non bloquant */ } }
   if (res.conflit) {
     await sb.from('mission_logs').insert({ mission_id: parentId, actor_id: null, action: 'redelivery_conflict',
       notes: `⚠️ Kaze indique une autre adresse de relivraison (${res.conflit}) — la fiche garde ${redelivery}. À vérifier.`,

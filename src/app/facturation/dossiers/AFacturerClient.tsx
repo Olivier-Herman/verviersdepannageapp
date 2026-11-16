@@ -118,6 +118,18 @@ export function readDossier(d: Dossier, ai: AutoInfo | undefined, comex: ComexIn
       detail: `Dossier ${comex!.dossier || '—'} · ${cmp}. ${accord} La validation écrit chez Touring et crée la facture.`,
       primary: { label: 'Valider et facturer', kind: 'comex', tone: comex!.verdict === 'verify' ? 'ghost' : 'sky' } }
   }
+  // Touring pas encore dans COMEX (Olivier 13/11/2026) : on ne facture pas tant que
+  // Touring n'a pas proposé le montant dans COMEX ou n'a pas répondu « à facturer
+  // hors COMEX » (tampon du Check Touring). Exception : dossiers BX (jamais dans COMEX).
+  const touring = d.source === 'touring' || /touring/i.test(d.billed_to.name || '') || d.legs.some(l => !l.billed_done && /touring/i.test(l.billed_to_name || ''))
+  const horsComex = /^\d{4}BX/i.test(d.dossier_number || '') || /hors\s*comex/i.test(d.stamps?.touring_check || '')
+  if (!done && touring && !horsComex && !comex?.accepted_at) {
+    const j = lastEnded ? Math.floor((now - new Date(lastEnded).getTime()) / 86_400_000) : null
+    return { ...base, who: 'eux',
+      headline: `Touring — pas encore dans COMEX${j != null ? ` (clôturé il y a ${j} j)` : ''}`,
+      detail: `Touring propose lui-même le montant dans COMEX : on facture à ce moment-là, ou quand Touring répond « à facturer hors COMEX ».${j != null && j > 21 ? ' Plus de 3 semaines : à réclamer à Touring.' : ''}`,
+      primary: { label: 'Liste Touring', kind: 'link', href: '/touring-comex', tone: 'ghost' } }
+  }
   if (isCircuitLegs(d)) {
     const ef = d.parquet?.efs?.length ? d.parquet.efs[d.parquet.efs.length - 1] : null
     return d.parquet

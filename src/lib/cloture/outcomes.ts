@@ -114,8 +114,11 @@ export function outcomeIsRem(outcome: Outcome): boolean {
  * panne n'est encodé (Olivier 2026-08-11) : le motif EST le code de fin. La liste
  * réelle est intersectée avec `LST_CODE_END_MIS` renvoyé par COMEX pour ce dossier.
  */
-export const DPR_END_CODES: { code: string; label: string }[] = [
+export const DPR_END_CODES: { code: string; label: string; fin?: string; remarque?: string }[] = [
   { code: '20', label: 'Le client est parti avant mon arrivée' },
+  // Touring n'a pas de code « déjà au garage » : c'est un « sinistré parti avec déplacement » (20), précisé en
+  // commentaire pour l'assistance. Olivier 13/11/2026 (Franck, 2EGU665).
+  { code: '20g', label: 'Véhicule déjà au garage', fin: '20', remarque: 'Véhicule déjà au garage à notre arrivée.' },
   { code: '21', label: "Le client refuse l'intervention" },
   { code: '29', label: 'Mauvaise adresse' },
   { code: '40', label: 'Matériel inadapté' },

@@ -14,6 +14,9 @@ export async function demanderAdresseLivraison(missionId: string, adresse: strin
   const { data: m } = await sb.from('incoming_missions')
     .select('id, assigned_to, vehicle_plate').eq('id', missionId).maybeSingle()
   if (!(m as any)?.assigned_to) return
+  // Il ne manque que le code postal : la carte le donne, le chauffeur n'est pas dérangé (12/11/2026).
+  const { completerAdresseParCarte } = await import('@/lib/cloture/completer-adresse')
+  if (await completerAdresseParCarte(sb, missionId)) return
 
   // Une seule demande par adresse : le filet repasse, le chauffeur n'est pas harcelé.
   const { data: déjà } = await sb.from('mission_logs').select('metadata')

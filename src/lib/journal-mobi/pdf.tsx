@@ -25,7 +25,7 @@ const s = StyleSheet.create({
   day: { marginTop: 9 },
   dayH: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: SOFT, padding: 4, borderRadius: 4, fontFamily: 'Helvetica-Bold', fontSize: 9.5 },
   item: { flexDirection: 'row', paddingHorizontal: 4, paddingTop: 2.5 },
-  h: { width: 40, color: MUT },
+  puce: { width: 12, color: MUT },
   tagMe: { color: ME, fontFamily: 'Helvetica-Bold' },
   tagAuto: { color: AUTO, fontFamily: 'Helvetica-Bold' },
   foot: { position: 'absolute', bottom: 24, left: 44, right: 44, flexDirection: 'row', justifyContent: 'space-between', fontSize: 8, color: MUT, borderTopWidth: 0.6, borderTopColor: LINE, paddingTop: 4 },
@@ -36,7 +36,6 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 const fmt = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 const libMois = (m: string) => { const [y, mm] = m.split('-').map(Number); return `${MOIS[mm - 1].replace(/^./, c => c.toUpperCase())} ${y}` }
 const jourLong = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Brussels' }).replace(/^./, c => c.toUpperCase())
-const heure = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }) : ''
 const _somme = (rows: { cle: string; titre: string; quantite: number }[]) => {
   const m = new Map<string, { titre: string; n: number }>()
   for (const r of rows) { const x = m.get(r.cle) || { titre: r.titre, n: 0 }; x.n += r.quantite; m.set(r.cle, x) }
@@ -54,7 +53,7 @@ const THEMES: { titre: string; cles: string[] }[] = [
   { titre: 'Correspondance : mails traités, triés et envoyés', cles: ['mails', 'mails_auto', 'mails_decides', 'tri_info'] },
   { titre: 'Rappels et relances (clients, réquisitoires, fiches ouvertes)', cles: ['relances'] },
   { titre: 'Fourrière, parc et Justice (restitutions, levées, états de frais, Domaine)', cles: ['m_fourriere', 'm_parc', 'fourriere'] },
-  { titre: 'Dispatch, suivi des assistances et corrections de fiches', cles: ['m_dispatch', 'corrections', 'appels'] },
+  { titre: 'Corrections de fiches (type de mission, assistance, incohérences)', cles: ['corrections'] },
   { titre: 'Paiements fournisseurs et comptes d’achat', cles: ['erp_paiements_fourn', 'erp_paiements_fourn_auto', 'comptes_achats'] },
   { titre: 'Clôtures chez les assistances pour la facturation', cles: ['clotures'] },
   { titre: 'Circuit de Spa-Francorchamps', cles: ['circuit'] },
@@ -62,10 +61,26 @@ const THEMES: { titre: string; cles: string[] }[] = [
   { titre: 'Inventaire du parking', cles: ['inventaire'] },
   { titre: 'Autres interventions sur les fiches', cles: ['m_autres'] },
 ]
+// Le dispatch n'est pas une tâche de Mobi (Olivier 12/11/2026) : attributions, suivi des missions, appels aux
+// chauffeurs et tout ce qui touche au dispatch restent hors du document. Tout le reste fait par lui ou ses agents
+// lui est attribué, sans distinction.
+const EXCLUS = ['m_dispatch', 'appels']
+const estDispatch = (t: { domaine: string; titre: string }) =>
+  /dispatch/i.test(t.domaine) || /dispatch|chauffeur|acceptation des missions/i.test(t.titre)
+// Le travail du samedi et du dimanche est présenté le lundi qui suit (Olivier 12/11/2026). Si ce lundi tombe le mois
+// suivant, il reste dans le mois, au vendredi qui précède.
+const jourOuvre = (d: string) => {
+  const x = new Date(`${d}T12:00:00Z`), w = x.getUTCDay()
+  if (w !== 0 && w !== 6) return d
+  const y = new Date(x); y.setUTCDate(x.getUTCDate() + (w === 6 ? 2 : 1))
+  if (y.getUTCMonth() !== x.getUTCMonth()) y.setUTCDate(x.getUTCDate() - (w === 6 ? 1 : 2))
+  return y.toISOString().slice(0, 10)
+}
 const themeDe = (cle: string) => THEMES.find(t => t.cles.includes(cle))?.titre || THEMES[THEMES.length - 1].titre
 
 function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
-  const lignes = [...j.mobi, ...j.auto]
+  const lignes = [...j.mobi, ...j.auto].filter(r => !EXCLUS.includes(r.cle)).map(r => ({ ...r, jour: jourOuvre(r.jour) }))
+  j = { ...j, taches: j.taches.filter(t => !estDispatch(t)).map(t => ({ ...t, jour: jourOuvre(t.jour) })) }
   const parTheme = THEMES.map(t => ({ titre: t.titre, n: lignes.filter(r => t.cles.includes(r.cle)).reduce((a, r) => a + r.quantite, 0) })).filter(t => t.n > 0)
   const total = parTheme.reduce((a, t) => a + t.n, 0) + j.taches.length
   const compta = lignes.filter(r => /factu|paiement|erp|mails/.test(r.cle)).reduce((a, r) => a + r.quantite, 0)
@@ -77,7 +92,7 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
     <Document title={`Journal des tâches — ${titre}`} author="Olivier Herman (Mobi)">
       <Page size="A4" style={s.page}>
         <View style={s.top}>
-          <View><Text style={s.badge}>Journal des tâches · Verviers Dépannage</Text><Text style={s.h1}>{titre}</Text><Text style={s.sub}>Olivier Herman (Mobi) — organisation, facturation, comptabilité et fourrière</Text></View>
+          <View><Text style={s.badge}>Journal des tâches · Verviers Dépannage</Text><Text style={s.h1}>{titre}</Text><Text style={s.sub}>Olivier Herman (Mobi) — administration de Verviers Dépannage, Riga et DGJ</Text></View>
           <View style={{ alignItems: 'flex-end' }}><Text style={s.sub}>Établi le {emisLe}</Text><Text style={s.sub}>{jours.length} jours d’activité</Text></View>
         </View>
         <View style={s.kpis}>
@@ -107,10 +122,10 @@ function Doc({ j, emisLe }: { j: MoisJournal; emisLe: string }) {
           const th = THEMES.map(t => ({ titre: t.titre, n: lj.filter(r => t.cles.includes(r.cle)).reduce((a, r) => a + r.quantite, 0) })).filter(t => t.n > 0).sort((a, b) => b.n - a.n)
           const n = th.reduce((a, t) => a + t.n, 0) + tj.length
           return (
-            <View key={d} style={s.day} wrap={false}>
-              <View style={s.dayH}><Text>{jourLong(d)}</Text><Text style={{ color: MUT, fontFamily: 'Helvetica' }}>{fmt(n)} tâches</Text></View>
-              {tj.map((t, i) => <View key={i} style={s.item}><Text style={s.h}>{heure(t.at)}</Text><Text style={{ flex: 1 }}>{t.titre}{t.detail ? ` — ${t.detail}` : ''}</Text></View>)}
-              {th.length > 0 && <View style={s.item}><Text style={s.h}>journée</Text><Text style={{ flex: 1 }}>{th.map(t => `${fmt(t.n)} ${minus(court(t.titre))}`).join(' · ')}</Text></View>}
+            <View key={d} style={s.day}>
+              <View style={s.dayH} minPresenceAhead={40}><Text>{jourLong(d)}</Text><Text style={{ color: MUT, fontFamily: 'Helvetica' }}>{fmt(n)} tâches</Text></View>
+              {tj.map((t, i) => <View key={i} style={s.item} wrap={false}><Text style={s.puce}>•</Text><Text style={{ flex: 1 }}>{t.titre}{t.detail ? ` — ${t.detail}` : ''}</Text></View>)}
+              {th.length > 0 && <View style={s.item} wrap={false}><Text style={s.puce}>•</Text><Text style={{ flex: 1 }}>{th.map(t => `${fmt(t.n)} ${minus(court(t.titre))}`).join(' · ')}</Text></View>}
             </View>
           )
         })}

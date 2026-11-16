@@ -110,7 +110,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       || allowedFins.includes(o.fin) || UNLOCKED_LATER.has(o.fin))
   const dprCodes = allowedFins.length === 0
     ? DPR_END_CODES
-    : DPR_END_CODES.filter(d => allowedFins.includes(d.code))
+    : DPR_END_CODES.filter(d => allowedFins.includes(d.fin || d.code))
 
   // Motif déjà choisi sur la 1re jambe (transformation en remorquage) : à la
   // livraison, on le REPROPOSE sélectionné au lieu de refaire choisir. Vu en test
@@ -121,7 +121,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const priorMotifKey = priorMotif && findMotif('remorquage', priorMotif) ? priorMotif : null
 
   // Adresse de livraison de la fiche : sans rue, l'écran la fait compléter au chauffeur (2JXX385, 09/11/2026).
-  const ficheDest = String((m as any).destination_address || '').trim() || null
+  // Il ne manque que le code postal : la carte le donne, on ne le redemande pas au chauffeur (12/11/2026, 1VGN930).
+  let ficheDest = String((m as any).destination_address || '').trim() || null
+  if (ficheDest && !adresseComplete(ficheDest)) {
+    const { completerAdresseParCarte } = await import('@/lib/cloture/completer-adresse')
+    ficheDest = (await completerAdresseParCarte(sb, (m as any).id)) || ficheDest
+  }
 
   return NextResponse.json({
     hasPrefill,
@@ -371,11 +376,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     } else {
     const input = {
       outcome, motifKey, prefill,
-      dprCode: body?.dprCode ?? null,
+      // Motif VD Soft sans code propre chez l'assistance (« déjà au garage ») : son vrai code + la précision en commentaire.
+      dprCode: (DPR_END_CODES.find(x => x.code === String(body?.dprCode))?.fin) || (body?.dprCode ?? null),
       vin, km,
       toCidIntv: body?.toCidIntv ?? null,
       manualAddress: body?.manualAddress ?? null,
-      comment: body?.comment ?? null,
+      comment: [DPR_END_CODES.find(x => x.code === String(body?.dprCode))?.remarque, body?.comment].filter(Boolean).join(' ') || null,
       // Siabis non couvert (police_snc) : mise en parc = fin de tâche (00) chez
       // Touring, pas dépôt (05). Olivier 2026-09-24.
       nonCouvert: String((m as any)?.source || '') === 'police_snc',

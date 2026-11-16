@@ -17,6 +17,7 @@
 
 import { launchBrowser } from '@/lib/vab/sign-browser'
 import { odooRpc } from '@/lib/odoo'
+import { getBusinessText } from '@/lib/settings/business'
 
 const LOGIN_URL = 'https://extranet.as24.com/extranet/fr/login'
 const LIST_PATH = '/myas24/secured/invoices/findFilteredAccountingDocuments'
@@ -37,14 +38,21 @@ export function as24Configured(): boolean {
 
 const num = (v: any) => (v === null || v === undefined || v === '' ? null : Number(v))
 
+/** Comptes de l'espace client : AS 24 Belgium (secret d'environnement) ou AS 24 Nederland (réglage as24_nl_client, mêmes identifiants). */
+export type As24Compte = 'be' | 'nl'
+
 /** Documents de l'extranet entre deux dates (incluses). Une connexion par appel. */
-export async function listAs24Documents(from: Date, to: Date): Promise<As24Document[]> {
+export async function listAs24Documents(from: Date, to: Date, compte: As24Compte = 'be'): Promise<As24Document[]> {
   if (!as24Configured()) throw new Error('Accès AS 24 non configuré')
+  const client = compte === 'nl' ? await getBusinessText('as24_nl_client') : process.env.AS24_BE_CLIENT!
   const browser = await launchBrowser()
   try {
     const page = await browser.newPage()
     await page.goto(LOGIN_URL, { waitUntil: 'networkidle2', timeout: 60_000 })
-    await page.type('#LOGIN_USER', process.env.AS24_BE_CLIENT!)
+    // Le formulaire est monté par l'application : taper trop tôt vide les champs (12/11/2026).
+    await page.waitForSelector('#LOGIN_USER', { visible: true, timeout: 30_000 })
+    await new Promise(r => setTimeout(r, 2000))
+    await page.type('#LOGIN_USER', client)
     await page.type('#EXTERNAL_USER', process.env.AS24_BE_EMAIL!)
     await page.type('#PWD_USER', process.env.AS24_BE_PASSWORD!)
     await page.evaluate(() => {

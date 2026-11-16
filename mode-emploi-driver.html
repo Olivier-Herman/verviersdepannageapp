@@ -454,6 +454,7 @@
  <li>Tu vois 4 grands blocs :
  <ul>
  <li><strong>Infos mission</strong> : type, source, dossier, client, véhicule</li>
+ <li><strong>Contrat</strong> : le nom du contrat de l’assistance et « Couvert » ou « Non couvert ». Non couvert (en rouge) : c’est le client qui paie, vois avec le dispatch avant de commencer.</li>
  <li><strong>Adresses</strong> : intervention + destination(s) avec GPS</li>
  <li><strong>Adresse pas reconnue</strong> (souvent celle envoyée par l'assistance) : l'app affiche un cadre orange avec les adresses Google les plus proches. Touche la bonne : le km et le prix se calculent. Pour une destination, « Valider » attend qu'une adresse de la liste soit choisie. Si aucune ne va, « garder l'adresse telle quelle » : le bureau vérifiera le km. Pour un Siabis non couvert, le montant à encaisser se calcule alors à partir de ta position quand tu appuies sur « Arrivé à destination ».</li>
  <li><strong>Actions</strong> : boutons selon ton statut (Accepter / En route / Sur place / Terminer)</li>
@@ -576,7 +577,7 @@
 
 <div class="function">
  <h3><span class="num">15f</span>Adresse de livraison incomplète</h3>
- <p class="desc">Parfois l’assistance envoie une destination sans rue, par exemple seulement « 4910 Theux ». Elle ne peut alors pas clôturer le dossier.</p>
+ <p class="desc">Parfois l’assistance envoie une destination sans rue, par exemple seulement « 4910 Theux ». Elle ne peut alors pas clôturer le dossier. S’il ne manque que le code postal (la rue et le numéro sont là), l’app le retrouve toute seule : on ne te demande rien.</p>
  <ol>
  <li>À la clôture « Véhicule livré », un cadre orange « Adresse de livraison incomplète » apparaît. Indique où tu as déposé le véhicule : le nom (garage, parking…) puis l’adresse, en la <strong>choisissant dans les suggestions</strong>.</li>
  <li>Tu ne peux pas valider tant que l’adresse n’est pas choisie dans les suggestions avec la rue, le code postal et la localité. Une adresse tapée sans la choisir ne suffit pas.</li>
@@ -622,7 +623,7 @@
  <ol>
  <li>Une fois « Sur place », la carte <strong>« Mal garée : que se passe-t-il ? »</strong> apparaît en haut de la fiche. Par défaut : <strong>Enlèvement (mise en parc)</strong>.</li>
  <li>Le propriétaire est revenu avant le chargement ? Touche <strong>« Le propriétaire est revenu : déplacement payé »</strong>. Le montant à encaisser s'affiche (tarif de la grille, 125 € TVAC).</li>
- <li>Encaisse normalement (bouton Terminer → encaissement obligatoire), puis Terminer. Pas de photos, pas de parc.</li>
+ <li>Encaisse normalement. <strong>Le paiement termine la mission tout seul</strong> : pas besoin de toucher « Terminer », pas de parc.</li>
  <li>Erreur de choix ? Tant que rien n'est payé et que le véhicule n'est pas chargé, tu peux revenir à « Enlèvement ».</li>
  </ol>
  <p class="label">Workflow scénario « Déplacement payé »</p>
@@ -632,8 +633,8 @@
  <li>Bouton submit devient « 💳 Créer et encaisser »</li>
  <li>Au clic → mission créée + redirection automatique vers encaissement</li>
  <li>Sur la page encaissement : plaque, marque, modèle, montant 125€, adresse, motif « Mal Garée » sont précomplétés</li>
- <li>Le client paie (cash / Sumup) → retour fiche mission</li>
- <li>Clique « 🏁 Terminer » → mission passe en facturation</li>
+ <li>Le client paie (cash / Sumup) → la mission se termine toute seule et part en facturation</li>
+ <li>Tu reviens sur la fiche : « Mission terminée », avec le paiement reçu et les photos enregistrées. Il manque une photo ? Touche « Ajouter des photos » : c'est possible pendant 30 minutes après le paiement.</li>
  </ol>
  <div class="warn">⚠️ Pas de bouton « Plus tard ». Le client doit payer avant de partir, sinon la mission reste ouverte et le chauffeur de garde devra gérer.</div>
 </div>
@@ -860,7 +861,7 @@
  <li>Photos (sauf DPR)</li>
  <li>Signature client (sauf DPR)</li>
  <li>Notes de clôture (optionnel)</li>
- <li>Pour DPR : motif (parmi : Client absent, Véhicule déjà parti, Adresse erronée, etc., ou Autre)</li>
+ <li>Pour DPR : motif (parmi : Véhicule absent, Propriétaire refuse, Accès impossible, Véhicule déjà dépanné, Véhicule déjà au garage, Pas de panne constatée, Annulation client, ou Autre)</li>
  </ul>
  </li>
  <li>Valide → la mission passe en statut « À facturer »</li>

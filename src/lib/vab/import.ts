@@ -453,8 +453,12 @@ export async function runVabImport(opts: { mode: VabImportMode }): Promise<VabIm
 
       // Livraison de VR sans remorquage actif : fiche « livraison VR » seule (transport : tous les km).
       const vrSeul = isVrItem(item) && assignmentId ? await vrDepuisDetail(detail, assignmentId, fullDossier, true, pickupAid) : null
+      // Contrat VAB affiché sur la fiche (Olivier 15/11/2026) : code produit + couverture lus sur la page Contrat.
+      const { contratVab } = await import('@/lib/assistance/contrat')
+      const contrat = contratVab({ ...detail, dossierNumber: fullDossier })
       const { data: insertedRow, error: insertErr } = await sb.from('incoming_missions').insert({
         ...(vrSeul ? { vab_vr: vrSeul } : {}),
+        ...(contrat ? { assistance_contrat: contrat } : {}),
         external_id:        assignmentId || detail.missionNumber,
         dossier_number:     fullDossier,
         // Non couvert selon VAB → Siabis non couvert (police_snc), sans assistance

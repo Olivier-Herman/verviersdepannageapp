@@ -294,13 +294,19 @@ export async function closeMissionAuto(
      *  étapes à la même seconde. Avec, elle reflète notre panneau de pointage.
      *  Olivier 2026-08-11. */
     executedAt?: Record<string, string | null | undefined>
+    /** Notre destination réelle (fiche), utilisée quand AXA n'en porte pas d'adresse. */
+    ourDestination?: { address?: string | null; name?: string | null; lat?: number | null; lng?: number | null } | null
   } = {},
 ): Promise<AxaCloseResult> {
   const m = await getMission(missionOrderId)
   if (!m) return { ok: false, steps: [], error: 'mission introuvable' }
 
   const available: string[] = m.configuration?.interventionStepConfiguration?.availableSteps || []
-  const destination = m.case?.service?.serviceDestination || null
+  // 13/11/2026 : « choix du client » → AXA renvoie une destination SANS adresse ; la renvoyer
+  // telle quelle fait refuser l'étape (« The Destination Adress is required », 2BKQ165, 2CQV47).
+  // Ordre : adresse AXA, sinon notre destination réelle, sinon le lieu de l'incident.
+  const axaDest = m.case?.service?.serviceDestination || null
+  const destination = axaDest?.address?.streetAddress ? axaDest : (destinationFromFiche(opts.ourDestination) || null)
   const sequence = CANONICAL_ORDER.filter(s => available.includes(s))
 
   // reprendre après la dernière étape déjà faite
@@ -320,6 +326,20 @@ export async function closeMissionAuto(
     if (!r.ok) return { ok: false, steps, error: `échec à ${step}: ${r.data?.message || r.status}` }
   }
   return { ok: true, steps }
+}
+
+/** « Place du Marché 55, 4800 Verviers, Belgique » → adresse go&assist (null si illisible). */
+function destinationFromFiche(d?: { address?: string | null; name?: string | null; lat?: number | null; lng?: number | null } | null): any | null {
+  const parts = String(d?.address || '').split(',').map(x => x.trim()).filter(Boolean)
+  const cpIdx = parts.findIndex(x => /^\d{4}\s+\S/.test(x))
+  if (cpIdx < 1) return null
+  const [, postalCode, locality] = parts[cpIdx].match(/^(\d{4})\s+(.+)$/) || []
+  return {
+    name: d?.name || null,
+    category: 'CUSTOMER_CHOICE',
+    coordinates: d?.lat != null && d?.lng != null ? { latitude: Number(d.lat), longitude: Number(d.lng) } : null,
+    address: { streetAddress: parts.slice(0, cpIdx).join(', '), postalCode, locality, country: 'BE', subdivision: null },
+  }
 }
 
 /** Destination de repli (mission sans serviceDestination) construite depuis l'incident. */

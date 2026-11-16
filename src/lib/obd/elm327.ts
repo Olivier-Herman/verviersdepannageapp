@@ -138,8 +138,12 @@ export function vinOf(reply: Reply): string | null {
 
 /** Texte du mode 09 (référence ou nom du calculateur) du premier calculateur qui en donne. */
 export function textOf(reply: Reply): string | null {
-  for (const m of reply.messages) {
-    const t = m.data.slice(2).filter(b => b >= 0x20 && b <= 0x7e).map(b => String.fromCharCode(b)).join('').trim()
+  // Anciens protocoles : une ligne par morceau de 4 caractères (« 49 04 01 30 33 38 39 », « 49 04 02 … ») ; on les recolle
+  // par calculateur, sinon la référence s'arrête à « 0389 » au lieu de « 038906019PA 9325 » (Sharan 2009, 13/11/2026).
+  const parEcu = new Map<string, number[]>()
+  for (const m of reply.messages) parEcu.set(m.ecu, [...(parEcu.get(m.ecu) || []), ...m.data.slice(m.can ? 2 : 3)])
+  for (const bytes of parEcu.values()) {
+    const t = bytes.filter(b => b >= 0x20 && b <= 0x7e).map(b => String.fromCharCode(b)).join('').replace(/\s+/g, ' ').trim()
     if (t) return t.slice(0, 60)
   }
   return null

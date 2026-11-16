@@ -30,9 +30,27 @@ async function modeleDepuisFiches(vin: string): Promise<{ modele: string; estime
   return null
 }
 
+/** Groupe VW : le code modèle est écrit en clair dans le VIN (positions 7-8, « WVWZZZ7MZ… » = Sharan). Sharan 2009 affiché
+ *  « Sharan ? » (estimé depuis nos fiches) alors que le châssis le dit (Olivier 13/11/2026). Codes sûrs seulement. */
+const VAG_MODELES: Record<string, Record<string, string>> = {
+  Volkswagen: { '1J': 'Golf IV', '1K': 'Golf V', '5K': 'Golf VI', AU: 'Golf VII', '5G': 'Golf VII', CD: 'Golf VIII', '9N': 'Polo IV', '6R': 'Polo V', '6C': 'Polo V', AW: 'Polo VI',
+    '3B': 'Passat B5', '3C': 'Passat B6/B7', '3G': 'Passat B8', '7M': 'Sharan', '7N': 'Sharan II', '1T': 'Touran', '5T': 'Touran II', '5N': 'Tiguan', AD: 'Tiguan II',
+    '2K': 'Caddy III', SK: 'Caddy V', '7H': 'Transporter T5', '7E': 'Transporter T6', '7L': 'Touareg', '7P': 'Touareg II', '2H': 'Amarok', '1F': 'Eos', '13': 'Scirocco', '16': 'Jetta', '1Y': 'New Beetle', '5C': 'Beetle', '2E': 'Crafter', SY: 'Crafter II', SZ: 'Crafter II', '6K': 'Polo III', '1H': 'Golf III' },
+  Skoda: { '1U': 'Octavia I', '1Z': 'Octavia II', '5E': 'Octavia III', NX: 'Octavia IV', '3U': 'Superb I', '3T': 'Superb II', '3V': 'Superb III', '6Y': 'Fabia I', '5J': 'Fabia II', NJ: 'Fabia III', '5L': 'Yeti', NS: 'Kodiaq', NU: 'Karoq', '7N': 'Alhambra' },
+  Seat: { '6L': 'Ibiza III', '6J': 'Ibiza IV', '6F': 'Ibiza V', '1P': 'Leon II', '5F': 'Leon III', KL: 'Leon IV', '5P': 'Altea', '7N': 'Alhambra', '7M': 'Alhambra' },
+  Audi: { '8L': 'A3 I', '8P': 'A3 II', '8V': 'A3 III', '8E': 'A4 B6/B7', '8K': 'A4 B8', '8W': 'A4 B9', '4B': 'A6 C5', '4F': 'A6 C6', '4G': 'A6 C7', '8X': 'A1', '8U': 'Q3', '8R': 'Q5', FY: 'Q5 II', '4L': 'Q7', '4M': 'Q7 II', '8T': 'A5' },
+}
+function modeleVag(vin: string, marque: string | null): string | null {
+  const m = String(marque || '').replace('Škoda', 'Skoda')
+  const table = VAG_MODELES[m] || (/^(WVW|WV1|WV2|WVG)/.test(vin) ? VAG_MODELES.Volkswagen : /^TMB/.test(vin) ? VAG_MODELES.Skoda : /^VSS/.test(vin) ? VAG_MODELES.Seat : /^(WAU|WA1|TRU)/.test(vin) ? VAG_MODELES.Audi : null)
+  return table?.[vin.slice(6, 8)] || null
+}
+
 export async function decodeVin(raw: string): Promise<Vehicle | null> {
   const v = await decodeVinBase(raw)
   if (!v || v.modele) return v
+  const vag = modeleVag(cleanVin(raw), v.marque)
+  if (vag) return { ...v, modele: vag }
   const f = await modeleDepuisFiches(cleanVin(raw)).catch(() => null)
   return f ? { ...v, modele: f.estime ? `${f.modele} ?` : f.modele, source: v.source } : v
 }
@@ -108,6 +126,13 @@ export async function analyse(input: { codes: { code: string; type: string; ecu?
   const typeLabel = (t: string) => t === 'en_attente' ? 'en attente' : t === 'permanent' ? 'permanent' : 'mémorisé'
   const lignesRef = input.codes.map(c => { const d = defs.get(c.code); return `- ${c.code}${c.systeme ? ` [calculateur ${nomSysteme(c.systeme, 'fr', c.ecu)}${c.nom ? ` « ${c.nom} »` : ''}${c.detail ? `, précision ${c.detail}` : ''}${c.actif ? ', défaut présent maintenant' : ''}]` : ' [moteur]'} (${typeLabel(c.type)}) : ${d ? `${d.libelle}${d.constructeur ? ' [définition constructeur à confirmer]' : ''}${d.detail ? ` — causes fréquentes : ${d.detail}` : ''}` : 'AUCUNE DÉFINITION DE RÉFÉRENCE'}` }).join('\n')
   const calc = resumeCalculateurs(input.measures)
+  // Témoin éteint mais compteur « distance témoin allumé » non nul : il s'est allumé puis éteint (Sharan D-0013, 83 km,
+  // 13/11/2026 — l'avis n'en disait rien). Le dire au chauffeur, calculé ici plutôt que laissé à l'appréciation de Sam.
+  const mz = input.measures || {}
+  const kmTemoin = Number(mz.km_temoin_allume), kmEff = Number(mz.km_depuis_effacement)
+  const temoinPasse = mz.temoin_moteur === false && kmTemoin > 0 && kmTemoin < 65535
+    ? `Le témoin moteur est éteint, mais il est resté allumé pendant ${kmTemoin} km : panne intermittente, ou codes effacés récemment${kmEff > 0 && kmEff < 65535 ? ` (dernier effacement il y a ${kmEff} km)` : ''}.`
+    : null
   const s = input.symptome
   const panne = s ? [s.panne, s.description].filter(Boolean).join(' — ') : ''
   const prompt = `Tu es Sam, l'assistant des dépanneurs de Verviers Dépannage. Un chauffeur vient de lire la voiture avec un boîtier OBD, sur le bord de la route.
@@ -118,7 +143,7 @@ ${lignesRef || 'aucun'}
 Mesures lues par le boîtier : ${JSON.stringify(input.measures)}. Un compteur à 65535 (km, minutes) ou 255 (démarrages) est au maximum : ce n'est pas une valeur exacte, ne le cite pas comme telle.
 Image figée au moment du défaut : ${input.freeze ? JSON.stringify(input.freeze) : 'aucune'}.
 État de la lecture : ${lecture ? (lecture.complete ? 'complète' : `INCOMPLÈTE (${lecture.manques.join(', ')})`) : 'inconnu'}.
-Autres calculateurs : ${calc.texte}
+Autres calculateurs : ${calc.texte}${temoinPasse ? `\nÀ DIRE AU CHAUFFEUR (fait établi) : ${temoinPasse} Mets-le dans « pourquoi », et le verdict ne peut pas être « controle ».` : ''}
 
 Dis au chauffeur si un DÉPANNAGE SUR PLACE est raisonnable (batterie, connecteur, fusible, capteur sans risque, code ancien sans symptôme…) ou si le REMORQUAGE s'impose (risque moteur, boîte, freins, direction, airbag, refroidissement, fuite…). « controle » seulement s'il n'y a aucun code, que la lecture est complète et que rien n'est anormal.
 Règles : phrases courtes et concrètes, sans jargon ; le chauffeur ne peut pas te répondre sur cet écran, ne lui pose aucune question et ne lui demande pas de te décrire quoi que ce soit ; c'est un pré-diagnostic, la décision reste au chauffeur.
@@ -144,6 +169,12 @@ Réponds en JSON STRICT, sans texte autour :
   if (j.verdict === 'controle' && !calc.complet) {
     if (j.fr && !j.fr.partiel) j.fr.partiel = 'Seul le moteur a été lu. Un témoin ABS, airbag ou autre allumé n’est pas expliqué par cette lecture.'
     if (j.sq && !j.sq.partiel) j.sq.partiel = 'U lexua vetëm motori. Një dritë ABS, airbag ose tjetër e ndezur nuk shpjegohet nga ky lexim.'
+  }
+  // Le témoin passé n'est jamais « rien d'anormal », et le chauffeur le voit même si Sam l'a oublié.
+  if (temoinPasse) {
+    if (j.verdict === 'controle') j.verdict = 'dsp'
+    if (j.fr && !/allum/i.test(String(j.fr.pourquoi || ''))) j.fr.pourquoi = `${temoinPasse} ${j.fr.pourquoi || ''}`.trim()
+    if (j.sq && !/ndez/i.test(String(j.sq.pourquoi || ''))) j.sq.pourquoi = `Drita e motorit është e fikur, por ka qenë e ndezur gjatë ${kmTemoin} km: defekt që vjen e shkon, ose kodet janë fshirë së fundmi. ${j.sq.pourquoi || ''}`.trim()
   }
   for (const c of j.fr?.codes || []) c.ref = defs.has(c.code)
   return j as Analysis

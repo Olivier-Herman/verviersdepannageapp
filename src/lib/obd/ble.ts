@@ -55,6 +55,24 @@ async function client(): Promise<Ble> {
 const enc = new TextEncoder(), dec = new TextDecoder()
 const BOITIER_MEMO = 'vd-obd-boitier'
 
+const SERVICES_OBD = ['0000fff0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '000018f0-0000-1000-8000-00805f9b34fb']
+const NOM_OBD = /obd|v-?link|vgate|icar|elm ?327|viecar|konnwei|veepeak|carista|kiwi|scan ?tool/i
+
+/** Boîtiers OBD à portée : un nom de boîtier connu ou un service OBD annoncé. Rien trouvé ou erreur : liste vide. */
+async function chercherBoitiers(ble: Ble, ms: number): Promise<{ deviceId: string; name?: string }[]> {
+  const vus = new Map<string, { deviceId: string; name?: string }>()
+  try {
+    await ble.requestLEScan({}, (r: any) => {
+      const nom = String(r?.localName || r?.device?.name || '')
+      const uuids: string[] = (r?.uuids || []).map((u: string) => String(u).toLowerCase())
+      if (r?.device?.deviceId && (NOM_OBD.test(nom) || uuids.some(u => SERVICES_OBD.includes(u)))) vus.set(r.device.deviceId, { deviceId: r.device.deviceId, name: nom || r.device.name })
+    })
+    await new Promise(ok => setTimeout(ok, ms))
+  } catch { /* balayage refusé : la liste du système prendra le relais */ }
+  await ble.stopLEScan().catch(() => {})
+  return [...vus.values()]
+}
+
 /** Recherche le boîtier (fenêtre de choix du système), s'y connecte et prépare le dialogue ELM327. */
 export async function connectObd(onStatus?: (s: string) => void): Promise<ObdLink> {
   const ble = await client()
@@ -79,7 +97,10 @@ export async function connectObd(onStatus?: (s: string) => void): Promise<ObdLin
   }
   if (!device) {
     onStatus?.('recherche')
-    device = await ble.requestDevice({ optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '000018f0-0000-1000-8000-00805f9b34fb'] })
+    // On cherche d'abord nous-mêmes le boîtier OBD (nom ou service connu) : s'il est seul, on s'y connecte sans montrer la
+    // liste du téléphone, où il se noie parmi les « Unknown » (iPhone de Franck, 13/11/2026). Sinon, liste du système.
+    const trouves = await chercherBoitiers(ble, 6000)
+    device = trouves.length === 1 ? trouves[0] : await ble.requestDevice({ optionalServices: SERVICES_OBD })
     onStatus?.('connexion')
     await ble.connect(device.deviceId, onDisconnect)
   }
@@ -185,7 +206,11 @@ export async function readVehicle(link: ObdLink, onStatus?: (s: string) => void,
   const temp = await val(0x05, E.coolant), regime = await val(0x0c, E.rpm)
   // Carburant : ce que dit la voiture, sinon son type d'allumage ; jamais la fiche (Olivier 06/11/2026).
   let carburant = await val(0x51, E.fuelType), carburant_source: 'voiture' | 'allumage' | null = carburant ? 'voiture' : null
-  if (!carburant && monitor?.allumage && sup.has(0x0c)) { carburant = monitor.allumage === 'compression' ? 'diesel' : 'essence'; carburant_source = 'allumage' }
+  // Allumage → carburant : seulement en CAN (≈ 2008 et après). Les anciens calculateurs (ISO 9141, KWP) ne remplissent pas ce
+  // bit : le VW Sharan 1.9 TDI de 2009 (D-0012/0013, 13/11/2026) se disait « essence », la liste des moteurs proposait de
+  // l'essence et la fiche aurait été corrigée à tort.
+  const enCan = /^[6-9A-C]$/.test(String(protocol || '').replace(/^A(?=.)/, ''))
+  if (!carburant && enCan && monitor?.allumage && sup.has(0x0c)) { carburant = monitor.allumage === 'compression' ? 'diesel' : 'essence'; carburant_source = 'allumage' }
   const volt = volt0 ?? await val(0x42, E.moduleVoltage)
 
   let freeze: ObdFreeze | null = null

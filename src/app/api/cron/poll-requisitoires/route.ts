@@ -30,8 +30,16 @@ async function handleGET(req: Request) {
       const { sendNotificationToRoles } = await import('@/lib/notifications/send')
       const err = infoForward?.error || (infoForward?.errors?.length ? infoForward.errors.join(' ; ') : null)
       const notify = (title: string, body: string) => sendNotificationToRoles(['superadmin'], 'cron_alert', { title, body, action_url: '/fourriere/requisitoires', data: { cron_error: 'true' } }).then(() => {})
-      if (err) await cronFailed('requisitoires-info-forward', String(err), 60 * 60_000, async () => notify('⚠️ Transfert des mails de police d’info@ en panne', `Les réquisitoires et levées arrivés dans info@ ne partent plus vers la fourrière depuis une heure : ${String(err).slice(0, 160)}`))
+      // Panne Microsoft (13/11/2026) : une seule alerte « Panne Microsoft », pas celle du robot.
+      // Pendant la panne, la panne du robot est effacée sans message : « Microsoft rétabli » couvrira le retour.
+      const ms = await import('@/lib/microsoft-outage')
+      if (err && ms.isMicrosoftOutageError(err)) {
+        await ms.noteMicrosoftDown(err)
+        await cronRecovered('requisitoires-info-forward', async () => {})
+      }
+      else if (err) await cronFailed('requisitoires-info-forward', String(err), 60 * 60_000, async () => notify('⚠️ Transfert des mails de police d’info@ en panne', `Les réquisitoires et levées arrivés dans info@ ne partent plus vers la fourrière depuis une heure : ${String(err).slice(0, 160)}`))
       else await cronRecovered('requisitoires-info-forward', async () => notify('✅ Transfert des mails de police rétabli', 'Les mails de police d’info@ repartent vers la fourrière.'))
+      if (!err || !ms.isMicrosoftOutageError(err)) await ms.noteMicrosoftUp()
     }
     // 1) Capture des nouveaux emails (+ auto-attache immédiate si match).
     const summary = await pollRequisitoires({ top: 25 })

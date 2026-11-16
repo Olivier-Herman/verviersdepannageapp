@@ -7,7 +7,7 @@
 // Type géré : `verification_parc` → un choix Présent / Absent par véhicule.
 // Olivier 2026-09-03.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import PinInput from '@/components/ui/PinInput'
@@ -25,6 +25,7 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'snc_dpr_request') return <SncDprModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
+  if (notif.notif_type === 'conges_en_attente') return <CongesModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
 }
@@ -464,6 +465,84 @@ function ParcVerificationModal({ notif, onDone }: { notif: NotifEvent; onDone: (
             className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold">
             {sending ? 'Envoi…' : 'Valider la vérification'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Demandes de congé en attente (Olivier 15/11/2026) ─────────────────────────
+// 10 h 45, jours ouvrables, chez Momo : chaque demande se valide ou se refuse ici, signée par son code personnel.
+// « Répondre plus tard » ferme l'écran ; il revient le lendemain à 10 h 45 tant qu'il reste une demande.
+// Les demandes déjà traitées entre-temps (autre écran, autre personne) n'apparaissent plus ; plus rien → l'écran se ferme.
+function CongesModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const initiales: { id: string; worker: string; typeLabel: string; start: string; end: string; days: number | null; reason: string | null }[] = notif.payload?.data?.demandes || []
+  const [demandes, setDemandes] = useState(initiales)
+  const [pin, setPin] = useState('')
+  const [sending, setSending] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [faites, setFaites] = useState<Record<string, 'approve' | 'refuse'>>({})
+  const fmt = (d: string) => { const [y, m, j] = d.split('-'); return `${j}/${m}/${y}` }
+  async function fermer() {
+    setSending('plus_tard')
+    try { await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rappel_ack: true }) }) } catch { /* fermé quand même */ }
+    onDone()
+  }
+  // À l'ouverture : on ne garde que les demandes encore en attente.
+  useEffect(() => {
+    fetch('/api/conges', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+      if (!j?.requests) return
+      const encore = new Set((j.requests as any[]).filter(r => r.status === 'pending').map(r => r.id))
+      setDemandes(ds => { const restent = ds.filter(d => encore.has(d.id)); if (!restent.length) void fermer(); return restent })
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  async function decider(id: string, decision: 'approve' | 'refuse') {
+    if (pin.length < 4) { setErr('Tape d’abord ton code personnel (4 chiffres).'); return }
+    setSending(id + decision); setErr(null)
+    try {
+      const r = await fetch('/api/conges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'decide', id, decision, pin }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible, réessaie.'); if (r.status === 403) setPin(''); return }
+      const next = { ...faites, [id]: decision }
+      setFaites(next)
+      if (demandes.every(d => next[d.id])) { setTimeout(() => { void fermer() }, 900) }
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  if (!demandes.length) return null
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-white border-4 border-sky-600 shadow-2xl">
+        <div className="bg-sky-600 text-white px-5 py-3 flex items-center gap-3">
+          <span className="text-2xl">🏖️</span>
+          <p className="flex-1 text-base font-bold leading-tight">{demandes.length > 1 ? `${demandes.length} demandes de congé en attente` : 'Une demande de congé en attente'}</p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {demandes.map(d => (
+            <div key={d.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
+              <p className="text-slate-900 font-semibold">{d.worker}</p>
+              <p className="text-sm text-slate-800">{d.typeLabel} · du {fmt(d.start)} au {fmt(d.end)}{d.days ? ` (${d.days} j)` : ''}</p>
+              {d.reason && <p className="text-sm text-slate-700">« {d.reason} »</p>}
+              {faites[d.id] ? (
+                <p className={`text-sm font-bold ${faites[d.id] === 'approve' ? 'text-emerald-800' : 'text-red-800'}`}>{faites[d.id] === 'approve' ? '✅ Validée' : '✖ Refusée'} — {d.worker.split(' ')[0]} est prévenu.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" disabled={!!sending} onClick={() => decider(d.id, 'approve')} className="min-h-[48px] rounded-xl bg-emerald-600 text-white font-bold disabled:opacity-50">{sending === d.id + 'approve' ? '…' : 'Valider'}</button>
+                  <button type="button" disabled={!!sending} onClick={() => decider(d.id, 'refuse')} className="min-h-[48px] rounded-xl bg-red-600 text-white font-bold disabled:opacity-50">{sending === d.id + 'refuse' ? '…' : 'Refuser'}</button>
+                </div>
+              )}
+            </div>
+          ))}
+          {demandes.some(d => !faites[d.id]) && (
+            <div>
+              <p className="text-sm font-semibold text-slate-900 mb-1">Ton code personnel (pour valider ou refuser) :</p>
+              <PinInput value={pin} onChange={v => { setPin(v); setErr(null) }} disabled={!!sending} className="h-14 rounded-xl border-2 border-slate-300 bg-white text-slate-900 text-3xl" ariaLabel="Code personnel" />
+            </div>
+          )}
+          {err && <p className="text-red-700 text-sm font-semibold">⚠ {err}</p>}
+          {demandes.some(d => !faites[d.id]) && (
+            <button type="button" disabled={!!sending} onClick={fermer} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Répondre plus tard (rappel demain à 10 h 45)</button>
+          )}
         </div>
       </div>
     </div>
