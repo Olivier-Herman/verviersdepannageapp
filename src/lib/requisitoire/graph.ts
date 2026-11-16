@@ -180,7 +180,7 @@ export async function getPhotoAttachments(mailbox: string, messageId: string): P
   for (const att of list.value || []) {
     const ctype = String(att.contentType || '').toLowerCase()
     const name = String(att.name || '')
-    const isPhoto = /image\/(jpe?g|png)/.test(ctype) || /\.(jpe?g|png)$/i.test(name)
+    const isPhoto = /image\/(jpe?g|pjpeg|png)/.test(ctype) || /\.(jpe?g|jfif|jpe|png)$/i.test(name)
     if (!isPhoto || att.isInline || Number(att.size || 0) < 80_000) continue
     let contentBytes: string | undefined = att.contentBytes
     if (!contentBytes) contentBytes = (await authedGet(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments/${att.id}`)).contentBytes

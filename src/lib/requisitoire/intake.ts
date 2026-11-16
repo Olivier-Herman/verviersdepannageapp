@@ -202,7 +202,10 @@ async function processMessage(
       ex = await extractRequisitoireFromPdf(pdf.contentBytes)
     } else if (photos.length > 0) {
       const ph = photos[0]
-      const safeName = ph.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'requisitoire.jpg'
+      // Une photo JPEG est rangée en .jpg, quel que soit son nom (.jfif, .jpe…) : le juge des documents n'accepte que
+      // PDF / JPG (Olivier 16/11/2026, BM242CK : réquisitoire « 26.11.14 - AUDI A4.jfif » resté sans fiche).
+      const base = ph.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'requisitoire'
+      const safeName = ph.contentType === 'image/jpeg' ? base.replace(/\.(jfif|jpe|jpeg|jpg)$/i, '') + '.jpg' : base
       docPath  = `_intake/${intakeId}/${safeName}`
       fileName = ph.name
       const { error: upErr } = await sb.storage.from(BUCKET).upload(docPath, Buffer.from(ph.contentBytes, 'base64'), { contentType: ph.contentType, upsert: false })
