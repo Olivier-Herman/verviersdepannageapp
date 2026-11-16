@@ -11,8 +11,10 @@ import { prepare, execute } from './execute'
 
 export interface Actor { id: string; name: string; isSuperadmin: boolean }
 
-/** Types qui préparent une facturation de vente : bloqués quand l'interrupteur général est sur off. */
-export const FACTURATION_KINDS: ProposalKind[] = ['note_credit', 'refacturation_avance']
+/** Types qui préparent une facturation de vente : bloqués quand l'interrupteur général est sur off.
+ *  La refacturation d'une avance de fonds n'en fait PAS partie : elle a lieu même facturation automatique en pause
+ *  (Olivier 16/11/2026). */
+export const FACTURATION_KINDS: ProposalKind[] = ['note_credit']
 
 /** Dépôt d'une proposition. Exécutée tout de suite si l'envoi direct est permis. */
 export async function submitProposal(agent: AgentAccount, body: any): Promise<{ id: string; status: string; note?: string; error?: string }> {
