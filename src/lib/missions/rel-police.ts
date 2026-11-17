@@ -142,7 +142,10 @@ export async function deciderRelPolice(sb: Sb, relId: string, user: { id: string
     payeurAvant = { id: (p as any).billed_to_id ?? null, name: (p as any).billed_to_name ?? null }
     const { data: legs } = await sb.from('incoming_missions').select('id, status, invoice_odoo_id').or(`id.eq.${p.id},and(parent_mission_id.eq.${p.id},dossier_leg.eq.true)`)
     const ids = (legs || []).filter((l: any) => !l.invoice_odoo_id && !['invoiced', 'cancelled', 'deleted'].includes(String(l.status))).map((l: any) => l.id)
-    if (ids.length) await sb.from('incoming_missions').update({ billed_to_id: m.billed_to_id, billed_to_name: m.billed_to_name, updated_at: now }).in('id', ids)
+    // La source reste celle de l'appel police (accident…) pour la refacturation : seuls le payeur et le n° de dossier de
+    // l'assistance passent sur la fiche (Olivier 17/11/2026, 1FEO036 / 2CLX890).
+    const dossier = String(m.dossier_number || '').trim() || null
+    if (ids.length) await sb.from('incoming_missions').update({ billed_to_id: m.billed_to_id, billed_to_name: m.billed_to_name, ...(dossier ? { dossier_number: dossier } : {}), updated_at: now }).in('id', ids)
   }
 
   await sb.from('incoming_missions').update({ rel_police: { ...rp, decision: choix, decided_at: now, decided_by: user.id, decided_by_name: user.name || null, payeur_avant: payeurAvant }, updated_at: now }).eq('id', m.id)
