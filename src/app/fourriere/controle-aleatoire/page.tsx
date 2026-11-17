@@ -9,7 +9,7 @@ import AppShell             from '@/components/layout/AppShell'
 
 export const dynamic = 'force-dynamic'
 const fr = (iso?: string | null) => iso ? new Date(iso).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
-const ETAT: Record<string, string> = { prevu: 'prévu', demande: 'à faire', en_cours: 'en cours', termine: 'terminé' }
+const ETAT: Record<string, string> = { prevu: 'prévu', demande: 'à faire', en_cours: 'en cours', termine: 'terminé', annule: 'annulé' }
 
 export default async function ControlesAleatoiresPage() {
   const session = await getServerSession(authOptions)

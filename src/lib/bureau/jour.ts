@@ -198,7 +198,7 @@ async function fourriere(sb: any): Promise<Bloc> {
   ])
   if (dernier) {
     const quand = new Date(dernier.prevu_at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })
-    const etat: Record<string, string> = { prevu: 'prévu', demande: 'pas encore fait', en_cours: 'en cours', termine: 'fait' }
+    const etat: Record<string, string> = { prevu: 'prévu', demande: 'pas encore fait', en_cours: 'en cours', termine: 'fait', annule: 'annulé' }
     lignes.push({ texte: `Contrôle aléatoire du ${quand} : ${etat[dernier.status] || dernier.status}${dernier.started_by_name ? ` (${dernier.started_by_name})` : ''}`, niveau: dernier.status === 'demande' ? 'attention' : 'info', lien: `/fourriere/controle-aleatoire/${dernier.id}` })
   }
   if (aChercher) lignes.push({ texte: `${aChercher} véhicule(s) pas trouvé(s) au contrôle aléatoire, à rechercher`, niveau: 'urgent', lien: '/fourriere/controle-aleatoire' })

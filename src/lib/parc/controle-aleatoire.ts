@@ -93,6 +93,14 @@ export async function tirerVehicules(sb: Sb, nb = NB): Promise<Tire[]> {
   return choisis.map(m => ({ mission_id: m.id, raison: info.get(m.id)!.txt.join(' · '), zone: m.parc_zone_key || null, vu_avant_at: m.vu_at || null }))
 }
 
+async function rangerParZone(sb: Sb, tires: Tire[]): Promise<Tire[]> {
+  const { data: zs } = await sb.from('parc_zones').select('key, sort_order')
+  const rang = new Map<string, number>((zs || []).map((z: any) => [String(z.key), Number(z.sort_order ?? 999)]))
+  return tires.map((t, i) => ({ t, i })).sort((a, b) =>
+    (rang.get(String(a.t.zone)) ?? 999) - (rang.get(String(b.t.zone)) ?? 999) || String(a.t.zone || '').localeCompare(String(b.t.zone || '')) || a.i - b.i,
+  ).map(x => x.t)
+}
+
 // ── Planning et envoi (tâche toutes les 5 min) ────────────────────────────────────────────────────────────────────
 async function destinataires(_sb: Sb): Promise<string[]> {
   const { getBusinessList } = await import('@/lib/settings/business')
@@ -126,7 +134,8 @@ export async function tickControleParc(sb: Sb, opts: { force?: boolean } = {}): 
   const group = `cp-${c.id}`
   const { data: pris } = await sb.from('parc_controles_aleatoires').update({ status: 'demande', demande_at: now.toISOString(), request_group: group }).eq('id', c.id).eq('status', 'prevu').select('id')
   if (!pris?.length) return { controle: c.id, deja: true }
-  const tires = await tirerVehicules(sb)
+  // Rangés par zone, dans l'ordre du parc (Olivier 17/11/2026 : « ne pas courir dans tous les sens dans le parking »).
+  const tires = await rangerParZone(sb, await tirerVehicules(sb))
   if (!tires.length) { await sb.from('parc_controles_aleatoires').update({ status: 'termine', termine_at: now.toISOString() }).eq('id', c.id); return { controle: c.id, vide: true } }
   await sb.from('parc_aleatoire_items').insert(tires.map((t, i) => ({ controle_id: c.id, mission_id: t.mission_id, ordre: i + 1, raison: t.raison, zone_attendue: t.zone, vu_avant_at: t.vu_avant_at })))
   const users = await destinataires(sb)
