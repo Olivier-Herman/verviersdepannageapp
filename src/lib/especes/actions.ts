@@ -14,6 +14,7 @@ import bcrypt from 'bcryptjs'
 import { createAdminClient } from '@/lib/supabase'
 import { getBusinessList, getBusinessText } from '@/lib/settings/business'
 import { encodeCashLine, scradaConfigured } from './scrada'
+import { copieLivreHoos } from './hoos-caisse'
 import { sendPushToUsers } from '@/lib/push'
 
 const TZ = 'Europe/Brussels'
@@ -149,6 +150,7 @@ export async function momoConfirm(userId: string, ids: number[], pin: string): P
         const lineId = await encodeCashLine(it, now, typeId)
         await sb.from('cash_handover_items').update({ status: 'encoded', encoded_at: new Date().toISOString(), scrada_line_id: lineId || null, last_error: null }).eq('odoo_payment_id', it.odoo_payment_id)
         out.encoded++
+        await copieLivreHoos(it, now)   // essai livre de caisse HOOS : jamais bloquant
       } catch (e: any) {
         await sb.from('cash_handover_items').update({ last_error: String(e?.message || e).slice(0, 300) }).eq('odoo_payment_id', it.odoo_payment_id)
         out.errors.push(`${it.payment_name} : Scrada — ${e?.message || e}`)
@@ -173,6 +175,7 @@ export async function encodeConfirmedBacklog(): Promise<{ encoded: number; error
       const lineId = await encodeCashLine(it, it.confirmed_at, typeId)
       await sb.from('cash_handover_items').update({ status: 'encoded', encoded_at: new Date().toISOString(), scrada_line_id: lineId || null, last_error: null }).eq('odoo_payment_id', it.odoo_payment_id).eq('status', 'confirmed')
       out.encoded++
+      await copieLivreHoos(it, it.confirmed_at)   // essai livre de caisse HOOS : jamais bloquant
     } catch (e: any) {
       await sb.from('cash_handover_items').update({ last_error: `Scrada — ${String(e?.message || e).slice(0, 280)}` }).eq('odoo_payment_id', it.odoo_payment_id)
       out.errors.push(`${it.payment_name} : ${e?.message || e}`)
