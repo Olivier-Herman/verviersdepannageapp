@@ -33,7 +33,17 @@ export async function runRead(kind: ReadKind, company: number, q: URLSearchParam
     // Ce que montre Finance › Réconciliation, en léger (lot 2, 05/10/2026) : de quoi
     // proposer un rapprochement_bouton, ou comprendre pourquoi un versement est grisé.
     const [{ buildMatchReport }, { buildSumupMatchReport }, { buildAdviceReport }] = await Promise.all([import('@/lib/paynovate-match'), import('@/lib/sumup-match'), import('@/lib/advice-match')])
-    const [pn, su, adv] = await Promise.all([buildMatchReport(5), buildSumupMatchReport(5), buildAdviceReport(2)])
+    // Une source en panne ne bloque plus les autres (17/11/2026 : Paynovate injoignable → SumUp et assureurs restaient
+    // sans rapprochement). La source en panne apparaît comme une ligne « à trancher » avec son motif.
+    const pannes: any[] = []
+    const sur = async <T,>(nom: string, f: () => Promise<T>, vide: T): Promise<T> => {
+      try { return await f() } catch (e: any) { pannes.push({ source: nom, id: null, date: new Date().toISOString().slice(0, 10), montant: null, etat: 'à trancher', motif: `lecture impossible : ${String(e?.message || e).slice(0, 200)}`, references: [] }); return vide }
+    }
+    const [pn, su, adv] = await Promise.all([
+      sur('paynovate', () => buildMatchReport(5), { payouts: [], unmatched: [] } as any),
+      sur('sumup', () => buildSumupMatchReport(5), { payouts: [], unmatched: [] } as any),
+      sur('assureur', () => buildAdviceReport(2), { items: [] } as any),
+    ])
     const etat = (s: string) => (s === 'ready' || s === 'lost' ? 'prêt' : 'à trancher')
     const payouts = (source: 'paynovate' | 'sumup', r: any) => (r.payouts || []).map((p: any) => ({
       source, id: p.paymentId, date: p.bankDate, montant: p.bankAmount, brut: p.grossAmount, etat: etat(p.state), motif: p.blocking?.[0] || null,
@@ -48,7 +58,7 @@ export async function runRead(kind: ReadKind, company: number, q: URLSearchParam
     const orphelines = ([['paynovate', pn], ['sumup', su]] as const).flatMap(([source, r]: any) => (r.unmatched || []).map((u: any) => ({
       source, id: null, ligne_id: u.bankLineId, date: u.date, montant: u.amount, etat: 'à trancher', motif: u.reason || 'aucun versement reconnu', references: [u.label].filter(Boolean),
     })))
-    return [...payouts('paynovate', pn), ...payouts('sumup', su), ...assureurs, ...orphelines]
+    return [...pannes, ...payouts('paynovate', pn), ...payouts('sumup', su), ...assureurs, ...orphelines]
       .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
   }
 
