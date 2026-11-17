@@ -30,6 +30,25 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 const SESSION_KEY     = 'paynovate_session'
 const SESSION_TTL_MIN = 45
 
+// Depuis le 16/11/2026, portal.paynovate.com est derrière le pare-feu d'Amazon (défi JavaScript, réponse 202
+// « x-amzn-waf-action: challenge »). Avec l'accord d'Olivier (17/11/2026), un navigateur obtient le cookie aws-waf-token
+// (valable ~4 jours), rangé dans app_settings ; on le présente à chaque appel du portail.
+const WAF_KEY = 'paynovate_waf_token'
+async function injectWaf(jar: Map<string, Map<string, string>>): Promise<void> {
+  try {
+    const { data } = await createAdminClient().from('app_settings').select('value').eq('key', WAF_KEY).maybeSingle()
+    const v = JSON.parse(String((data as any)?.value || 'null'))
+    if (!v?.token) return
+    const bucket = jar.get('portal.paynovate.com') ?? new Map<string, string>()
+    bucket.set('aws-waf-token', String(v.token))
+    jar.set('portal.paynovate.com', bucket)
+  } catch { /* pas de jeton : l'appel échouera avec un message clair */ }
+}
+/** Range le jeton obtenu par le navigateur (script ou serveur de secours). */
+export async function setPaynovateWafToken(token: string, expires: string | null): Promise<void> {
+  await createAdminClient().from('app_settings').upsert({ key: WAF_KEY, value: JSON.stringify({ token, expires, at: new Date().toISOString() }) }, { onConflict: 'key' })
+}
+
 // ── Types ───────────────────────────────────────────────────
 
 export interface PaynovateCustomer {
@@ -187,6 +206,14 @@ async function login(): Promise<Jar> {
   if (/these credentials|identifiants|invalid|incorrect/i.test(landing)) {
     throw new Error('Paynovate : identifiants refusés')
   }
+  // Depuis novembre 2026, l'auth server s'arrête sur « choose one application » (/select-client) : on suit le lien
+  // « Paynovate portal » (oauth/authorize → portal.paynovate.com/auth/callback) pour ouvrir la session du portail.
+  await injectWaf(jar)
+  if (/select-client/.test(res.url) || /choose one application/i.test(landing)) {
+    const href = landing.match(/href="([^"]*oauth\/authorize[^"]*portal\.paynovate\.com[^"]*)"/)?.[1]
+    if (!href) throw new Error('Paynovate : lien « Paynovate portal » introuvable sur la page de choix d’application')
+    await hop(href.replace(/&amp;/g, '&'), jar, { headers: { Referer: `${AUTH_BASE}/select-client` } })
+  }
 
   await writeCachedJar(jar)
   return jar
@@ -201,6 +228,7 @@ async function authed(
   opts: { xhr?: boolean; jar?: Jar } = {},
 ): Promise<{ res: Response; jar: Jar }> {
   let current = opts.jar ?? (await readCachedJar()) ?? (await login())
+  await injectWaf(current)
 
   // Sans ces en-têtes, Laravel renvoie la page HTML au lieu du JSON.
   const extra: Record<string, string> = opts.xhr

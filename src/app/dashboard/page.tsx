@@ -5,6 +5,7 @@ import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import DashboardClient       from './DashboardClient'
 import { readWorkMode }       from '@/lib/work-mode'
+import { accesPaiements }     from '@/lib/paiements/acces'
 
 export const dynamic  = 'force-dynamic'
 export const revalidate = 0
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
       session={session}
       hasTowsoft={!!dbUser?.towsoft_name}
       enChauffeur={(await readWorkMode(user)).mode === 'chauffeur'}
+      accesPaiements={(await accesPaiements(session)).lot}
     />
   )
 }

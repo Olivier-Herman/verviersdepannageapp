@@ -53,6 +53,8 @@ interface ModuleItem {
 const MAIN_ACTIONS: ActionItem[] = [
   // Olivier 17/10/2026 : la réunion bureau en un écran — Mobi seul (superadmin), ni Momo ni Jona.
   { id: 'bureau_du_jour',  label: 'Bureau du jour',         subtitle: 'Agents · mails · états de frais · paiements', href: '/bureau-du-jour', icon: '🗂️', color: 'brand' },
+  // Olivier 17/11/2026 : accès direct aux paiements fournisseurs (Mobi : tri ; Momo : lot du jour de 14 h 30).
+  { id: 'paiements',       label: 'Paiements',              subtitle: 'Factures à payer · lot du jour', href: '/paiements', icon: '🏦', color: 'success' },
   // Olivier 18/10/2026 : inventaire terrain des véhicules sans étiquette (tablette).
   { id: 'releve_parc',     label: 'Relevé sans étiquette',  subtitle: 'Inventaire du parc · plaque ou châssis', href: '/fourriere/releve', icon: '📋', color: 'warning' },
   { id: 'police_mission',  label: 'Créer une mission',      subtitle: 'Police · Saisie · Mal Garée · SNC', href: '/mission/police', icon: '🚨', color: 'brand',   i18nKey: 'dashboard.tile_police_label',   i18nSubKey: 'dashboard.tile_police_subtitle' },
@@ -85,10 +87,12 @@ const MODULES: ModuleItem[] = [
 export default function DashboardClient({
   session,
   hasTowsoft = false,
+  accesPaiements = false,
   enChauffeur = false,
 }: {
   session: Session
   hasTowsoft?: boolean
+  accesPaiements?: boolean
   enChauffeur?: boolean
 }) {
   // Mode Chauffeur (Olivier 05/11/2026) : l'accueil d'un chauffeur.
@@ -115,6 +119,7 @@ export default function DashboardClient({
     if (id === 'matthieu')       return userRole !== 'garage' && userRole !== 'partner'   // tout le personnel
     if (id === 'police_mission') return hasTowsoft
     if (id === 'check_vehicle' || id === 'truck_check') return userRole !== 'garage' && userRole !== 'partner'   // check camion : tout le personnel (30/09/2026)
+    if (id === 'paiements')      return accesPaiements && !enChauffeur
     if (id === 'bureau_du_jour') return userRole === 'superadmin' || (Array.isArray(sessionUser.roles) && sessionUser.roles.includes('superadmin'))
     if (id === 'admin')          return isAdmin && userModules.includes('admin')
     if (id === 'gardiennage_arrivee') return isAdmin || userModules.includes('fourriere')

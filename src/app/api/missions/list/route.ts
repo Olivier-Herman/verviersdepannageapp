@@ -54,7 +54,7 @@ export async function GET(req: Request) {
       invoice_method, invoice_number,
       requested_by_garage_id,
       kaze_cancelled_after_accept,
-      is_rollable,
+      is_rollable, transport_priorite,
       needs_siabis_decision,
       paused_at, pause_until, pause_reason, transfer_to, pause_released_at,
       assigned_user:users!assigned_to(id, name, avatar_url),

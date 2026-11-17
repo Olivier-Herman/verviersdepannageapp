@@ -60,6 +60,8 @@
     { "path": "/api/cron/journal-mobi",              "schedule": "0 2 * * *" },
     { "path": "/api/cron/paiements-lot",             "schedule": "30 11,12,13 * * 1-5" },
     { "path": "/api/cron/conges-rappel",             "schedule": "45 8,9 * * 1-5" },
+    { "path": "/api/cron/controle-parc",             "schedule": "*/5 8-14 * * 2,4,6" },
+    { "path": "/api/cron/conges-rappel?creneau=apres-midi", "schedule": "15 12,13 * * 1-5" },
     { "path": "/api/cron/zone-t",                    "schedule": "15 5 * * *" },
     { "path": "/api/cron/rappel-fiches-ouvertes",    "schedule": "15 * * * *" },
     { "path": "/api/cron/circuit-weekly-reminder",   "schedule": "0 10,11 * * 1"   },

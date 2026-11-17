@@ -7,7 +7,9 @@ import Installer from '../_ui/Installer'
 
 export interface CompteEspace { id: string; nom: string; email: string; role: 'societe' | 'gestionnaire' | 'collaborateur'; peutInviter: boolean; aMotDePasse: boolean; mesClients: boolean }
 export interface GarageEspace { nom: string; adresse: string; lat: number | null; lng: number | null }
-export interface SocieteEspace { id: string; nom: string; couleur: string | null; garages: GarageEspace[] }
+export interface SocieteEspace { id: string; nom: string; couleur: string | null; formulaire: 'standard' | 'transport'; garages: GarageEspace[] }
+/** Compte dont toutes les sociétés commandent des transports (TGR) : les libellés parlent de « transports ». */
+export const toutTransport = (societes: SocieteEspace[]) => societes.length > 0 && societes.every(s => s.formulaire === 'transport')
 const Ctx = createContext<{ compte: CompteEspace; societes: SocieteEspace[] } | null>(null)
 export const useEspace = () => useContext(Ctx)!
 
@@ -16,7 +18,7 @@ export default function EspaceShell({ compte, societes, children }: { compte: Co
   const [menu, setMenu] = useState(false)
   const [mdp, setMdp] = useState(false)
   const onglets = [
-    { href: '/espace', label: 'Mes interventions', court: 'Suivi' },
+    { href: '/espace', label: toutTransport(societes) ? 'Mes transports' : 'Mes interventions', court: 'Suivi' },
     { href: '/espace/nouvelle', label: 'Commander', court: 'Commander' },
     ...(compte.mesClients ? [{ href: '/espace/clients', label: 'Mes clients', court: 'Clients' }] : []),
     ...(compte.peutInviter ? [{ href: '/espace/equipe', label: 'Mon équipe', court: 'Équipe' }] : []),

@@ -179,6 +179,11 @@ export async function importComexByRefs(opts: {
     await supabase.from('incoming_missions')
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq('id', placeholderId)
+    // Même règle que la création directe ci-dessous : un remorquage d'un véhicule déjà au parc est mis en réserve sur
+    // le dossier. Ce chemin (placeholder du mail) l'oubliait (1FEO036, 16/11/2026 : commande Touring non rattachée à la
+    // fiche police au parc).
+    const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
+    await reserveTowForParkedVehicle({ sb: supabase, missionId: placeholderId, actorName: 'rattaché automatiquement à la réception du mail Touring' })
     return { matched: true, missionId: placeholderId, externalId, action: 'created' }
   }
 

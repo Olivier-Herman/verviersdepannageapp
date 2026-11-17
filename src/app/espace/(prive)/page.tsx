@@ -2,8 +2,8 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useEspace } from './EspaceShell'
-import { Frise, IMG, IcoDoc, IcoPin, IcoPlus, Pastille, Plaque, Progression, jour, typeLibelle, type MissionEspace } from '../_ui/suivi'
+import { toutTransport, useEspace } from './EspaceShell'
+import { Frise, IMG, IcoDoc, IcoPin, IcoPlus, Pastille, PastillePriorite, Plaque, Progression, jour, typeLibelle, type MissionEspace } from '../_ui/suivi'
 
 type Filtre = 'cours' | 'finies' | 'toutes'
 const finieOuAnnulee = (m: MissionEspace) => m.suivi.ton === 'fini' || m.suivi.ton === 'annule'
@@ -40,6 +40,8 @@ export default function Suivi() {
     mois: toutes.filter(m => m.suivi.ton === 'fini' && m.suivi.termineeLe && new Date(m.suivi.termineeLe) >= debutMois).length,
   }
   const h = new Date().getHours()
+  // Compte qui ne commande que des transports (TGR) : les textes parlent de transports.
+  const tr = toutTransport(societes)
   const detail = ouverte ? (missions || []).find(m => m.id === ouverte) || null : null
 
   return (
@@ -49,9 +51,9 @@ export default function Suivi() {
         <div className="wrap">
           <div className="rise">
             <div className="hello">{h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir'} {compte.nom.split(/\s+/)[0]}</div>
-            <h1>Vos interventions,<br />en direct.</h1>
-            <p>Suivez chaque dépannage de la demande jusqu’à la livraison. Rapports et factures au même endroit.</p>
-            <Link href="/espace/nouvelle" className="btn btn-red" style={{ marginTop: 14 }}><IcoPlus /> Commander une intervention</Link>
+            <h1>{tr ? 'Vos transports,' : 'Vos interventions,'}<br />en direct.</h1>
+            <p>{tr ? 'Suivez chaque transport de la demande jusqu’à la livraison.' : 'Suivez chaque dépannage de la demande jusqu’à la livraison.'} Rapports et factures au même endroit.</p>
+            <Link href="/espace/nouvelle" className="btn btn-red" style={{ marginTop: 14 }}><IcoPlus /> {tr ? 'Commander un transport' : 'Commander une intervention'}</Link>
           </div>
           <div className="kpis">{([['En cours', kpi.cours], ['En attente', kpi.attente], ['Terminées ce mois', kpi.mois]] as [string, number][]).map(([l, v], i) => <Kpi key={l} label={l} valeur={v} delai={120 + i * 90} />)}</div>
         </div>
@@ -80,9 +82,9 @@ export default function Suivi() {
           <div className="card empty rise">
             <img src={IMG.vide} alt="" />
             <div>
-              <h3 style={{ fontSize: 22 }}>{filtre === 'cours' ? 'Aucune intervention en cours' : 'Rien à afficher ici'}</h3>
-              <p style={{ color: 'var(--ink2)' }}>{filtre === 'cours' ? 'Tout roule. Besoin d’un dépannage ou d’un remorquage ? Nous arrivons.' : 'Changez de filtre ou de recherche.'}</p>
-              {filtre === 'cours' && <Link href="/espace/nouvelle" className="btn btn-red">Commander une intervention</Link>}
+              <h3 style={{ fontSize: 22 }}>{filtre === 'cours' ? (tr ? 'Aucun transport en cours' : 'Aucune intervention en cours') : 'Rien à afficher ici'}</h3>
+              <p style={{ color: 'var(--ink2)' }}>{filtre === 'cours' ? (tr ? 'Un véhicule à faire transporter ? Commandez-le ici, nous nous en occupons.' : 'Tout roule. Besoin d’un dépannage ou d’un remorquage ? Nous arrivons.') : 'Changez de filtre ou de recherche.'}</p>
+              {filtre === 'cours' && <Link href="/espace/nouvelle" className="btn btn-red">{tr ? 'Commander un transport' : 'Commander une intervention'}</Link>}
             </div>
           </div>
         ))}
@@ -93,6 +95,10 @@ export default function Suivi() {
     </>
   )
 }
+
+/** « mardi 17 novembre, avant midi » : l'échéance d'un transport, sans heure de pointage. */
+const echeanceLisible = (iso: string, priorite: 1 | 2 | 3) =>
+  `${new Date(iso).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'long', day: 'numeric', month: 'long' })}, ${priorite === 1 ? 'avant midi' : 'dans la journée'}`
 
 function Kpi({ label, valeur, delai }: { label: string; valeur: number; delai: number }) {
   const [v, setV] = useState(0)
@@ -112,12 +118,12 @@ function Carte({ m, i, onOpen }: { m: MissionEspace; i: number; onOpen: () => vo
         <span className="m-ico"><img src={m.suivi.type === 'DSP' ? IMG.dsp : IMG.rem} alt="" /></span>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><Plaque v={m.plaque} /><span className="veh">{m.vehicule}</span></div>
-          <div className="sub">{typeLibelle(m.suivi.type)} · n° {m.numero}</div>
+          <div className="sub">{m.transport ? 'Transport TGR' : typeLibelle(m.suivi.type)} · n° {m.numero}{m.transport && m.reference ? ` · ${m.reference}` : ''}</div>
         </div>
       </div>
       <div className="addr"><IcoPin /><span>{m.adresse}</span></div>
       <Progression etapes={m.suivi.etapes} annulee={m.suivi.ton === 'annule'} />
-      <div className="row"><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} /><span className="when">Demandée {jour(m.recueLe)}</span></div>
+      <div className="row"><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} />{m.transport && <PastillePriorite p={m.transport.priorite} />}<span className="when">Demandée {jour(m.recueLe)}</span></div>
       {(m.rapport || m.facture || m.photos.length > 0) && (
         <div className="docs">{m.rapport && <span>Rapport</span>}{m.facture && <span className="f">Facture {m.facture.numero}</span>}{m.photos.length > 0 && <span>Photos</span>}</div>
       )}
@@ -145,12 +151,12 @@ function Detail({ m, onClose, onChange }: { m: MissionEspace; onClose: () => voi
           <img src={m.suivi.type === 'DSP' ? IMG.dsp : IMG.rem} alt="" />
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <div>
-              <div className="sub" style={{ color: '#ffcfb4' }}>{typeLibelle(m.suivi.type)} · n° {m.numero}</div>
+              <div className="sub" style={{ color: '#ffcfb4' }}>{m.transport ? 'Transport TGR' : typeLibelle(m.suivi.type)} · n° {m.numero}</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}><Plaque v={m.plaque} /><span className="disp" style={{ fontSize: 20, fontWeight: 800 }}>{m.vehicule}</span></div>
             </div>
             <button className="x" onClick={onClose} aria-label="Fermer">✕</button>
           </div>
-          <div style={{ marginTop: 14 }}><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} /></div>
+          <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}><Pastille ton={m.suivi.ton} libelle={m.suivi.libelle} />{m.transport && <PastillePriorite p={m.transport.priorite} />}</div>
         </div>
 
         <div className="card sec" style={{ padding: 18 }}><h3>Suivi</h3><Frise etapes={m.suivi.etapes} /></div>
@@ -158,13 +164,15 @@ function Detail({ m, onClose, onChange }: { m: MissionEspace; onClose: () => voi
         <div className="card sec" style={{ padding: 18 }}>
           <h3>Détails</h3>
           <dl className="kv">
-            <dt>Lieu d’intervention</dt><dd>{m.adresse}</dd>
+            <dt>{m.transport ? 'Prise en charge' : 'Lieu d’intervention'}</dt><dd>{m.adresse}</dd>
             {m.destination && <><dt>Livraison</dt><dd>{m.destination}</dd></>}
             <dt>Demandée</dt><dd>{jour(m.recueLe)}</dd>
-            {m.prevuLe && <><dt>Prévue</dt><dd>{jour(m.prevuLe)}</dd></>}
+            {m.prevuLe && !m.transport && <><dt>Prévue</dt><dd>{jour(m.prevuLe)}</dd></>}
+            {m.transport && <><dt>Échéance</dt><dd>{m.transport.echeance ? echeanceLisible(m.transport.echeance, m.transport.priorite) : 'Dès que possible'}</dd></>}
+            {m.transport && m.transport.roulant != null && <><dt>Véhicule</dt><dd>{m.transport.roulant ? 'Il roule' : 'Il ne roule pas'}</dd></>}
             {m.panne && <><dt>Panne signalée</dt><dd>{m.panne}</dd></>}
-            {m.contact && <><dt>Contact sur place</dt><dd>{m.contact.nom}{m.contact.tel && <> · <a href={`tel:${m.contact.tel.replace(/\s/g, '')}`} style={{ color: 'var(--red)' }}>{m.contact.tel}</a></>}</dd></>}
-            {m.reference && <><dt>Votre référence</dt><dd>{m.reference}</dd></>}
+            {m.contact && <><dt>{m.transport ? 'À prévenir à la livraison' : 'Contact sur place'}</dt><dd>{m.contact.nom}{m.contact.tel && <> · <a href={`tel:${m.contact.tel.replace(/\s/g, '')}`} style={{ color: 'var(--red)' }}>{m.contact.tel}</a></>}</dd></>}
+            {m.reference && <><dt>{m.transport ? 'Dossier Touring' : 'Votre référence'}</dt><dd>{m.reference}</dd></>}
             {m.commandePar && <><dt>Commandée par</dt><dd>{m.commandePar}</dd></>}
             {m.societe && <><dt>Société</dt><dd>{m.societe.nom}</dd></>}
           </dl>

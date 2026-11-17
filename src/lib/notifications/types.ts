@@ -675,6 +675,34 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Commande d'assistance pour un véhicule au parc sur appel police (Olivier 16/11/2026, 1FEO036) : fenêtre au
+    // dispatch, relivraison avec ou sans prise en charge de l'appel police, ou mission à part. Cf lib/missions/rel-police.ts.
+    key:             'rel_police_a_trancher',
+    label:           'Véhicule au parc sur appel police : commande d’assistance',
+    description:     'Une assistance commande un véhicule qu’on garde après un appel police : relivraison ou mission à part ?',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    // Contrôle aléatoire du parc (Olivier 17/11/2026) : fenêtre au bureau (15 véhicules, repousser 15 min).
+    key:             'controle_parc_aleatoire',
+    label:           'Contrôle aléatoire du parc',
+    description:     'Mardi, jeudi et samedi : 15 véhicules du parc à scanner avec le téléphone.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
+    // … et la notification sur le téléphone de celui qui lance le contrôle : ouvre les scans un par un.
+    key:             'controle_parc_scan',
+    label:           'Contrôle du parc : scans à faire',
+    description:     'Ouvre les scans du contrôle aléatoire du parc sur le téléphone.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     // Talkie « Garde de nuit » (Olivier 30/09/2026) : message reçu alors que le talkie
     // n'était pas ouvert. Cf /talkie et /api/talkie/messages.
     key:             'talkie_message',

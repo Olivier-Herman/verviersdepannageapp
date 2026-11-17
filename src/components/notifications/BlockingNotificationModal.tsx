@@ -24,10 +24,141 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'siabis_couvert_request') return <SiabisCouvertModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'snc_dpr_request') return <SncDprModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'rel_police_a_trancher') return <RelPoliceModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'controle_parc_aleatoire') return <ControleParcModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'conges_en_attente') return <CongesModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
+}
+
+// ── Contrôle aléatoire du parc (Olivier 17/11/2026, maquette 1DStEWrJtFLfHRLRe3E2Dv validée) ──
+// 15 véhicules à scanner : « Faire le contrôle avec mon téléphone » (le premier qui lance le prend) ou « Repousser de
+// 15 min ». Pas de fermeture : la fenêtre suit ensuite le contrôle en direct et se ferme quand il est terminé.
+function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDone: () => void; onSnooze?: (minutes: number) => void }) {
+  const id = String(notif.payload?.data?.controle_id || '')
+  const [d, setD] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const charger = async () => {
+    try { const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { cache: 'no-store' }); const j = await r.json(); if (r.ok) setD(j); else setErr(j.error || 'Contrôle illisible') } catch { setErr('Erreur réseau') }
+  }
+  useEffect(() => { charger(); const t = setInterval(charger, 5000); return () => clearInterval(t) }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
+  async function lancer() {
+    setBusy(true); setErr(null)
+    try { const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) }); const j = await r.json(); if (!r.ok) setErr(j.error || 'Lancement impossible'); await charger() } catch { setErr('Erreur réseau') } finally { setBusy(false) }
+  }
+  const c = d?.controle, items: any[] = d?.items || []
+  const faits = items.filter(i => i.resultat).length, absents = items.filter(i => i.resultat === 'absent').length
+  const parAutre = c?.status === 'en_cours' && c.started_by && c.started_by !== d?.moi
+  return (
+    <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+      <div className="w-full max-w-2xl rounded-2xl bg-white border-4 border-sky-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-700">Contrôle aléatoire du parc</p>
+          <p className="text-lg font-bold text-slate-900">{c?.status === 'termine' ? `Contrôle terminé : ${faits - absents} présent(s), ${absents} pas trouvé(s)` : c?.status === 'en_cours' ? `Contrôle en cours ${parAutre ? `par ${c.started_by_name || 'un collègue'}` : 'sur ton téléphone'} : ${faits} / ${items.length}` : `${items.length || 15} véhicules à scanner`}</p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {!d && !err && <p className="text-sm text-slate-700">Chargement…</p>}
+          {items.length > 0 && (
+            <div className="max-h-[45vh] overflow-y-auto overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-700"><tr><th className="text-left px-3 py-2">Véhicule</th><th className="text-left px-3 py-2">Doit être en</th><th className="text-left px-3 py-2">{c?.status === 'demande' ? 'Pourquoi lui' : 'Résultat'}</th></tr></thead>
+                <tbody>{items.map(i => (
+                  <tr key={i.id} className="border-t border-slate-200 align-top">
+                    <td className="px-3 py-2"><span className="font-bold text-slate-900">{i.fiche?.vehicle_plate || 'sans plaque'}</span><br /><span className="text-xs text-slate-700">{[i.fiche?.vehicle_brand, i.fiche?.vehicle_model].filter(Boolean).join(' ')}</span></td>
+                    <td className="px-3 py-2"><span className="inline-block rounded-lg bg-sky-50 text-sky-800 font-bold px-2">{i.zone_attendue || '?'}</span></td>
+                    <td className="px-3 py-2 text-slate-700">{c?.status === 'demande' ? i.raison : i.resultat === 'present' ? '✅ présent' : i.resultat === 'autre_zone' ? `↪ en zone ${i.zone_trouvee}` : i.resultat === 'absent' ? '❌ pas trouvé' : '…'}</td>
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          )}
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          {c?.status === 'demande' && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={busy} onClick={lancer} className="min-h-[52px] rounded-xl bg-sky-700 text-white font-bold px-3">{busy ? '…' : '📱 Faire le contrôle avec mon téléphone'}</button>
+              <button type="button" disabled={busy} onClick={() => onSnooze?.(15)} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min</button>
+            </div>
+          )}
+          {c?.status === 'en_cours' && !parAutre && <p className="text-sm text-slate-700">La notification est partie sur ton téléphone : ouvre-la pour scanner les véhicules un par un. Cette fenêtre se met à jour toute seule.</p>}
+          {(c?.status === 'termine' || parAutre) && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {absents > 0 && <a href={`/fourriere/controle-aleatoire/${id}`} className="min-h-[52px] rounded-xl bg-red-600 text-white font-bold px-3 inline-flex items-center justify-center">Rechercher les {absents} pas trouvé(s)</a>}
+              <button type="button" onClick={onDone} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">Fermer</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Véhicule au parc sur appel police (Olivier 16/11/2026, 1FEO036, maquette L3vU8S8RcApgXaXDBUswf5 validée) ──
+// Une assistance commande un véhicule qu'on garde après un appel police : relivraison (avec ou sans prise en charge de
+// l'appel police) ou mission à part. Le premier qui répond décide ; ✕ = « je décide plus tard » (l'alerte reste au dispatch).
+function RelPoliceModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const d = notif.payload?.data || {}
+  const [sending, setSending] = useState<null | string>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function send(choix: 'rel_pec' | 'rel' | 'isolee' | 'plus_tard') {
+    setSending(choix); setErr(null)
+    try {
+      const r = await fetch(`/api/notifications/${notif.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rel_police: choix }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(j.error || 'Envoi impossible'); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setSending(null) }
+  }
+  const entree = d.parent_entree ? new Date(d.parent_entree).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }) : '—'
+  const options: { k: 'rel_pec' | 'rel' | 'isolee'; titre: string; effet: string }[] = [
+    { k: 'rel_pec', titre: `La relivraison, et ${d.source || 'l’assistance'} prend aussi en charge l’appel police`, effet: `Rattachée au dossier. Le remorquage police et le gardiennage passent au nom de ${d.source || 'l’assistance'}.` },
+    { k: 'rel', titre: 'La relivraison seulement', effet: 'Rattachée au dossier. L’appel police et le gardiennage restent facturés comme prévu.' },
+    { k: 'isolee', titre: 'Une mission à part, sans lien avec ce véhicule', effet: 'Rien n’est rattaché. La mission reste dans le dispatch comme une mission normale.' },
+  ]
+  return (
+    <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+      <div className="w-full max-w-xl rounded-2xl bg-white border-4 border-amber-500 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-700">Nouvelle mission {d.source || ''}</p>
+            <p className="text-lg font-bold leading-tight text-slate-900">{d.plate || 'Ce véhicule'} est déjà au parc après un appel police</p>
+          </div>
+          <button type="button" aria-label="Décider plus tard" disabled={!!sending} onClick={() => send('plus_tard')} className="shrink-0 w-11 h-11 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-lg">✕</button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl bg-indigo-50 px-4 py-3 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-800">Au parc · {d.parent_source || 'appel police'}</p>
+              <p className="font-bold text-slate-900">#{d.parent_number}{d.parent_dossier ? ` · ${d.parent_dossier}` : ''}</p>
+              <p className="text-sm text-slate-700">{d.parent_lieu || '—'}</p>
+              <p className="text-sm text-slate-700">Entré le {entree} · {d.parent_nuits ?? 0} nuit{d.parent_nuits === 1 ? '' : 's'}{d.parent_zone ? ` · zone ${d.parent_zone}` : ''}{d.parent_facture ? ' · déjà facturé' : ''}</p>
+            </div>
+            <div className="rounded-xl bg-sky-50 px-4 py-3 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-800">Nouvelle commande · {d.source || 'assistance'}</p>
+              <p className="font-bold text-slate-900">#{d.mission_number}{d.ref ? ` · ${d.ref}` : ''}</p>
+              <p className="text-sm text-slate-700">De : {d.rel_depart || '—'}</p>
+              <p className="text-sm text-slate-700">Vers : {d.rel_destination || '—'}</p>
+            </div>
+          </div>
+          {Array.isArray(d.concordances) && d.concordances.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-sm text-slate-700 items-center">Concordances :{d.concordances.map((c: string) => <span key={c} className="rounded-full bg-emerald-50 text-emerald-800 font-semibold px-2.5 py-0.5">{c}</span>)}</div>
+          )}
+          <p className="font-bold text-slate-900">Cette commande, c’est quoi ?</p>
+          <div className="grid gap-2">
+            {options.map((o, i) => (
+              <button key={o.k} type="button" disabled={!!sending} onClick={() => send(o.k)}
+                className={`text-left rounded-xl border-2 px-4 py-3 min-h-[52px] ${i === 0 ? 'border-amber-500' : 'border-slate-300'} hover:border-amber-600 disabled:opacity-60`}>
+                <span className="block font-bold text-slate-900">{sending === o.k ? '…' : o.titre}</span>
+                <span className="block text-sm text-slate-700">{o.effet}</span>
+              </button>
+            ))}
+          </div>
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          <button type="button" disabled={!!sending} onClick={() => send('plus_tard')} className="min-h-[44px] text-sm text-slate-700 underline">Je décide plus tard (la mission garde l’alerte « à trancher » dans le dispatch)</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Adresse de livraison modifiée par l'assistance (Olivier 05/10/2026, 2DTV183) ──
@@ -472,8 +603,8 @@ function ParcVerificationModal({ notif, onDone }: { notif: NotifEvent; onDone: (
 }
 
 // ── Demandes de congé en attente (Olivier 15/11/2026) ─────────────────────────
-// 10 h 45, jours ouvrables, chez Momo : chaque demande se valide ou se refuse ici, signée par son code personnel.
-// « Répondre plus tard » ferme l'écran ; il revient le lendemain à 10 h 45 tant qu'il reste une demande.
+// 10 h 45 et 14 h 15, jours ouvrables, chez Momo : chaque demande se valide ou se refuse ici, signée par son code personnel.
+// « Répondre plus tard » ferme l'écran ; il revient au créneau suivant (14 h 15, ou le lendemain à 10 h 45) tant qu'il reste une demande.
 // Les demandes déjà traitées entre-temps (autre écran, autre personne) n'apparaissent plus ; plus rien → l'écran se ferme.
 function CongesModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
   const initiales: { id: string; worker: string; typeLabel: string; start: string; end: string; days: number | null; reason: string | null }[] = notif.payload?.data?.demandes || []
@@ -541,7 +672,7 @@ function CongesModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void 
           )}
           {err && <p className="text-red-700 text-sm font-semibold">⚠ {err}</p>}
           {demandes.some(d => !faites[d.id]) && (
-            <button type="button" disabled={!!sending} onClick={fermer} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Répondre plus tard (rappel demain à 10 h 45)</button>
+            <button type="button" disabled={!!sending} onClick={fermer} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Répondre plus tard (rappel {Number(new Date().toLocaleString('en-US', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false })) < 14 ? 'à 14 h 15' : 'demain à 10 h 45'})</button>
           )}
         </div>
       </div>

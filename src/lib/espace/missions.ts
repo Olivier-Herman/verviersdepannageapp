@@ -10,7 +10,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { isDsp, isRemorquage, isRelivraison } from '@/lib/missions/mission-types'
 import type { EspaceCompte, EspaceSociete } from './session'
 
-export const MISSION_COLS = 'id, mission_number, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, destination_address, destination_name, received_at, rdv_at, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, parked_at, delivering_at, completed_at, cancelled_at, billed_to_id, billed_to_name, espace_compte_id, invoice_odoo_id, odoo_quote_id, remarks_general, client_phone, dossier_number, parent_mission_id, created_at, assisted_name, assisted_phone, incident_description, driver_message, driver_message_ack_at, driver_photos, photos_visible_to_garage, requested_by_garage_id, source'
+export const MISSION_COLS = 'id, mission_number, status, mission_type, vehicle_plate, vehicle_brand, vehicle_model, incident_address, incident_city, destination_address, destination_name, received_at, rdv_at, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, parked_at, delivering_at, completed_at, cancelled_at, billed_to_id, billed_to_name, espace_compte_id, invoice_odoo_id, odoo_quote_id, remarks_general, client_phone, dossier_number, parent_mission_id, created_at, assisted_name, assisted_phone, incident_description, driver_message, driver_message_ack_at, driver_photos, photos_visible_to_garage, requested_by_garage_id, source, is_rollable, transport_priorite, transport_echeance'
 
 export function scopeMissions(q: any, compte: EspaceCompte, societes: EspaceSociete[]) {
   q = q.in('billed_to_id', societes.map(s => s.odoo_partner_id))

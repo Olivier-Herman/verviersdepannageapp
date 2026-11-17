@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { normEmail } from '@/lib/espace/session'
-import { envoyerInvitation } from '@/lib/espace/mails'
+import { envoyerInvitation, envoyerPresentationTransport } from '@/lib/espace/mails'
 import { appelerDepannage } from '@/lib/espace/demande'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +40,13 @@ export async function POST(req: Request) {
     const row = { nom: String(b.nom || '').trim(), odoo_partner_id: Number(b.odoo_partner_id), source_key: String(b.source_key || '').trim(), couleur: b.couleur || null, appel_audio: b.appel_audio || null, active: b.active !== false }
     if (!row.nom || !row.odoo_partner_id || !row.source_key) return NextResponse.json({ error: 'Nom, client facturé et source obligatoires.' }, { status: 400 })
     const r = b.id ? await sb.from('espace_societes').update(row).eq('id', b.id) : await sb.from('espace_societes').insert(row)
+    return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
+  }
+
+  // Formulaire de commande de la société : standard (dépannage ou remorquage) ou transport (TGR Touring).
+  if (b.action === 'formulaire') {
+    if (!b.id || !['standard', 'transport'].includes(b.formulaire)) return NextResponse.json({ error: 'Formulaire inconnu.' }, { status: 400 })
+    const r = await sb.from('espace_societes').update({ formulaire: b.formulaire }).eq('id', b.id)
     return r.error ? NextResponse.json({ error: r.error.message }, { status: 400 }) : NextResponse.json({ ok: true })
   }
 
@@ -78,9 +85,12 @@ export async function POST(req: Request) {
   if (b.action === 'inviter') {
     const { data: c } = await sb.from('espace_comptes').select('nom, emails, societe_ids, active').eq('id', b.id).maybeSingle()
     if (!c?.active) return NextResponse.json({ error: 'Compte introuvable ou coupé' }, { status: 404 })
-    const { data: s } = await sb.from('espace_societes').select('nom').in('id', c.societe_ids)
+    const { data: s } = await sb.from('espace_societes').select('nom, formulaire').in('id', c.societe_ids)
+    // Demandeur de transports TGR : son invitation présente le formulaire transport, avec la vidéo.
+    const transport = !!s?.length && s.every((x: any) => x.formulaire === 'transport')
     const to = normEmail(b.email) && c.emails.includes(normEmail(b.email)) ? normEmail(b.email) : c.emails[0]
-    try { await envoyerInvitation(to, c.nom, 'Verviers Dépannage', (s || []).map((x: any) => x.nom).join(' et ')) }
+    const noms = (s || []).map((x: any) => x.nom).join(' et ')
+    try { if (transport) await envoyerPresentationTransport(to, c.nom, noms); else await envoyerInvitation(to, c.nom, 'Verviers Dépannage', noms) }
     catch (e: any) { return NextResponse.json({ error: `Mail non parti : ${e?.message || e}` }, { status: 502 }) }
     return NextResponse.json({ ok: true, to })
   }

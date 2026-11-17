@@ -52,6 +52,7 @@ export async function GET(req: Request) {
         photos: (fini || m.photos_visible_to_garage) && Array.isArray(m.driver_photos) ? m.driver_photos.slice(0, 8) : [],
         suivi, rapport: fini,
         facture: d?.facture || null, avoir: d?.avoir || null,
+        transport: m.transport_priorite ? { priorite: m.transport_priorite, echeance: m.transport_echeance || null, roulant: m.is_rollable ?? null } : null,
         annulable: !['fini', 'annule'].includes(suivi.ton), annulationEnCours: annulEnCours.has(m.id),
       }
     }),
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
   const b = await req.json().catch(() => ({}))
   const societe = s.societes.length === 1 ? s.societes[0] : s.societes.find(x => x.id === b?.societeId)
   if (!societe) return NextResponse.json({ error: 'Choisissez la société qui commande.' }, { status: 400 })
-  const d = lireDemande(b)
+  const d = lireDemande(b, societe.formulaire)
   if (typeof d === 'string') return NextResponse.json({ error: d }, { status: 400 })
   try {
     const m = await creerDemande(s.compte, societe, d)

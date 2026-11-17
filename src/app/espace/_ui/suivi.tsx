@@ -17,6 +17,7 @@ export interface MissionEspace {
   rapport: boolean
   facture: Doc | null
   avoir: Doc | null
+  transport: { priorite: 1 | 2 | 3; echeance: string | null; roulant: boolean | null } | null
   annulable: boolean
   annulationEnCours: boolean
 }
@@ -27,6 +28,11 @@ export const IMG = {
 }
 
 export const typeLibelle = (t: string) => t === 'DSP' ? 'Dépannage sur place' : t === 'REM+REL' ? 'Remorquage et livraison' : t === 'REM' ? 'Remorquage' : 'Intervention'
+
+/** Pastille de priorité d'un transport TGR. */
+export function PastillePriorite({ p }: { p: 1 | 2 | 3 }) {
+  return <span className={`pill pp${p}`}>Priorité {p}</span>
+}
 
 export function Pastille({ ton, libelle }: { ton: Ton; libelle: string }) {
   return <span className={`pill t-${ton}`}>{['route', 'action', 'accepte'].includes(ton) && <span className="live" />}{libelle}</span>

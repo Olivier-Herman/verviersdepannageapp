@@ -246,6 +246,12 @@ export default function FourriereClient({ userRole, userName, userEmail, userMod
               <ScanLine size={14} />
               Contrôle du parc
             </Link>
+            <Link href="/fourriere/controle-aleatoire"
+              className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"
+              title="15 véhicules tirés au sort, mardi, jeudi et samedi">
+              <ScanLine size={14} />
+              Contrôle aléatoire
+            </Link>
             <Link href="/fourriere/releve"
               className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-hover border rounded-xl text-ink-secondary hover:text-ink text-sm transition"
               title="Véhicules sans étiquette : recherche fiche, Towsoft, mails, ERP puis décision">
