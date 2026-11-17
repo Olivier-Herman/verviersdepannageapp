@@ -25,10 +25,72 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'snc_dpr_request') return <SncDprModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'rel_police_a_trancher') return <RelPoliceModal notif={notif} onDone={onDone} />
+  if (notif.notif_type === 'controle_parc_aleatoire') return <ControleParcModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'conges_en_attente') return <CongesModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   return <ParcVerificationModal notif={notif} onDone={onDone} />
+}
+
+// ── Contrôle aléatoire du parc (Olivier 17/11/2026, maquette 1DStEWrJtFLfHRLRe3E2Dv validée) ──
+// 15 véhicules à scanner : « Faire le contrôle avec mon téléphone » (le premier qui lance le prend) ou « Repousser de
+// 15 min ». Pas de fermeture : la fenêtre suit ensuite le contrôle en direct et se ferme quand il est terminé.
+function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onDone: () => void; onSnooze?: (minutes: number) => void }) {
+  const id = String(notif.payload?.data?.controle_id || '')
+  const [d, setD] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const charger = async () => {
+    try { const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { cache: 'no-store' }); const j = await r.json(); if (r.ok) setD(j); else setErr(j.error || 'Contrôle illisible') } catch { setErr('Erreur réseau') }
+  }
+  useEffect(() => { charger(); const t = setInterval(charger, 5000); return () => clearInterval(t) }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
+  async function lancer() {
+    setBusy(true); setErr(null)
+    try { const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) }); const j = await r.json(); if (!r.ok) setErr(j.error || 'Lancement impossible'); await charger() } catch { setErr('Erreur réseau') } finally { setBusy(false) }
+  }
+  const c = d?.controle, items: any[] = d?.items || []
+  const faits = items.filter(i => i.resultat).length, absents = items.filter(i => i.resultat === 'absent').length
+  const parAutre = c?.status === 'en_cours' && c.started_by && c.started_by !== d?.moi
+  return (
+    <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+      <div className="w-full max-w-2xl rounded-2xl bg-white border-4 border-sky-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-700">Contrôle aléatoire du parc</p>
+          <p className="text-lg font-bold text-slate-900">{c?.status === 'termine' ? `Contrôle terminé : ${faits - absents} présent(s), ${absents} pas trouvé(s)` : c?.status === 'en_cours' ? `Contrôle en cours ${parAutre ? `par ${c.started_by_name || 'un collègue'}` : 'sur ton téléphone'} : ${faits} / ${items.length}` : `${items.length || 15} véhicules à scanner`}</p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {!d && !err && <p className="text-sm text-slate-700">Chargement…</p>}
+          {items.length > 0 && (
+            <div className="max-h-[45vh] overflow-y-auto overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-700"><tr><th className="text-left px-3 py-2">Véhicule</th><th className="text-left px-3 py-2">Doit être en</th><th className="text-left px-3 py-2">{c?.status === 'demande' ? 'Pourquoi lui' : 'Résultat'}</th></tr></thead>
+                <tbody>{items.map(i => (
+                  <tr key={i.id} className="border-t border-slate-200 align-top">
+                    <td className="px-3 py-2"><span className="font-bold text-slate-900">{i.fiche?.vehicle_plate || 'sans plaque'}</span><br /><span className="text-xs text-slate-700">{[i.fiche?.vehicle_brand, i.fiche?.vehicle_model].filter(Boolean).join(' ')}</span></td>
+                    <td className="px-3 py-2"><span className="inline-block rounded-lg bg-sky-50 text-sky-800 font-bold px-2">{i.zone_attendue || '?'}</span></td>
+                    <td className="px-3 py-2 text-slate-700">{c?.status === 'demande' ? i.raison : i.resultat === 'present' ? '✅ présent' : i.resultat === 'autre_zone' ? `↪ en zone ${i.zone_trouvee}` : i.resultat === 'absent' ? '❌ pas trouvé' : '…'}</td>
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          )}
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          {c?.status === 'demande' && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={busy} onClick={lancer} className="min-h-[52px] rounded-xl bg-sky-700 text-white font-bold px-3">{busy ? '…' : '📱 Faire le contrôle avec mon téléphone'}</button>
+              <button type="button" disabled={busy} onClick={() => onSnooze?.(15)} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min</button>
+            </div>
+          )}
+          {c?.status === 'en_cours' && !parAutre && <p className="text-sm text-slate-700">La notification est partie sur ton téléphone : ouvre-la pour scanner les véhicules un par un. Cette fenêtre se met à jour toute seule.</p>}
+          {(c?.status === 'termine' || parAutre) && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {absents > 0 && <a href={`/fourriere/controle-aleatoire/${id}`} className="min-h-[52px] rounded-xl bg-red-600 text-white font-bold px-3 inline-flex items-center justify-center">Rechercher les {absents} pas trouvé(s)</a>}
+              <button type="button" onClick={onDone} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">Fermer</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Véhicule au parc sur appel police (Olivier 16/11/2026, 1FEO036, maquette L3vU8S8RcApgXaXDBUswf5 validée) ──

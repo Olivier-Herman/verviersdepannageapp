@@ -89,6 +89,7 @@ export const NAV_TREE_ESPACES: NavModule[] = [
     sections: [
       { href: '/fourriere',                      label: 'Parc',                   icon: Search,        requires: '/fourriere' },
       { href: '/fourriere/controle',             label: 'Contrôle du parc',       icon: ScanLine,      requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // préversion ma_journee : vue de Parc   // remplace l'inventaire (Olivier 21/10/2026)
+      { href: '/fourriere/controle-aleatoire', label: 'Contrôle aléatoire', icon: ScanLine, requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // 15 véhicules mardi, jeudi, samedi (Olivier 17/11/2026)
       { href: '/fourriere/releve',               label: 'Relevé sans étiquette',  icon: ListChecks,    requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // préversion ma_journee : vue de Parc   // inventaire terrain (Olivier 18/10/2026)
       { href: '/taches',                         label: 'Accident',        icon: ListChecks,    requires: '/fourriere', hiddenWhenFlag: 'ma_journee' },   // préversion ma_journee : vue de Parc   // Module Tâches, premier jet (28/09/2026) : véhicules arrivés au parc sur appel police, flag taches_accident
       { href: '/fourriere/requisitoires',        label: 'Réquisitoires',          icon: FileText,      requires: '/fourriere', heading: 'Documents' },
@@ -199,6 +200,7 @@ export const NAV_TREE: NavModule[] = [
       { href: '/fourriere/destruction',         label: 'Sortie AVP',            icon: Trash2,        requires: '/fourriere' },
       { href: '/fourriere/destruction/dossiers', label: 'Dossiers de destruction', icon: FolderCheck, requires: '/fourriere' },
       { href: '/fourriere/controle',            label: 'Contrôle du parc',      icon: ScanLine,      requires: '/fourriere' },
+      { href: '/fourriere/controle-aleatoire', label: 'Contrôle aléatoire', icon: ScanLine, requires: '/fourriere' },   // 15 véhicules mardi, jeudi, samedi (Olivier 17/11/2026)
       { href: '/fourriere/releve',              label: 'Relevé sans étiquette', icon: ListChecks,    requires: '/fourriere' },
       { href: '/fourriere/non-localises',       label: 'Non-localisés',         icon: AlertTriangle, requires: '/fourriere' },
       { href: '/fourriere/plan',                label: 'Plan du parc',          icon: MapIcon,           requires: '/fourriere' },

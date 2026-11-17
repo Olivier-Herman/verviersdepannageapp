@@ -191,7 +191,18 @@ async function fourriere(sb: any): Promise<Bloc> {
     { texte: `${parc || 0} véhicule(s) au parc`, niveau: 'info', lien: '/fourriere' },
     { texte: `${levees || 0} réquisitoire(s) ou levée(s) à rattacher`, niveau: levees ? 'attention' : 'ok', lien: '/fourriere/requisitoires' },
   ]
-  return { cle: 'fourriere', titre: 'Fourrière', resume: `${levees || 0} document(s) à rattacher`, niveau: levees ? 'attention' : 'ok', lignes, lien: '/fourriere' }
+  // Contrôle aléatoire du parc (Olivier 17/11/2026) : dernier contrôle et véhicules pas trouvés encore à rechercher.
+  const [{ data: dernier }, { count: aChercher }] = await Promise.all([
+    sb.from('parc_controles_aleatoires').select('id, prevu_at, status, started_by_name').order('jour', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('parc_aleatoire_items').select('id', { count: 'exact', head: true }).eq('resultat', 'absent').is('resolu_at', null),
+  ])
+  if (dernier) {
+    const quand = new Date(dernier.prevu_at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', dateStyle: 'short', timeStyle: 'short' })
+    const etat: Record<string, string> = { prevu: 'prévu', demande: 'pas encore fait', en_cours: 'en cours', termine: 'fait' }
+    lignes.push({ texte: `Contrôle aléatoire du ${quand} : ${etat[dernier.status] || dernier.status}${dernier.started_by_name ? ` (${dernier.started_by_name})` : ''}`, niveau: dernier.status === 'demande' ? 'attention' : 'info', lien: `/fourriere/controle-aleatoire/${dernier.id}` })
+  }
+  if (aChercher) lignes.push({ texte: `${aChercher} véhicule(s) pas trouvé(s) au contrôle aléatoire, à rechercher`, niveau: 'urgent', lien: '/fourriere/controle-aleatoire' })
+  return { cle: 'fourriere', titre: 'Fourrière', resume: `${levees || 0} document(s) à rattacher${aChercher ? ` · ${aChercher} à rechercher` : ''}`, niveau: aChercher ? 'urgent' : levees ? 'attention' : 'ok', lignes, lien: '/fourriere' }
 }
 
 async function cloture(sb: any): Promise<Bloc> {
