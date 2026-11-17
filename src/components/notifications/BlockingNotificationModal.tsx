@@ -8,6 +8,7 @@
 // Olivier 2026-09-03.
 
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { AlertTriangle } from 'lucide-react'
 import { useT } from '@/lib/i18n/I18nProvider'
 import PinInput from '@/components/ui/PinInput'
@@ -48,9 +49,13 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
     setBusy(true); setErr(null)
     try { const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) }); const j = await r.json(); if (!r.ok) setErr(j.error || 'Lancement impossible'); await charger() } catch { setErr('Erreur réseau') } finally { setBusy(false) }
   }
+  // Sur la page des scans (téléphone ouvert depuis la notification), la fenêtre du bureau ne se met pas par-dessus
+  // (Olivier 17/11/2026 : « Commencer le contrôle » sur le téléphone ouvrait cette fenêtre au lieu des scans).
+  const pathname = usePathname() || ''
   const c = d?.controle, items: any[] = d?.items || []
   const faits = items.filter(i => i.resultat).length, absents = items.filter(i => i.resultat === 'absent').length
   const parAutre = c?.status === 'en_cours' && c.started_by && c.started_by !== d?.moi
+  if (pathname.startsWith('/fourriere/controle-aleatoire/')) return null
   return (
     <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
       <div className="w-full max-w-2xl rounded-2xl bg-white border-4 border-sky-600 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -80,7 +85,10 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
               <button type="button" disabled={busy} onClick={() => onSnooze?.(15)} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min</button>
             </div>
           )}
-          {c?.status === 'en_cours' && !parAutre && <p className="text-sm text-slate-700">La notification est partie sur ton téléphone : ouvre-la pour scanner les véhicules un par un. Cette fenêtre se met à jour toute seule.</p>}
+          {c?.status === 'en_cours' && !parAutre && (<>
+            <p className="text-sm text-slate-700">La notification est partie sur ton téléphone : ouvre-la pour scanner les véhicules un par un. Cette fenêtre se met à jour toute seule.</p>
+            <a href={`/fourriere/controle-aleatoire/${id}`} className="min-h-[52px] w-full rounded-xl bg-sky-700 text-white font-bold px-3 inline-flex items-center justify-center">📷 Je suis sur le téléphone : scanner maintenant</a>
+          </>)}
           {(c?.status === 'termine' || parAutre) && (
             <div className="grid gap-2 sm:grid-cols-2">
               {absents > 0 && <a href={`/fourriere/controle-aleatoire/${id}`} className="min-h-[52px] rounded-xl bg-red-600 text-white font-bold px-3 inline-flex items-center justify-center">Rechercher les {absents} pas trouvé(s)</a>}
