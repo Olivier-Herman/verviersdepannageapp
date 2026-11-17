@@ -102,7 +102,14 @@ const destination = (m: M): string => {
 }
 // Texte automatique de création des relivraisons : pas une panne, on ne l'affiche pas en ligne.
 const panneUtile = (m: M) => /^Relivraison après mise en parc/i.test(String(m.incident_description || '')) ? '' : panneLisible(m.incident_description)
-const trajet = (m: M) => [court(m.incident_address) || m.incident_city, m.destination_name || m.destination_address ? '→ ' + court(m.destination_name || m.destination_address) : ''].filter(Boolean).join(' ')
+// Adresse d'intervention complète (Olivier 17/11) : certaines assistances (Mondial/Allianz) envoient la
+// rue et la commune séparément ; on ajoute la commune quand elle n'est pas déjà dans l'adresse.
+const lieu = (m: M): string => {
+  const a = court(m.incident_address), c = String(m.incident_city || '').trim()
+  if (!a) return c
+  return c && !a.toLowerCase().includes(c.toLowerCase()) ? `${a}, ${c}` : a
+}
+const trajet = (m: M) => [lieu(m), m.destination_name || m.destination_address ? '→ ' + court(m.destination_name || m.destination_address) : ''].filter(Boolean).join(' ')
 // Titre de carte (Olivier 12/11) : « Plaque - Marque - Modèle ».
 const titreVehicule = (m: M) => [m.vehicle_plate, m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' - ') || 'Véhicule non précisé'
 const vehicule = (m: M) => [m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' ')
@@ -343,7 +350,7 @@ const ResumeBureau = ({ m }: { m: M }) => {
   // Une ligne par information (Olivier 12/11) : intervention, destination, panne, client.
   // Pas d'heure de réception : le délai en haut à droite de la carte la donne déjà.
   const lignes: [string, string][] = [
-    ['Intervention', court(m.incident_address) || m.incident_city || ''],
+    ['Intervention', lieu(m)],
     ['Destination', destination(m)],
     ['Panne', panneUtile(m)],
     ['Client', [m.assisted_name || m.client_name, m.assisted_phone || m.client_phone].filter(Boolean).join(' · ')],
@@ -360,7 +367,7 @@ const DetailTel = ({ m }: { m: M }) => (
   <>
     <dl className="lg:hidden grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
         {([
-          ['Lieu', court(m.incident_address) || m.incident_city],
+          ['Lieu', lieu(m)],
           ['Vers', destination(m)],
           ['Panne', panneUtile(m)],
           ['Véhicule', vehicule(m)],
@@ -722,7 +729,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                           </td>
                           <td className="px-2 py-2"><div className="flex gap-1.5 items-center flex-wrap"><Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span></div>
                             <div className="mt-1 flex gap-1.5 items-center flex-wrap"><Plaque m={m} /><span className="text-stone-600">{vehicule(m)}</span></div></td>
-                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{court(m.incident_address) || m.incident_city || '—'}</div>{destination(m) && <div className="text-stone-700 truncate" title={destination(m)}>→ {destination(m)}</div>}{panneUtile(m) && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{panneUtile(m)}</div>}</td>
+                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{lieu(m) || '—'}</div>{destination(m) && <div className="text-stone-700 truncate" title={destination(m)}>→ {destination(m)}</div>}{panneUtile(m) && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{panneUtile(m)}</div>}</td>
                           <td className="px-2 py-2 text-stone-900">{m.assigned_user?.name || <span className="text-stone-400">—</span>}</td>
                         </tr>
                       )
@@ -773,7 +780,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     ['Client', [sel.client_name, sel.client_phone].filter(Boolean).join(' · ')],
                     ['Sur place', sel.assisted_name && sel.assisted_name !== sel.client_name ? [sel.assisted_name, sel.assisted_phone].filter(Boolean).join(' · ') : ''],
                     ['Véhicule', vehicule(sel)],
-                    ['Lieu', court(sel.incident_address) || sel.incident_city],
+                    ['Lieu', lieu(sel)],
                     ['Vers', destination(sel)],
                     ['Panne', panneUtile(sel)],
                     ['Délai', sel.limite ? `accepter chez ${getSourceLabel(sel.source, sources)} avant ${hm(new Date(sel.limite))}` : sel.intervention_date && new Date(sel.intervention_date).getTime() > now ? `prévue à ${hm(new Date(sel.intervention_date))}` : ''],
