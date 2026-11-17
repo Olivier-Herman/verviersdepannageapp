@@ -33,7 +33,7 @@ async function handleGET(req: Request, { params }: { params: { id: string } }) {
       parent_mission_id, amount_to_collect, amount_to_collect_manual, amount_guaranteed,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements,
-      billed_to_id, billed_to_name, special_tarif_htva,
+      billed_to_id, billed_to_name, special_tarif_htva, surcharge_pct_override,
       extra_addresses,
       external_id, dossier_number,
       transport_vehicle_category, transport_price_per_km_htva

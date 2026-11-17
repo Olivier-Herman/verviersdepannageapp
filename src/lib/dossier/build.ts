@@ -155,7 +155,7 @@ const CHAIN_COLS_LEGACY = `id, mission_number, external_id, dossier_number, sour
   assigned_to, received_at, intervention_date, on_way_at, on_site_at, loaded_at, delivering_at, parked_at, completed_at, cancelled_at,
   parc_zone_key, parc_row_number, parc_slot_index, key_location, keys_digibox_slot, saisie_key_hook, label_printed_at,
   requisitoire_at, requisitoire_reminder_count, levee_saisie_date, domaine_remise_date, domaine_enlevement_date,
-  storage_waived, storage_flat_htva, special_tarif_htva, estimated_htva,
+  storage_waived, storage_flat_htva, special_tarif_htva, surcharge_pct_override, estimated_htva,
   driver_photos, remarks_general, closing_notes, client_signature, client_signature_name, cancelled_reason,
   invoice_number, invoice_url, invoiced_at, invoice_odoo_id, invoice_created_at, payment_amount, amount_collected, payment_mode,
   snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, incident_lat, incident_lng, destination_lat, destination_lng, temp_returned_at, is_rollable`

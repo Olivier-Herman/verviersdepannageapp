@@ -91,7 +91,7 @@ async function handlePOST(req: Request, { params }: { params: { id: string } }) 
       parked_at, storage_waived, storage_flat_htva, intervention_date, received_at, incident_type, parent_mission_id,
       levee_saisie_date, temp_returned_at, domaine_remise_date,
       billed_to_id, billed_to_name, payment_method,
-      amount_to_collect, amount_to_collect_manual, special_tarif_htva, amount_guaranteed,
+      amount_to_collect, amount_to_collect_manual, special_tarif_htva, surcharge_pct_override, amount_guaranteed,
       ff_base_htva, ff_gardiennage_days, ff_gardiennage_pu,
       incident_lat, incident_lng, destination_lat, destination_lng,
       snc_scenario, snc_requires_balisage, snc_remorque, snc_supplements, extra_addresses, vab_vr, vr_forfait,

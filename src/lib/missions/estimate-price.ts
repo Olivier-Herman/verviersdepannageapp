@@ -341,8 +341,19 @@ export interface PriceEstimate {
   transport?:    { category: string; category_label: string; price_per_km_htva: number; km_total: number; manual_price: boolean }
 }
 
+/** Taux propre à la fiche (Olivier 17/11/2026, 1KJP382 : Momo accorde 50 % au lieu de 100 %). Ne s'applique que si une
+ *  majoration horaire tombe ; la note du détail garde la plage d'origine et le taux réduit. */
+function tauxFiche(mission: { surcharge_pct_override?: number | null }, pct: number, note: string): { pct: number; note: string } {
+  const o = mission.surcharge_pct_override
+  if (o == null || !(pct > 0) || Number(o) === pct) return { pct, note }
+  return { pct: Number(o), note: `${note} — réduite à ${Number(o)} % sur cette fiche` }
+}
+
 interface MissionLike {
   id?:                string
+  // Taux de majoration accordé sur cette fiche (ex. 50 au lieu de 100, accord du responsable) : remplace le taux de
+  // la plage horaire quand une majoration s'applique. Le reste du calcul (gardiennage, km) continue de tourner.
+  surcharge_pct_override?: number | null
   source:             string | null
   mission_type:       string | null
   client_name:        string | null
@@ -808,6 +819,7 @@ export async function estimateMissionPrice(mission: MissionLike, opts?: { skipRe
       console.warn('[estimate-price] surcharges error (non bloquant):', e.message)
     }
   }
+  ;({ pct: surchargePct, note: surchargeNote } = tauxFiche(mission, surchargePct, surchargeNote))
 
   const surchargeEur = (subtotal * surchargePct) / 100
   const total = subtotal + surchargeEur
@@ -1143,6 +1155,7 @@ async function estimateLinesTemplate(
       }
     } catch {}
   }
+  ;({ pct: surchargePct, note: surchargeNote } = tauxFiche(mission, surchargePct, surchargeNote))
   // isMajored = un % > 0 OU une ligne a un prix majoré distinct (default_price_majore)
   // pendant qu'une période de majoration matche. Ainsi les deux mécanismes
   // marchent : majoration en % (subtotalMajorable × pct) OU bascule sur le prix
@@ -1585,6 +1598,7 @@ async function estimateRelivraisonPrice(
       }
     } catch {}
   }
+  ;({ pct: surchargePct, note: surchargeNote } = tauxFiche(mission, surchargePct, surchargeNote))
   const isMajored = surchargePct > 0
   const kmPrice = (isMajored && kmPriceMajored != null) ? kmPriceMajored : kmPriceNormal
 
