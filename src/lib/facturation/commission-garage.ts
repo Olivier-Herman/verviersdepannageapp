@@ -21,8 +21,11 @@ export async function commissionGarages(): Promise<CommissionGarage[]> {
 
 /** Note de commission d'une facture envoyée ; renvoie son n° (ou celui de la note déjà faite). */
 export async function noteCommission(invoiceId: number, pct: number): Promise<{ name: string; created: boolean; note: string }> {
-  const [inv] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['name', 'ref', 'partner_id', 'invoice_line_ids', 'state', 'move_type'] })
+  const [inv] = await odooRpc<any[]>('account.move', 'read', [[invoiceId]], { fields: ['name', 'ref', 'partner_id', 'invoice_line_ids', 'state', 'move_type', 'reversed_entry_id'] })
   if (!inv || inv.state !== 'posted' || inv.move_type !== 'out_invoice') throw new Error(`Facture ${invoiceId} pas validée`)
+  // Une facture qui annule une note de crédit n'est pas une intervention : pas de commission dessus (17/11/2026,
+  // Car Avenue : 4,09 € accordés à tort sur la 2026/10/376, qui annulait la note de commission 2026-0353).
+  if (inv.reversed_entry_id || /^Annulation de la note de commission/.test(String(inv.ref || ''))) return { name: '', created: false, note: 'facture d’annulation d’une note de crédit : pas de commission' }
   const deja = await odooRpc<any[]>('account.move', 'search_read', [[['move_type', '=', 'out_refund'], ['partner_id', '=', inv.partner_id[0]], ['state', '!=', 'cancel'], '|', ['invoice_origin', '=', inv.name], ['reversed_entry_id', '=', invoiceId]]], { fields: ['name'], limit: 1 })
   if (deja.length) return { name: deja[0].name || 'brouillon', created: false, note: `déjà faite (${deja[0].name})` }
   const ls = await odooRpc<any[]>('account.move.line', 'read', [inv.invoice_line_ids], { fields: ['name', 'product_id', 'quantity', 'price_unit', 'tax_ids', 'display_type', 'sequence'] })
