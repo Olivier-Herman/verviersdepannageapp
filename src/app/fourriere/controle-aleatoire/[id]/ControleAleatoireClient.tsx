@@ -5,6 +5,28 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/fourriere/QRScanner'), { ssr: false })
+import PhotoLightbox from '@/components/ui/PhotoLightbox'
+
+// Photos du chauffeur (Olivier 17/11/2026) : une rangée de vignettes, un appui ouvre en grand. Rien sans photo.
+function Photos({ urls }: { urls?: string[] | null }) {
+  const [ouvert, setOuvert] = useState<number | null>(null)
+  const list = (Array.isArray(urls) ? urls : []).filter(Boolean)
+  if (!list.length) return null
+  return (
+    <>
+      <div className="flex gap-2 overflow-x-auto py-1">
+        {list.slice(0, 4).map((u, k) => (
+          <button key={k} type="button" onClick={() => setOuvert(k)} className="relative flex-shrink-0 w-[72px] h-[72px] rounded-lg overflow-hidden border border-slate-300 bg-slate-100" aria-label={`Photo ${k + 1}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={u} alt="" loading="lazy" className="w-full h-full object-cover" />
+            {k === 3 && list.length > 4 && <span className="absolute inset-0 bg-black/55 text-white font-bold flex items-center justify-center">+{list.length - 4}</span>}
+          </button>
+        ))}
+      </div>
+      {ouvert != null && <PhotoLightbox photos={list} startIndex={ouvert} onClose={() => setOuvert(null)} />}
+    </>
+  )
+}
 
 const fr = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' }) : '—'
 
@@ -57,6 +79,7 @@ export default function ControleAleatoireClient({ id, zones }: { id: string; zon
           <p className="text-xs uppercase tracking-widest text-ink-muted">À trouver</p>
           <p className="text-3xl font-bold text-ink">{f.vehicle_plate || 'sans plaque'}</p>
           <p className="text-ink-secondary">{[f.vehicle_brand, f.vehicle_model].filter(Boolean).join(' ') || '—'}</p>
+          <Photos key={courant.id} urls={f.driver_photos} />
           <p><span className="inline-block rounded-lg bg-sky-50 text-sky-800 font-bold text-lg px-3 py-1">Zone {courant.zone_attendue || '?'}</span></p>
           <p className="text-sm text-ink-muted">Fiche #{f.mission_number} · entré le {fr(f.parked_at || f.created_at)}{f.levee_saisie_at ? ` · levée le ${fr(f.levee_saisie_at)}` : ''}</p>
         </div>
@@ -106,6 +129,7 @@ function Recherche({ it, zones, busy, onPost }: { it: any; zones: string[]; busy
         <p className="text-xs uppercase tracking-widest text-red-700 font-semibold">Pas trouvé</p>
         <p className="text-xl font-bold text-ink">{f.vehicle_plate || 'sans plaque'} · {[f.vehicle_brand, f.vehicle_model].filter(Boolean).join(' ')}</p>
         <p className="text-sm text-ink-muted">Devait être en zone {it.zone_attendue || '?'} · fiche <a className="underline" href={`/dispatch/${it.mission_id}?fiche=1`}>#{f.mission_number}</a></p>
+        <Photos urls={f.driver_photos} />
       </div>
       <div className="space-y-1">{(it.pistes || []).map((p: any, k: number) => <p key={k} className="text-sm text-ink-secondary"><span className="mr-2">{p.icone}</span>{p.texte}</p>)}{!(it.pistes || []).length && <p className="text-sm text-ink-muted">Pistes en cours de lecture…</p>}</div>
       <div className="grid gap-2 sm:grid-cols-2">{Object.entries(lib).map(([k, v]) => <button key={k} type="button" onClick={() => setChoix(k)} className={`min-h-[44px] rounded-xl border px-3 text-left font-semibold ${choix === k ? 'border-sky-600 bg-sky-50 text-sky-900' : 'border-slate-300 text-ink'}`}>{v}</button>)}</div>

@@ -168,7 +168,7 @@ export async function lireControle(sb: Sb, id: string) {
   if (!c) return null
   const { data: items } = await sb.from('parc_aleatoire_items').select('*').eq('controle_id', id).order('ordre')
   const ids = (items || []).map((i: any) => i.mission_id)
-  const { data: ms } = ids.length ? await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, source, parc_zone_key, parked_at, created_at, levee_saisie_at, status').in('id', ids) : { data: [] as any[] }
+  const { data: ms } = ids.length ? await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, source, parc_zone_key, parked_at, created_at, levee_saisie_at, status, driver_photos').in('id', ids) : { data: [] as any[] }
   const par = new Map((ms || []).map((m: any) => [m.id, m]))
   return { controle: c, items: (items || []).map((i: any) => ({ ...i, fiche: par.get(i.mission_id) || null })) }
 }
