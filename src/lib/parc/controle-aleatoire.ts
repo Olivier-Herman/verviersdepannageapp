@@ -130,15 +130,27 @@ export async function tickControleParc(sb: Sb, opts: { force?: boolean } = {}): 
   if (!tires.length) { await sb.from('parc_controles_aleatoires').update({ status: 'termine', termine_at: now.toISOString() }).eq('id', c.id); return { controle: c.id, vide: true } }
   await sb.from('parc_aleatoire_items').insert(tires.map((t, i) => ({ controle_id: c.id, mission_id: t.mission_id, ordre: i + 1, raison: t.raison, zone_attendue: t.zone, vu_avant_at: t.vu_avant_at })))
   const users = await destinataires(sb)
+  let recus = 0
   for (const u of users) {
-    await sendNotification(u, NOTIF_BUREAU, {
+    const r: any = await sendNotification(u, NOTIF_BUREAU, {
       title: '🔍 Contrôle du parc : 15 véhicules à scanner',
       body: 'Ouvre le contrôle sur ton téléphone. Tu peux le repousser de 15 minutes, mais il doit se faire.',
       action_url: '/fourriere/controle-aleatoire/' + c.id,
       data: { modal: true, kind: 'controle_parc', controle_id: c.id, request_group: group },
-    }).catch(() => {})
+    }).catch(() => null)
+    if (r?.ok) recus++
   }
-  return { controle: c.id, envoye_a: users.length, vehicules: tires.length }
+  // Personne ne l'a reçu (17/11/2026 : réglage des destinataires absent, contrôle parti dans le vide sans que personne
+  // le sache) : Mobi est prévenu tout de suite, quel que soit son agenda.
+  if (!recus) {
+    try {
+      const { getBusinessNumber } = await import('@/lib/settings/business')
+      const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+      const chat = await getBusinessNumber('telegram_chat_mobi')
+      await notifierTelegram(chat, `⚠️ Contrôle aléatoire du parc : la fenêtre n'a pu être envoyée à personne (${users.length ? 'envoi refusé' : 'aucun destinataire dans les réglages'}). Les 15 véhicules sont tirés : ouvre ${process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'}/fourriere/controle-aleatoire/${c.id}`, [], undefined, { urgent: true })
+    } catch (e: any) { console.error('[controle-parc] alerte impossible :', e?.message) }
+  }
+  return { controle: c.id, envoye_a: recus, destinataires: users.length, vehicules: tires.length }
 }
 
 // ── Lecture ───────────────────────────────────────────────────────────────────────────────────────────────────────
