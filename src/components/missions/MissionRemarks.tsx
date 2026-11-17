@@ -44,6 +44,7 @@ const fmtDate = (iso: string | null) => {
 }
 
 const fmtSize = (bytes: number) => {
+  if (!bytes) return ''   // taille inconnue (anciennes pièces) : rien plutôt que « 0 o »
   if (bytes < 1024) return `${bytes} o`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`

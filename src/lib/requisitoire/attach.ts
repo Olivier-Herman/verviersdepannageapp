@@ -163,11 +163,23 @@ export async function attachRequisitoire(
   if (rErr) return { ok: false, error: rErr.message }
 
   if (intake.doc_path) {
+    // Type, nom et taille repris du fichier RANGÉ (Olivier 17/11/2026, BM242CK : une photo .jfif rangée en .jpg était
+    // déclarée « PDF » sous son nom d'origine → illisible à l'ouverture, et affichée « 0 o »).
+    const ext = String(intake.doc_path).split('.').pop()!.toLowerCase()
+    const mime = ext === 'html' ? 'text/html' : ext === 'pdf' ? 'application/pdf' : ['jpg', 'jpeg'].includes(ext) ? 'image/jpeg' : ext === 'png' ? 'image/png' : 'application/octet-stream'
+    const base = String(intake.file_name || (isLevee ? 'levee' : 'requisitoire')).replace(/\.[a-z0-9]{2,5}$/i, '')
+    let size = 0
+    try {
+      const dir = intake.doc_path.slice(0, intake.doc_path.lastIndexOf('/')), name = intake.doc_path.slice(intake.doc_path.lastIndexOf('/') + 1)
+      const { data: ls } = await sb.storage.from('mission-remarks').list(dir, { search: name })
+      size = Number(ls?.find((f: any) => f.name === name)?.metadata?.size || 0)
+    } catch { /* taille inconnue : la pièce reste lisible */ }
     await sb.from('mission_remark_attachments').insert({
       remark_id:   remark.id,
       file_path:   intake.doc_path,
-      file_name:   intake.file_name || (isLevee ? 'levee.html' : 'requisitoire.pdf'),
-      mime_type:   intake.file_name?.endsWith('.html') ? 'text/html' : 'application/pdf',
+      file_name:   `${base}.${ext}`,
+      file_size:   size,
+      mime_type:   mime,
       uploaded_by: actorId,
     })
   }
