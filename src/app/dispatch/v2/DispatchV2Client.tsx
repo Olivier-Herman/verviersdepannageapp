@@ -638,7 +638,15 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
       <style>{`@media (max-width: 1023px) { [data-flottant="especes"], [data-flottant="max"] { display: none !important; } }
         @keyframes vd-clignote { 0%, 100% { background-color: #fef3c7; } 50% { background-color: #ffffff; } }
         .vd-clignote { animation: vd-clignote 1.4s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .vd-clignote { animation: none; background-color: #fef3c7; } }`}</style>
+        @media (prefers-reduced-motion: reduce) { .vd-clignote { animation: none; background-color: #fef3c7; } }
+        /* Écran vertical (Olivier 17/11) : en haut « À traiter » + détail, en bas la liste sur toute la largeur. */
+        @media (min-width: 1024px) and (orientation: portrait) {
+          .vd-grille { grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important; grid-template-rows: minmax(0,3fr) minmax(0,2fr) !important;
+            grid-template-areas: "gauche volet" "centre centre" !important; }
+          .vd-gauche { grid-area: gauche; } .vd-centre { grid-area: centre; }
+          .vd-volet { grid-area: volet; position: static !important; inset: auto !important; width: auto !important; z-index: auto !important; box-shadow: none !important; }
+          .vd-volet-vide { display: flex !important; }
+        }`}</style>
       <div className="p-2.5 lg:p-3 flex flex-col gap-2.5 min-w-0 max-w-full [contain:inline-size]">
         {/* Repères du jour */}
         <div className="flex flex-wrap gap-2 items-center rounded-2xl px-3 py-2.5 text-white" style={{ background: 'linear-gradient(135deg,#1b1220 0%,#4a1230 55%,#E11D2E 100%)' }}>
@@ -663,9 +671,9 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
         {erreur && <div className="rounded-xl bg-red-100 text-red-900 px-4 py-2.5 text-sm font-semibold">Les données n'ont pas pu être relues ({erreur}). Nouvel essai dans quelques secondes.</div>}
         {message && <div className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${message.ton === 'err' ? 'bg-red-100 text-red-900' : message.ton === 'info' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{message.txt}</div>}
 
-        <div className={`grid grid-cols-[minmax(0,1fr)] gap-2.5 min-w-0 lg:h-[calc(100vh-170px)] lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]`}>
+        <div className={`vd-grille grid grid-cols-[minmax(0,1fr)] gap-2.5 min-w-0 lg:h-[calc(100vh-170px)] lg:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)] xl:grid-cols-[minmax(320px,1fr)_minmax(0,1.3fr)_minmax(340px,1fr)]`}>
           {/* Colonne « À traiter » */}
-          <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
+          <section className={`vd-gauche rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'traiter' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2"><b className="text-[16px] text-ink whitespace-nowrap">À traiter · {n}</b><span className="text-stone-500 text-[13px] truncate hidden sm:inline">le plus récent en haut</span></header>
             {!board ? <p className="px-3 pb-3 text-stone-500">Chargement…</p> : <>
               {/* Rien d'épinglé (Olivier 12/11) : En commande et En attente en tête, puis Alertes ; toute la colonne défile d'un bloc. */}
@@ -677,7 +685,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           </section>
 
           {/* Liste des missions lancées */}
-          <section className={`rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'cours' ? 'flex' : 'hidden lg:flex'}`}>
+          <section className={`vd-centre rounded-2xl border bg-surface flex-col min-h-0 min-w-0 ${ongletTel === 'cours' ? 'flex' : 'hidden lg:flex'}`}>
             <header className="px-3 pt-3 pb-2 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
                 <b className="text-[16px] text-ink">{vueCentre === 'planning' ? 'La journée des chauffeurs' : vueCentre === 'carte' ? 'Carte' : 'Missions'}</b>
@@ -775,14 +783,14 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
 
           {/* Volet de droite : toujours présent sur grand écran, même vide (Olivier 12/11). */}
           {!sel && (
-            <aside className="hidden xl:flex rounded-2xl border border-dashed border-stone-300 bg-surface flex-col items-center justify-center text-center gap-2 p-6 min-h-0">
+            <aside className="vd-volet vd-volet-vide hidden xl:flex rounded-2xl border border-dashed border-stone-300 bg-surface flex-col items-center justify-center text-center gap-2 p-6 min-h-0">
               <b className="text-stone-700">Aucune mission ouverte</b>
               <span className="text-stone-500 text-sm max-w-[260px]">Touchez une carte à gauche ou une ligne de la liste pour voir son détail, le chauffeur proposé et les actions.</span>
             </aside>
           )}
           {/* Volet de droite : le détail de la mission choisie. */}
           {sel && (
-            <aside className="rounded-2xl border bg-surface flex flex-col min-h-0 fixed inset-0 z-40 lg:inset-y-0 lg:left-auto lg:w-[420px] xl:static xl:w-auto xl:z-auto shadow-2xl xl:shadow-none">
+            <aside className="vd-volet rounded-2xl border bg-surface flex flex-col min-h-0 fixed inset-0 z-40 lg:inset-y-0 lg:left-auto lg:w-[420px] xl:static xl:w-auto xl:z-auto shadow-2xl xl:shadow-none">
               <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
                 <b className="text-[16px] text-ink">{sel.mission_number ? `#${sel.mission_number}` : 'Mission'}</b>
                 <button type="button" onClick={() => setSelId(null)} aria-label="Fermer le détail" className="w-11 h-11 rounded-xl border border-stone-200 bg-white text-stone-900 text-lg">✕</button>
