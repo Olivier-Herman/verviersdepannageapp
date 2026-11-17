@@ -145,7 +145,10 @@ export async function aTrier(C: number): Promise<Facture[]> {
 /** Notes de crédit ouvertes des clients particuliers : remboursées sur le compte de leur fiche (Olivier 22/10/2026). */
 async function ncATrier(C: number): Promise<Facture[]> {
   const { ncParticuliersIds } = await import('./remboursements')
-  const ids = await ncParticuliersIds(C).catch(() => [] as number[])
+  // Les pièces masquées valent aussi pour les notes de crédit (Olivier 13/11/2026 : NC Sarah Marx, on ne rembourse pas).
+  const { getBusinessList } = await import('@/lib/settings/business')
+  const masquees = new Set((await getBusinessList('paiements_masques_move_ids').catch(() => [] as string[])).map(Number))
+  const ids = (await ncParticuliersIds(C).catch(() => [] as number[])).filter(id => !masquees.has(id))
   if (!ids.length) return []
   const ncs: any[] = await odooRpcCompany(C, 'account.move', 'read', [ids], { fields: FIELDS })
   const bank = await ibans(C, [...new Set(ncs.map(m => m.partner_id?.[0]).filter(Boolean))])
