@@ -1,6 +1,6 @@
-// src/lib/conges/rappel.ts — demandes de congé en attente (Olivier 15/11/2026) : chaque jour ouvrable à 10 h 45, un écran
+// src/lib/conges/rappel.ts — demandes de congé en attente (Olivier 15/11/2026) : chaque jour ouvrable à 10 h 45 et à 14 h 15, un écran
 // s'ouvre chez Momo s'il reste des demandes à traiter, avec Valider / Refuser (signés par son code) et « Répondre plus
-// tard » (le rappel revient le lendemain à 10 h 45). Rien en attente : aucun écran.
+// tard » (le rappel revient au créneau suivant : 14 h 15, ou le lendemain à 10 h 45). Rien en attente : aucun écran.
 import { createAdminClient } from '@/lib/supabase'
 
 export const CONGES_RAPPEL_TYPE = 'conges_en_attente'

@@ -541,8 +541,8 @@ function ParcVerificationModal({ notif, onDone }: { notif: NotifEvent; onDone: (
 }
 
 // ── Demandes de congé en attente (Olivier 15/11/2026) ─────────────────────────
-// 10 h 45, jours ouvrables, chez Momo : chaque demande se valide ou se refuse ici, signée par son code personnel.
-// « Répondre plus tard » ferme l'écran ; il revient le lendemain à 10 h 45 tant qu'il reste une demande.
+// 10 h 45 et 14 h 15, jours ouvrables, chez Momo : chaque demande se valide ou se refuse ici, signée par son code personnel.
+// « Répondre plus tard » ferme l'écran ; il revient au créneau suivant (14 h 15, ou le lendemain à 10 h 45) tant qu'il reste une demande.
 // Les demandes déjà traitées entre-temps (autre écran, autre personne) n'apparaissent plus ; plus rien → l'écran se ferme.
 function CongesModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
   const initiales: { id: string; worker: string; typeLabel: string; start: string; end: string; days: number | null; reason: string | null }[] = notif.payload?.data?.demandes || []
@@ -610,7 +610,7 @@ function CongesModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void 
           )}
           {err && <p className="text-red-700 text-sm font-semibold">⚠ {err}</p>}
           {demandes.some(d => !faites[d.id]) && (
-            <button type="button" disabled={!!sending} onClick={fermer} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Répondre plus tard (rappel demain à 10 h 45)</button>
+            <button type="button" disabled={!!sending} onClick={fermer} className="w-full min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-semibold">⏰ Répondre plus tard (rappel {Number(new Date().toLocaleString('en-US', { timeZone: 'Europe/Brussels', hour: '2-digit', hour12: false })) < 14 ? 'à 14 h 15' : 'demain à 10 h 45'})</button>
           )}
         </div>
       </div>
