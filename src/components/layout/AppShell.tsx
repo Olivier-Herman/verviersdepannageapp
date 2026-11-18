@@ -116,6 +116,14 @@ export default function AppShell({
     for (const k of ['vd_ancien', 'vd_dispatch_ancien']) document.cookie = `${k}=${ancien ? '' : '1'}; path=/; max-age=${ancien ? 0 : 31536000}; samesite=lax`
     window.location.reload()
   }
+  // Tous les titres de page comptent (Olivier 18/11 : « ne fonctionne pas partout ») : les pages habillées ont leur
+  // propre grand titre. Un seul écouteur sur le document, pour tout titre principal (h1) ou marqué data-titre-page.
+  const onTitreRef = useRef(onTitre); onTitreRef.current = onTitre
+  useEffect(() => {
+    const h = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest?.('h1, [data-titre-page]')) onTitreRef.current() }
+    document.addEventListener('click', h)
+    return () => document.removeEventListener('click', h)
+  }, [])
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
   const [navFavs, setNavFavs] = useState<string[]>([])
@@ -349,7 +357,7 @@ export default function AppShell({
             <TruckSwitcherIcon />
             <GlobalSearch shortcut={!navV2} />
           </div>
-          <h1 onClick={onTitre} className="font-display text-ink font-bold text-lg select-none">{title}</h1>
+          <h1 className="font-display text-ink font-bold text-lg select-none">{title}</h1>
           {ancienAff && <span className="ml-2 rounded-full bg-stone-200 text-stone-800 text-[11px] font-semibold px-2 py-0.5">Ancien</span>}
           {headerExtra}
         </div>
@@ -385,7 +393,7 @@ export default function AppShell({
         {/* Header desktop */}
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between gap-4">
-            <h1 onClick={onTitre} className="font-display text-ink font-bold text-2xl select-none">{title}</h1>
+            <h1 className="font-display text-ink font-bold text-2xl select-none">{title}</h1>
             {ancienAff && <span className="ml-2 inline-block align-middle rounded-full bg-stone-200 text-stone-800 text-xs font-semibold px-2 py-0.5" title="Trois appuis rapides sur le titre pour revenir au nouvel affichage">Ancien affichage</span>}
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
             {work.available && <WorkModeButton mode={work.mode} />}

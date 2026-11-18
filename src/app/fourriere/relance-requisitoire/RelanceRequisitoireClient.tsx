@@ -211,7 +211,7 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
   const inputCls = 'w-full bg-surface-2 border border-app rounded-lg px-2.5 py-1.5 text-xs text-ink outline-none focus:border-brand'
 
   return (
-    <div className={`${embedded ? '' : 'min-h-screen'} bg-surface max-w-5xl mx-auto flex flex-col`}>
+    <div className={`${embedded ? '' : 'min-h-screen'} bg-surface ${embedded && trierDelai ? 'w-full min-w-0' : 'max-w-5xl'} mx-auto flex flex-col`}>
       {!embedded && <div className="bg-surface-2 border-b border-app px-5 pt-12 pb-4">
         <div className="flex items-center gap-3">
           <Link href="/fourriere" className="w-10 h-10 flex items-center justify-center bg-surface-hover rounded-xl text-ink text-lg">←</Link>
@@ -242,7 +242,7 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
                 <div className="text-xs text-ink-muted">Un seul mail par policier : ses réquisitoires manquants + son espace de dépôt (il peut aussi s'attribuer une saisie sans policier).</div>
               </div>
             </div>
-            <div className="grid gap-1.5 sm:grid-cols-2">
+            <div className={`grid gap-1.5 sm:grid-cols-2 ${embedded && trierDelai ? '2xl:grid-cols-3' : ''}`}>
               {byOfficer.map(g => (
                 <div key={g.pid} className="flex items-center justify-between gap-2 bg-surface border border-app rounded-xl px-3 py-2">
                   <div className="min-w-0">
@@ -275,7 +275,7 @@ export default function RelanceRequisitoireClient({ initialItems, appUrl, embedd
         {visible.length === 0 ? (
           <p className="text-sm text-ink-muted italic py-8 text-center">{trierDelai && vueDelai === 'hors' ? 'Aucune saisie hors délai.' : 'Aucune saisie en attente de réquisitoire. 🎉'}</p>
         ) : (
-          <div className="space-y-2">
+          <div className={embedded && trierDelai ? 'grid grid-cols-[minmax(0,1fr)] xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-2 items-start' : 'space-y-2'}>
             {visible.map(it => {
               const d = daysSince(it.parked_at || it.saisie_at)
               const lastD = daysSince(it.last_reminder_at)
