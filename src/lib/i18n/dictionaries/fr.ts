@@ -537,6 +537,16 @@ export const fr = {
   },
 
   create_mission: {
+    appel_titre:            '🚓 Appel police du dispatch',
+    appel_intro:            'Le dispatch t\'envoie sur cet appel. Accepte, puis va sur place.',
+    appel_accepter:         'J\'accepte, j\'y vais',
+    appel_sur_place:        'Je suis sur place : choisir le motif',
+    appel_guidage:          'Guidage',
+    appel_mot_dispatch:     'Mot du dispatch',
+    appel_annule:           'Le dispatch a annulé cet appel.',
+    appel_autre:            'Cet appel est confié à un autre chauffeur.',
+    appel_ouvrir:           'Ouvrir l\'appel',
+    appel_adresse:          'Adresse de l\'appel',
     title:                  'Nouvelle mission',
     title_police:           'Mission Police / Privé',
     intro:                  'Remplis les infos minimum pour démarrer.',

@@ -40,7 +40,7 @@ export type Classe = Proposition & { estimee?: boolean }
 /** Classement complet des chauffeurs pour une mission. `retourDepot` (agent observateur, Olivier 18/11/2026) : un
  *  chauffeur libre sans position récente est supposé sur la route du retour vers le dépôt depuis la fin de sa
  *  dernière mission du jour, puis au dépôt — toujours en trajets routiers, jamais à vol d'oiseau. */
-export async function classerChauffeurs(missionId: string, opts: { retourDepot?: boolean } = {}): Promise<{ liste: Classe[]; nuit: boolean; raison: string | null } | { erreur: string }> {
+export async function classerChauffeurs(missionId: string | null, opts: { retourDepot?: boolean; but?: Coord } = {}): Promise<{ liste: Classe[]; nuit: boolean; raison: string | null } | { erreur: string }> {
   await ensureScheduleLoaded()
 
   const sb = createAdminClient()
@@ -48,9 +48,10 @@ export async function classerChauffeurs(missionId: string, opts: { retourDepot?:
   const aujourdhui = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(maintenant)
   const debutJour = new Date(`${aujourdhui}T00:00:00`).toISOString()
 
-  const { data: cible } = await sb.from('incoming_missions').select('id, incident_lat, incident_lng, incident_address').eq('id', missionId).maybeSingle()
-  if (!cible) return { erreur: 'Mission introuvable' }
-  const but = coord(cible.incident_lat, cible.incident_lng)
+  // Sans mission (appel police du dispatch, 18/11/2026) : la destination est donnée directement.
+  const cible = missionId ? (await sb.from('incoming_missions').select('id, incident_lat, incident_lng, incident_address').eq('id', missionId).maybeSingle()).data : null
+  if (missionId && !cible) return { erreur: 'Mission introuvable' }
+  const but = opts.but || (cible ? coord(cible.incident_lat, cible.incident_lng) : null)
   if (!but) return { liste: [], nuit: false, raison: 'L\'adresse de la mission n\'est pas encore localisée : vérifiez-la dans la fiche complète.' }
 
   const [{ data: users }, { data: conges }, { data: enCours }, { data: duJour }] = await Promise.all([
@@ -58,7 +59,7 @@ export async function classerChauffeurs(missionId: string, opts: { retourDepot?:
       .eq('active', true).or('role.in.(driver,admin,superadmin),roles.ov.{driver,admin,superadmin}'),
     sb.from('conge_requests').select('user_id').eq('status', 'approved').lte('start_date', aujourdhui).gte('end_date', aujourdhui),
     sb.from('incoming_missions').select('id, assigned_to, mission_type, status, on_site_at, loaded_at, incident_lat, incident_lng, incident_city, incident_address, destination_lat, destination_lng, destination_address, assigned_at, paused_at, pause_released_at')
-      .in('status', ACTIFS).neq('id', missionId).not('assigned_to', 'is', null).order('assigned_at'),
+      .in('status', ACTIFS).neq('id', missionId || '00000000-0000-0000-0000-000000000000').not('assigned_to', 'is', null).order('assigned_at'),
     sb.from('incoming_missions').select('assigned_to').gte('assigned_at', debutJour).not('assigned_to', 'is', null),
   ])
   const enConge = new Set((conges || []).map((c: any) => c.user_id))

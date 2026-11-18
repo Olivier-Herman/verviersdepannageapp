@@ -137,6 +137,15 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Appel police lancé par le dispatch (Olivier 18/11/2026) : adresse + chauffeur ; le chauffeur accepte puis complète.
+    key:             'appel_police_dispatch',
+    label:           'Appel police envoyé par le dispatch',
+    description:     'Le dispatch t\'envoie sur un appel police : accepte, va sur place, puis complète la fiche.',
+    category:        'driver',
+    applicableRoles: ['driver'],
+    defaultEnabled:  true,
+  },
+  {
     key:             'mission_assigned_manual',
     label:           'Nouvelle mission assignée',
     description:     'Le dispatcher t\'a assigné manuellement une mission.',

@@ -523,6 +523,16 @@ export const sq: Dictionary = {
   },
 
   create_mission: {
+    appel_titre:            '🚓 Thirrje policie nga dispeçeri',
+    appel_intro:            'Dispeçeri të dërgon në këtë thirrje. Prano, pastaj shko në vend.',
+    appel_accepter:         'Pranoj, po shkoj',
+    appel_sur_place:        'Jam në vend: zgjidh arsyen',
+    appel_guidage:          'Navigimi',
+    appel_mot_dispatch:     'Shënim nga dispeçeri',
+    appel_annule:           'Dispeçeri e anuloi këtë thirrje.',
+    appel_autre:            'Kjo thirrje i është besuar një shoferi tjetër.',
+    appel_ouvrir:           'Hap thirrjen',
+    appel_adresse:          'Adresa e thirrjes',
     title:                  'Mision i ri',
     title_police:           'Mision Policia / Privat',
     intro:                  'Plotëso të dhënat minimale për të nisur.',

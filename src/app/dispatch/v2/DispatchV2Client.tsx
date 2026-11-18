@@ -9,6 +9,7 @@
 // autoroute). La fiche en volet arrive à l'étape 2 : en attendant, une mission
 // s'ouvre dans la fiche actuelle.
 
+import { AppelPoliceBouton, AppelsPoliceEnCours } from '@/components/dispatch/AppelPolice'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -666,8 +667,10 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
             ⚠ Alertes <b className="text-base tabular-nums">{nAlertes}</b>
           </button>
           <span className="flex-1" />
+          <AppelPoliceBouton className="min-h-[44px] px-4 rounded-xl bg-red-700 ring-2 ring-white/70 text-white font-extrabold text-sm" />
           <Link href="/dispatch/new" className="min-h-[44px] px-4 rounded-xl bg-white text-red-900 font-extrabold text-sm inline-flex items-center">+ Nouvelle mission</Link>
         </div>
+        <AppelsPoliceEnCours />
         <div className="lg:hidden grid grid-cols-3 gap-1 bg-stone-100 rounded-xl p-1" role="tablist" aria-label="Vue">
           {([['traiter', `À traiter · ${n}`], ['cours', `En cours · ${board?.lances.length ?? 0}${nAlertes ? ` · ⚠ ${nAlertes}` : ''}`], ['chauffeurs', 'Chauffeurs']] as const).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={ongletTel === k} onClick={() => setOngletTel(k)}

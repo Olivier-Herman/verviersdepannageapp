@@ -1,5 +1,6 @@
 'use client'
 
+import MesAppelsPolice from '@/components/dispatch/MesAppelsPolice'
 import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -158,6 +159,7 @@ export default function DashboardClient({
       <AmbientBackground>
         <div className="px-4 lg:px-8 py-5 lg:py-8 max-w-5xl mx-auto">
           <GardeBanner />
+          <MesAppelsPolice />
           {!enChauffeur && <NightSwitchCard />}
           <TalkieEntry />
           {!enChauffeur && <InterrupteurAssistants partie="bandeau" />}

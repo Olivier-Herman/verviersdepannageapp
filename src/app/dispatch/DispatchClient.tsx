@@ -2,6 +2,7 @@
 // src/app/dispatch/DispatchClient.tsx
 // P6 — toggle liste/carte + panel statut chauffeurs + cartes colorées par urgence
 
+import { AppelPoliceBouton, AppelsPoliceEnCours } from '@/components/dispatch/AppelPolice'
 import RaisonForcage from '@/components/missions/RaisonForcage'
 import { pollWhenVisible } from '@/lib/client/poll'
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
@@ -1709,6 +1710,9 @@ export default function DispatchClient({
             {userRole === 'superadmin' && <AxaImportButton onImportDone={() => load()} />}
             </div>
 
+            {/* Appel police (Olivier 18/11/2026) : adresse + chauffeur, le chauffeur complète sur place. */}
+            <AppelPoliceBouton className="flex items-center justify-center min-h-[40px] px-3 lg:px-4 rounded-xl bg-red-700 text-white text-sm font-bold flex-shrink-0" />
+
             {/* Nouvelle mission — icône seule sur mobile, label sur desktop */}
             <Link href="/dispatch/new"
               title="Nouvelle mission"
@@ -1915,6 +1919,7 @@ export default function DispatchClient({
         {/* ── Contenu wrappe d'un ambient background ────────────────── */}
         <AmbientBackground>
         <main className="flex-1 overflow-y-auto overflow-x-hidden px-3 lg:px-6 py-4 lg:py-6 ambient-fade-up">
+          <div className="mb-3"><AppelsPoliceEnCours /></div>
           {loading ? (
             <div className="flex items-center justify-center h-64 text-ink-muted">Chargement…</div>
           ) : filtered.length === 0 ? (

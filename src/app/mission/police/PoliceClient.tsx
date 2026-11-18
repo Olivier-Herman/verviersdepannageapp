@@ -14,6 +14,7 @@ import { useT } from '@/lib/i18n/I18nProvider'
 import { T }    from '@/lib/i18n/T'
 import { normalizePlate } from '@/lib/plate'
 import { pluginHorsLigne, type FicheHorsLigne } from '@/lib/client/fiches-hors-ligne'
+import { openNavigation } from '@/lib/open-navigation'
 
 type MissionType = 'accident' | 'saisie' | 'rodeo' | 'mal_garee' | 'snc' | 'sc' | 'siabis' | 'appel_prive' | 'avp'
 
@@ -108,6 +109,27 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     const p = searchParams.get('plate')
     if (p) setPlate(normalizePlate(p))
   }, [searchParams])
+  // Appel police envoyé par le dispatch (Olivier 18/11/2026) : le chauffeur accepte et voit l'adresse AVANT de choisir
+  // le motif (il doit être sur place pour le connaître) ; ensuite, son formulaire habituel avec l'adresse déjà encodée.
+  const appelId = searchParams.get('appel')
+  const [appel, setAppel] = useState<null | { id: string; address: string; lat: number | null; lng: number | null; note: string | null; status: string }>(null)
+  const [appelErr, setAppelErr] = useState<string | null>(null)
+  const [appelEtape, setAppelEtape] = useState<'accepter' | 'route' | 'formulaire'>('accepter')
+  const [appelBusy, setAppelBusy] = useState(false)
+  useEffect(() => {
+    if (!appelId) return
+    fetch(`/api/appels-police/${appelId}`, { cache: 'no-store' }).then(async r => {
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setAppelErr(j.error || 'Appel introuvable'); return }
+      const a = j.appel
+      setAppel(a)
+      setAppelEtape(a.status === 'envoye' ? 'accepter' : 'route')
+    }).catch(() => setAppelErr('Erreur réseau'))
+  }, [appelId])
+  const lierAppel = async (missionId: string | null) => {
+    if (!appel) return
+    try { await fetch(`/api/appels-police/${appel.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'lier', mission_id: missionId }) }) } catch { /* le lien se refera à la main */ }
+  }
   const [brand,          setBrand]          = useState('')
   const [model,          setModel]          = useState('')
   const [location,       setLocation]       = useState('')
@@ -298,6 +320,12 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
       })
       .catch(() => {/* fallback hardcode garde */})
   }, [])
+
+  useEffect(() => {
+    if (!selectedType || !appel || location) return
+    setLocation(appel.address)
+    if (appel.lat != null && appel.lng != null) { setLocationLat(appel.lat); setLocationLng(appel.lng) }
+  }, [selectedType, appel])   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedType) return
@@ -752,6 +780,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         return
       }
       // Redirection directe vers la fiche mission qui pilotera l encaissement
+      await lierAppel(draftData.missionId || null)
       window.location.href = `/mission/${draftData.missionId}`
       return
     }
@@ -800,6 +829,7 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
     const data = await res.json()
 
     if (data.ok) {
+      await lierAppel(data.missionId || null)
       // SNC : droit sur la fiche, où l'écran « Qu'est-ce qu'on fait ? » attend le
       // chauffeur (DSP / REM client / REM dépôt → encaissement ou parc). 24/09/2026.
       if (selectedType === 'snc' && data.missionId) { router.push(`/mission/${data.missionId}`); return }
@@ -993,6 +1023,45 @@ export default function PoliceClient({ userRole = 'driver' }: { userRole?: strin
         )}
       </div>
     </div>
+    )
+  }
+
+  // ── Appel police du dispatch : accepter, puis la route, puis le motif ─────
+  if (appelId && !selectedType && (appelErr || !appel || appel.status === 'annule' || appelEtape !== 'formulaire')) {
+    const nav = (app: 'waze' | 'gmaps') => openNavigation(app, appel?.lat ?? null, appel?.lng ?? null, appel?.address || '')
+    return (
+      <div className="min-h-screen bg-page px-4 pt-12 pb-8 flex flex-col gap-4">
+        <button onClick={() => router.push('/dashboard')} className="self-start text-ink-muted text-sm flex items-center gap-1 min-h-[44px]">← <T k="encaissement.btn_back" /></button>
+        <h1 className="text-ink text-2xl font-bold"><T k="create_mission.appel_titre" /></h1>
+        {appelErr && <p className="rounded-xl bg-red-50 text-red-800 font-semibold px-4 py-3">{appelErr === 'Cet appel est confié à un autre chauffeur.' ? <T k="create_mission.appel_autre" /> : appelErr}</p>}
+        {!appel && !appelErr && <p className="text-ink-muted flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> …</p>}
+        {appel?.status === 'annule' && <p className="rounded-xl bg-amber-50 text-amber-900 font-semibold px-4 py-3"><T k="create_mission.appel_annule" /></p>}
+        {appel && appel.status !== 'annule' && (<>
+          <div className="rounded-2xl border-2 border-red-600 bg-surface p-4 flex flex-col gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-red-700"><T k="create_mission.appel_adresse" /></span>
+            <span className="text-ink text-lg font-bold">{appel.address}</span>
+            {appel.note && <span className="text-ink-secondary text-sm"><b><T k="create_mission.appel_mot_dispatch" /> :</b> {appel.note}</span>}
+          </div>
+          {appelEtape === 'accepter' ? (<>
+            <p className="text-ink-secondary text-sm"><T k="create_mission.appel_intro" /></p>
+            <button disabled={appelBusy} onClick={async () => {
+              setAppelBusy(true)
+              try {
+                const r = await fetch(`/api/appels-police/${appel.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'accepter' }) })
+                const j = await r.json().catch(() => ({}))
+                if (!r.ok) { setAppelErr(j.error || 'Erreur'); return }
+                setAppelEtape('route')
+              } catch { setAppelErr('Erreur réseau') } finally { setAppelBusy(false) }
+            }} className="min-h-[56px] rounded-2xl bg-red-700 text-white font-bold text-lg disabled:opacity-50">{appelBusy ? '…' : <T k="create_mission.appel_accepter" />}</button>
+          </>) : (<>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => nav('waze')} className="min-h-[52px] rounded-xl bg-sky-700 text-white font-bold">🧭 Waze</button>
+              <button onClick={() => nav('gmaps')} className="min-h-[52px] rounded-xl border-2 border-sky-700 text-sky-800 font-bold">🗺️ Google Maps</button>
+            </div>
+            <button onClick={() => setAppelEtape('formulaire')} className="min-h-[56px] rounded-2xl bg-ink text-surface font-bold text-lg"><T k="create_mission.appel_sur_place" /></button>
+          </>)}
+        </>)}
+      </div>
     )
   }
 
