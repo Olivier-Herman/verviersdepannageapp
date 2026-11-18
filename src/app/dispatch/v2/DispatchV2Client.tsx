@@ -282,6 +282,12 @@ function Relivrer({ m, onCree }: { m: M; onCree: (id: string) => void }) {
   )
 }
 
+// Nuits passées au parc (jamais le jour d'entrée), comme le gardiennage.
+const nuitsParc = (iso: string) => {
+  const j = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Brussels' })
+  const n = Math.max(0, Math.round((Date.parse(j(new Date())) - Date.parse(j(new Date(iso)))) / 864e5))
+  return n === 0 ? 'entré aujourd’hui' : `${n} nuit${n > 1 ? 's' : ''}`
+}
 // ── Morceaux d'affichage (hors du composant : pas recréés à chaque seconde) ──
 // Avancement : reçue, acceptée, en route, sur place, chargée ou réparée, livrée.
 const Avancement = ({ m }: { m: M }) => {
@@ -739,7 +745,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                     </div>) })}
                 </div>
                 <table className="hidden lg:table w-full min-w-[520px] text-[13.5px]">
-                  <thead><tr className="text-left text-[11.5px] uppercase tracking-wide text-stone-500"><th className="px-2 py-2">État</th><th className="px-2 py-2">Mission</th><th className="px-2 py-2">Trajet</th><th className="px-2 py-2">Chauffeur</th></tr></thead>
+                  <thead><tr className="text-left text-[11.5px] uppercase tracking-wide text-stone-500"><th className="px-2 py-2">État</th><th className="px-2 py-2">Mission</th><th className="px-2 py-2">Trajet</th><th className="px-2 py-2">{filtre === 'parked' ? 'Au parc' : 'Chauffeur'}</th></tr></thead>
                   <tbody>
                     {liste.map(m => {
                       const e = etat(m)
@@ -753,7 +759,11 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                           <td className="px-2 py-2"><div className="flex gap-1.5 items-center flex-wrap"><Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span></div>
                             <div className="mt-1 flex gap-1.5 items-center flex-wrap"><Plaque m={m} /><span className="text-stone-600">{vehicule(m)}</span></div></td>
                           <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{lieu(m) || '—'}</div>{destination(m) && <div className="text-stone-700 truncate" title={destination(m)}>→ {destination(m)}</div>}{filtre === 'parked' && (court(m.redelivery_address) ? <div className="text-emerald-800 font-medium truncate" title={court(m.redelivery_address)}>Relivraison → {court(m.redelivery_address)}</div> : <div className="text-amber-800 text-[12.5px]">Relivraison : adresse pas encore connue</div>)}{panneUtile(m) && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{panneUtile(m)}</div>}</td>
-                          <td className="px-2 py-2 text-stone-900">{m.assigned_user?.name || <span className="text-stone-400">—</span>}</td>
+                          <td className="px-2 py-2 text-stone-900">{filtre === 'parked'
+                            // Onglet « À relivrer » (Olivier 18/11) : le chauffeur du remorquage ne fera pas forcément la relivraison ;
+                            // la zone et les nuits au parc aident à préparer la tournée.
+                            ? <span className="whitespace-nowrap">{(m as any).parc_zone_key ? <b>Zone {(m as any).parc_zone_key}</b> : <span className="text-stone-400">Zone ?</span>}{(m as any).parked_at && <span className="block text-[12.5px] text-stone-600">{nuitsParc((m as any).parked_at)}</span>}</span>
+                            : (m.assigned_user?.name || <span className="text-stone-400">—</span>)}</td>
                         </tr>
                       )
                     })}
