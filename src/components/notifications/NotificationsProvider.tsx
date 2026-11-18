@@ -171,7 +171,10 @@ export default function NotificationsProvider({
   const [, setSnoozeTick] = useState(0)
   useEffect(() => { const t = setInterval(() => setSnoozeTick(x => x + 1), 30_000); return () => clearInterval(t) }, [])
   const snoozedUntil = (id: string) => { try { return Number(window.localStorage.getItem(`vd_snooze_${id}`) || 0) } catch { return 0 } }
-  const isShown = (n: NotifEvent) => !!n.payload?.data?.modal && !(n.payload?.data?.non_blocking && snoozedUntil(n.id) > Date.now())
+  // Le contrôle aléatoire du parc se repousse de 15 min (Olivier 17/11) : il se cache comme une fenêtre non bloquante.
+  const reportable = (n: NotifEvent) => !!n.payload?.data?.non_blocking || n.payload?.data?.kind === 'controle_parc'
+  const isShown = (n: NotifEvent) => !!n.payload?.data?.modal && !(reportable(n) && snoozedUntil(n.id) > Date.now())
+  const unsnooze = (id: string) => { try { window.localStorage.removeItem(`vd_snooze_${id}`) } catch {} setSnoozeTick(x => x + 1) }
   const snooze = (id: string, minutes: number) => { try { window.localStorage.setItem(`vd_snooze_${id}`, String(Date.now() + minutes * 60_000)) } catch {} setSnoozeTick(x => x + 1) }
   const blockingPending = pending.find(isShown)
   const blockingId = blockingPending?.id || null
@@ -207,6 +210,25 @@ export default function NotificationsProvider({
       {(() => {
         const blocking = pending.find(isShown)
         return blocking ? <BlockingNotificationModal notif={blocking} onDone={() => markRead(blocking.id)} onSnooze={(min: number) => snooze(blocking.id, min)} /> : null
+      })()}
+      {/* Contrôle du parc repoussé (idée de Jona, Olivier 18/11/2026) : un bandeau en haut pendant les 15 min ; « Reprendre
+          maintenant » lance le contrôle (notification sur le téléphone) et rouvre la fenêtre. */}
+      {(() => {
+        const rep = pending.find(n => n.payload?.data?.kind === 'controle_parc' && n.payload?.data?.modal && snoozedUntil(n.id) > Date.now())
+        if (!rep || pending.some(isShown)) return null
+        const id = String(rep.payload?.data?.controle_id || '')
+        return (
+          <div className="fixed top-0 inset-x-0 z-[350] flex justify-center px-4 pt-[max(8px,env(safe-area-inset-top,0px))] pointer-events-none">
+            <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-2xl border-2 border-sky-600 bg-sky-50 text-sky-900 shadow-lg px-4 py-2">
+              <span className="font-semibold">🔍 Contrôle du parc reporté</span>
+              <button type="button" className="min-h-[44px] rounded-xl bg-sky-700 text-white font-bold px-4"
+                onClick={async () => {
+                  try { await fetch(`/api/parc/controle-aleatoire/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) }) } catch {}
+                  unsnooze(rep.id)
+                }}>Reprendre maintenant</button>
+            </div>
+          </div>
+        )
       })()}
       {/* Stack de bandeaux : top-right, plus recente en haut */}
       {pending.some(n => !n.payload?.data?.modal) && (

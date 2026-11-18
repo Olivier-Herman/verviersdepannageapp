@@ -113,7 +113,12 @@ export default function AppShell({
     if (appuisTitre.current.length < 3) return
     appuisTitre.current = []
     const ancien = document.cookie.split('; ').includes('vd_ancien=1')
-    for (const k of ['vd_ancien', 'vd_dispatch_ancien']) document.cookie = `${k}=${ancien ? '' : '1'}; path=/; max-age=${ancien ? 0 : 31536000}; samesite=lax`
+    const poser = (versAncien: boolean) => { for (const k of ['vd_ancien', 'vd_dispatch_ancien']) document.cookie = `${k}=${versAncien ? '1' : ''}; path=/; max-age=${versAncien ? 31536000 : 0}; samesite=lax` }
+    // Tableau de bord (Olivier 18/11) : les trois appuis mènent à « Ma journée », en nouvel affichage.
+    if (pathname === '/dashboard') { poser(false); window.location.href = '/ma-journee'; return }
+    poser(!ancien)
+    // Depuis « Ma journée », le retour à l'ancien affichage ramène au tableau de bord.
+    if (!ancien && pathname === '/ma-journee') { window.location.href = '/dashboard'; return }
     window.location.reload()
   }
   // Tous les titres de page comptent (Olivier 18/11 : « ne fonctionne pas partout ») : les pages habillées ont leur
