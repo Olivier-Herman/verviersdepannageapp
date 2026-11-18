@@ -65,6 +65,11 @@ export async function POST(req: Request) {
   const b = await req.json().catch(() => ({}))
   const societe = s.societes.length === 1 ? s.societes[0] : s.societes.find(x => x.id === b?.societeId)
   if (!societe) return NextResponse.json({ error: 'Choisissez la société qui commande.' }, { status: 400 })
+  if (societe.formulaire === 'transport') {
+    const { tgrClosLe } = await import('@/lib/espace/tgr-clos')
+    const clos = await tgrClosLe()
+    if (clos) return NextResponse.json({ error: `Le service de transport TGR n’est plus inclus depuis le ${clos.split('-').reverse().join('/')}. Pour toute question : 087 35 18 20.` }, { status: 400 })
+  }
   const d = lireDemande(b, societe.formulaire)
   if (typeof d === 'string') return NextResponse.json({ error: d }, { status: 400 })
   try {

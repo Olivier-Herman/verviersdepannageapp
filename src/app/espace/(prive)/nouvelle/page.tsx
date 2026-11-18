@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import { useState } from 'react'
-import { useEspace } from '../EspaceShell'
+import { useEspace, TgrClos } from '../EspaceShell'
 import { IMG, IcoPin, Plaque } from '../../_ui/suivi'
 import AdresseInline, { type AdresseChoisie } from '../../_ui/AdresseInline'
 import CommanderTransport from './CommanderTransport'
@@ -52,6 +52,7 @@ export default function Commander() {
   }
 
   // Société au formulaire « transport » (TGR Touring) : son propre parcours, en deux étapes.
+  if (societe?.closLe) return <div className="wrap" style={{ paddingTop: 24 }}><TgrClos le={societe.closLe} />{societes.length > 1 && <button className="btn btn-ghost" onClick={() => setSocId('')}>Choisir une autre société</button>}</div>
   if (societe?.formulaire === 'transport') return <CommanderTransport societe={societe} onChanger={societes.length > 1 ? () => setSocId('') : undefined} />
 
   if (fait) return (

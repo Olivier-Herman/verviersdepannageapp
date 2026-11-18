@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { toutTransport, useEspace } from './EspaceShell'
+import { toutTransport, useEspace, commandeFermee, TgrClos } from './EspaceShell'
 import { Frise, IMG, IcoDoc, IcoPin, IcoPlus, Pastille, PastillePriorite, Plaque, Progression, jour, typeLibelle, type MissionEspace } from '../_ui/suivi'
 
 type Filtre = 'cours' | 'finies' | 'toutes'
@@ -42,6 +42,8 @@ export default function Suivi() {
   const h = new Date().getHours()
   // Compte qui ne commande que des transports (TGR) : les textes parlent de transports.
   const tr = toutTransport(societes)
+  const ferme = commandeFermee(societes)
+  const closLe = societes.find(s => s.closLe)?.closLe || null
   const detail = ouverte ? (missions || []).find(m => m.id === ouverte) || null : null
 
   return (
@@ -53,13 +55,14 @@ export default function Suivi() {
             <div className="hello">{h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir'} {compte.nom.split(/\s+/)[0]}</div>
             <h1>{tr ? 'Vos transports,' : 'Vos interventions,'}<br />en direct.</h1>
             <p>{tr ? 'Suivez chaque transport de la demande jusqu’à la livraison.' : 'Suivez chaque dépannage de la demande jusqu’à la livraison.'} Rapports et factures au même endroit.</p>
-            <Link href="/espace/nouvelle" className="btn btn-red" style={{ marginTop: 14 }}><IcoPlus /> {tr ? 'Commander un transport' : 'Commander une intervention'}</Link>
+            {!ferme && <Link href="/espace/nouvelle" className="btn btn-red" style={{ marginTop: 14 }}><IcoPlus /> {tr ? 'Commander un transport' : 'Commander une intervention'}</Link>}
           </div>
           <div className="kpis">{([['En cours', kpi.cours], ['En attente', kpi.attente], ['Terminées ce mois', kpi.mois]] as [string, number][]).map(([l, v], i) => <Kpi key={l} label={l} valeur={v} delai={120 + i * 90} />)}</div>
         </div>
       </section>
 
       <div className="wrap">
+        {closLe && <div style={{ marginTop: 18 }}><TgrClos le={closLe} /></div>}
         <div className="bar rise">
           <div className="seg">{([['cours', 'En cours'], ['finies', 'Terminées'], ['toutes', 'Toutes']] as [Filtre, string][]).map(([k, l]) => <button key={k} className={filtre === k ? 'on' : ''} onClick={() => setFiltre(k)}>{l}</button>)}</div>
           {societes.length > 1 && <>
@@ -83,8 +86,8 @@ export default function Suivi() {
             <img src={IMG.vide} alt="" />
             <div>
               <h3 style={{ fontSize: 22 }}>{filtre === 'cours' ? (tr ? 'Aucun transport en cours' : 'Aucune intervention en cours') : 'Rien à afficher ici'}</h3>
-              <p style={{ color: 'var(--ink2)' }}>{filtre === 'cours' ? (tr ? 'Un véhicule à faire transporter ? Commandez-le ici, nous nous en occupons.' : 'Tout roule. Besoin d’un dépannage ou d’un remorquage ? Nous arrivons.') : 'Changez de filtre ou de recherche.'}</p>
-              {filtre === 'cours' && <Link href="/espace/nouvelle" className="btn btn-red">{tr ? 'Commander un transport' : 'Commander une intervention'}</Link>}
+              <p style={{ color: 'var(--ink2)' }}>{filtre === 'cours' ? (ferme ? 'Le suivi de vos anciens transports reste disponible ici.' : tr ? 'Un véhicule à faire transporter ? Commandez-le ici, nous nous en occupons.' : 'Tout roule. Besoin d’un dépannage ou d’un remorquage ? Nous arrivons.') : 'Changez de filtre ou de recherche.'}</p>
+              {filtre === 'cours' && !ferme && <Link href="/espace/nouvelle" className="btn btn-red">{tr ? 'Commander un transport' : 'Commander une intervention'}</Link>}
             </div>
           </div>
         ))}

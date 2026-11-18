@@ -7,9 +7,23 @@ import Installer from '../_ui/Installer'
 
 export interface CompteEspace { id: string; nom: string; email: string; role: 'societe' | 'gestionnaire' | 'collaborateur'; peutInviter: boolean; aMotDePasse: boolean; mesClients: boolean }
 export interface GarageEspace { nom: string; adresse: string; lat: number | null; lng: number | null }
-export interface SocieteEspace { id: string; nom: string; couleur: string | null; formulaire: 'standard' | 'transport'; garages: GarageEspace[] }
+export interface SocieteEspace { id: string; nom: string; couleur: string | null; formulaire: 'standard' | 'transport'; closLe?: string | null; garages: GarageEspace[] }
 /** Compte dont toutes les sociétés commandent des transports (TGR) : les libellés parlent de « transports ». */
 export const toutTransport = (societes: SocieteEspace[]) => societes.length > 0 && societes.every(s => s.formulaire === 'transport')
+/** Plus aucune société de ce compte ne peut commander (service TGR clos, 18/11/2026). */
+export const commandeFermee = (societes: SocieteEspace[]) => societes.length > 0 && societes.every(s => !!s.closLe)
+const fr = (d: string) => d.split('-').reverse().join('/')
+/** Message de fin du service TGR, affiché aux seuls partenaires TGR (Olivier 18/11/2026). */
+export function TgrClos({ le }: { le: string }) {
+  return (
+    <div className="card rise" style={{ padding: '18px 20px', borderLeft: '5px solid var(--red)', marginBottom: 18 }}>
+      <h3 style={{ fontSize: 19, margin: '0 0 6px' }}>Le service de transport TGR n’est plus inclus</h3>
+      <p style={{ color: 'var(--ink2)', margin: '0 0 6px' }}>Depuis le {fr(le)}, le service de transport TGR ne fait plus partie de notre collaboration. Vous ne pouvez plus commander de nouveau transport TGR depuis cet espace.</p>
+      <p style={{ color: 'var(--ink2)', margin: '0 0 6px' }}>Les transports déjà commandés sont menés à leur terme. Le suivi de vos demandes et vos documents restent consultables ici.</p>
+      <p style={{ color: 'var(--ink2)', margin: 0 }}>Pour toute question : 087 35 18 20 · administration@verviersdepannage.com</p>
+    </div>
+  )
+}
 const Ctx = createContext<{ compte: CompteEspace; societes: SocieteEspace[] } | null>(null)
 export const useEspace = () => useContext(Ctx)!
 
@@ -19,7 +33,7 @@ export default function EspaceShell({ compte, societes, children }: { compte: Co
   const [mdp, setMdp] = useState(false)
   const onglets = [
     { href: '/espace', label: toutTransport(societes) ? 'Mes transports' : 'Mes interventions', court: 'Suivi' },
-    { href: '/espace/nouvelle', label: 'Commander', court: 'Commander' },
+    ...(commandeFermee(societes) ? [] : [{ href: '/espace/nouvelle', label: 'Commander', court: 'Commander' }]),
     ...(compte.mesClients ? [{ href: '/espace/clients', label: 'Mes clients', court: 'Clients' }] : []),
     ...(compte.peutInviter ? [{ href: '/espace/equipe', label: 'Mon équipe', court: 'Équipe' }] : []),
   ]
