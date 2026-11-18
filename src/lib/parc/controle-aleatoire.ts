@@ -76,6 +76,16 @@ export async function tirerVehicules(sb: Sb, nb = NB): Promise<Tire[]> {
     return { force, prio: transit || jamais || vieux || !m.parc_zone_key, txt }
   }
   const choisis: any[] = []
+  // Véhicules imposés au prochain contrôle (Olivier 18/11/2026 : « place-les dans le check aléatoire de demain ») :
+  // réglage controle_parc_imposes (n° de fiche), pris en premier quels que soient leur zone et leur dernier contrôle,
+  // puis le réglage est vidé (une seule fois).
+  const imposes: string[] = await (async () => { try { const { getBusinessList } = await import('@/lib/settings/business'); return await getBusinessList('controle_parc_imposes') } catch { return [] } })()
+  const info0 = new Map<string, string>()
+  for (const n of imposes) {
+    const m = ((data || []) as any[]).find(x => String(x.mission_number) === String(n).trim())
+    if (m && !choisis.includes(m) && choisis.length < nb) { choisis.push(m); info0.set(m.id, 'demandé au bureau') }
+  }
+  if (imposes.length) await sb.from('app_settings').upsert({ key: 'controle_parc_imposes', value: JSON.stringify([]) }, { onConflict: 'key' })
   const prendre = (liste: any[], n: number, poids: (m: any) => number) => {
     const pool = liste.filter(m => !choisis.includes(m))
     while (n-- > 0 && pool.length) {
@@ -90,7 +100,7 @@ export async function tirerVehicules(sb: Sb, nb = NB): Promise<Tire[]> {
   prendre(cands.filter(m => info.get(m.id)!.force), nb, () => 1)                                    // toujours
   prendre(cands.filter(m => info.get(m.id)!.prio), Math.max(0, Math.min(10, nb) - choisis.length), poidsAge)   // priorité
   prendre(cands, nb - choisis.length, poidsAge)                                                   // le reste
-  return choisis.map(m => ({ mission_id: m.id, raison: info.get(m.id)!.txt.join(' · '), zone: m.parc_zone_key || null, vu_avant_at: m.vu_at || null }))
+  return choisis.map(m => ({ mission_id: m.id, raison: [info0.get(m.id), ...(info.get(m.id)?.txt || [`${nuits(m)} nuits au parc`])].filter(Boolean).join(' · '), zone: m.parc_zone_key || null, vu_avant_at: m.vu_at || null }))
 }
 
 async function rangerParZone(sb: Sb, tires: Tire[]): Promise<Tire[]> {
