@@ -100,7 +100,8 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     if (recurrente) { directAllowed = true; directWhy = 'facture mensuelle récurrente, référence différente (règle du 10/11/2026)' }
     // Travaux anciens (Olivier 18/11/2026, Car Avenue Star : factures du 17/11 pour des ordres d'atelier d'avril et de
     // juin) : la date des travaux lue sur la pièce (ordre d'atelier, intervention, livraison) est envoyée par l'agent ;
-    // au-delà du délai réglé, la facture ne se valide jamais seule et part chez Olivier avec l'alerte.
+    // au-delà du délai réglé : la validation reste permise (Olivier 18/11 : « on peut les valider de toute façon »),
+    // mais Olivier reçoit une petite alerte dans la Supervision.
     let travauxAnciens: string | null = null
     const dt = String(p.date_travaux || '').trim()
     if (/^\d{4}-\d{2}-\d{2}$/.test(dt)) {
@@ -109,7 +110,13 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
       const ecart = Math.round((Date.parse(b.invoice_date) - Date.parse(dt)) / 864e5)
       if (ecart > seuil) travauxAnciens = `travaux du ${dt.split('-').reverse().join('/')}, ${Math.round(ecart / 30)} mois avant la facture`
     }
-    if (travauxAnciens) { directAllowed = false; directWhy = undefined }
+    if (travauxAnciens) {
+      try {
+        const { informerMobi } = await import('@/lib/notif/heures-mobi')
+        const { getBusinessNumber } = await import('@/lib/settings/business')
+        await informerMobi(await getBusinessNumber('telegram_chat_mobi'), `🕰️ Facture d'achat pour des travaux anciens : ${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}\n${travauxAnciens}. Montant ${Number(b.amount_total).toFixed(2)} €. La facture suit son circuit normal ; à vérifier si besoin.`, [], agent.name, { cle: `travaux-anciens-${company}-${id}` })
+      } catch { /* l'alerte ne bloque jamais la facture */ }
+    }
     return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}${travauxAnciens ? ` · ⚠️ ${travauxAnciens}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(dt ? { date_travaux: dt } : {}), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}), ...(travauxAnciens ? { travaux_anciens: travauxAnciens } : {}) }, directAllowed, directWhy }
   }
 
