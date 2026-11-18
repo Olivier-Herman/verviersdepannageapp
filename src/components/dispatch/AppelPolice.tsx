@@ -3,6 +3,7 @@
 // le dispatch donne l'adresse et le chauffeur ; le chauffeur accepte, voit l'adresse, puis remplit son formulaire de
 // création habituel (motif choisi par lui sur place). Pas de rappel ni d'appel automatique.
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import AddressField from '@/components/AddressField'
 
 const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
@@ -15,7 +16,8 @@ export function AppelPoliceBouton({ onEnvoye, className }: { onEnvoye?: () => vo
   return (
     <>
       <button type="button" onClick={() => setOuvert(true)} className={className || 'min-h-[44px] px-4 rounded-xl bg-red-700 text-white font-bold text-sm'}>🚓 Appel police</button>
-      {ouvert && <AppelPoliceFenetre onFermer={() => setOuvert(false)} onEnvoye={() => { setOuvert(false); onEnvoye?.(); window.dispatchEvent(new Event('vd-appels-police')) }} />}
+      {/* Hors de la barre du Dispatch (elle coupait la fenêtre, Olivier 18/11) : affichée par-dessus toute la page. */}
+      {ouvert && typeof document !== 'undefined' && createPortal(<AppelPoliceFenetre onFermer={() => setOuvert(false)} onEnvoye={() => { setOuvert(false); onEnvoye?.(); window.dispatchEvent(new Event('vd-appels-police')) }} />, document.body)}
     </>
   )
 }
@@ -50,7 +52,7 @@ function AppelPoliceFenetre({ onFermer, onEnvoye }: { onFermer: () => void; onEn
     } catch { setErr('Erreur réseau') } finally { setBusy(false) }
   }
   return (
-    <div className="fixed inset-0 z-[300] bg-black/60 flex items-start sm:items-center justify-center p-3 overflow-y-auto">
+    <div className="fixed inset-0 z-[500] bg-black/60 flex items-start sm:items-center justify-center p-3 overflow-y-auto">
       <div className="w-full max-w-lg rounded-2xl bg-white border-2 border-red-700 shadow-2xl p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-extrabold text-stone-900 mr-auto">🚓 Appel police</h2>
@@ -86,6 +88,27 @@ function AppelPoliceFenetre({ onFermer, onEnvoye }: { onFermer: () => void; onEn
       </div>
     </div>
   )
+}
+
+/** Appels police en cours (envoyés, pas encore complétés), relus toutes les 20 s et après un envoi. */
+export function useAppelsPolice() {
+  const [appels, setAppels] = useState<Appel[]>([])
+  const charger = useCallback(() => { fetch('/api/appels-police', { cache: 'no-store' }).then(r => r.ok ? r.json() : { appels: [] }).then(j => setAppels(j.appels || [])).catch(() => {}) }, [])
+  useEffect(() => { charger(); const t = setInterval(charger, 20000); const h = () => charger(); window.addEventListener('vd-appels-police', h); return () => { clearInterval(t); window.removeEventListener('vd-appels-police', h) } }, [charger])
+  const annuler = async (id: string) => { await fetch(`/api/appels-police/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'annuler' }) }); charger() }
+  return { appels, annuler }
+}
+export const etatAppel = (a: Appel) => a.status === 'accepte'
+  ? { txt: 'Accepté', detail: `à ${heure(a.accepted_at)} · à compléter par le chauffeur`, cls: 'bg-emerald-100 text-emerald-800' }
+  : { txt: 'Envoyé', detail: `à ${heure(a.created_at)} · pas encore accepté`, cls: 'bg-amber-100 text-amber-900' }
+export type { Appel as AppelPoliceEnCours }
+
+/** Bouton « Annuler l'appel » avec confirmation (pas de clic involontaire). */
+export function AnnulerAppel({ onAnnuler }: { onAnnuler: () => void }) {
+  const [conf, setConf] = useState(false)
+  return conf
+    ? <span className="inline-flex gap-1.5" onClick={e => e.stopPropagation()}><button type="button" className="min-h-[40px] px-3 rounded-lg bg-red-700 text-white text-sm font-bold" onClick={onAnnuler}>Oui, annuler</button><button type="button" className="min-h-[40px] px-3 rounded-lg border border-stone-300 text-sm" onClick={() => setConf(false)}>Non</button></span>
+    : <button type="button" className="min-h-[40px] px-3 rounded-lg border border-stone-300 bg-white text-sm text-stone-800" onClick={e => { e.stopPropagation(); setConf(true) }}>Annuler l’appel</button>
 }
 
 /** Appels police envoyés par le dispatch, pas encore complétés par le chauffeur. Rien si la liste est vide. */
