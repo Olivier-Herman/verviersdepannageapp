@@ -98,19 +98,23 @@ export default function AppShell({
   const navRoles = enChauffeur ? ['driver'] : userRoles
   const visibleNavAll = filterNavItems({ userModules: navModules, userRole: navRole, userNavOrder, userRoles: navRoles, flags: navFlags })
   const visibleNav = visibleNavAll.filter(i => !i.ownerOnly || navFlags.agents_shortcut)
-  // Nouveau Dispatch (préversion dispatch_v2, Olivier seul, 11/11/2026) : trois appuis
-  // rapides sur le titre basculent entre nouvel et ancien affichage. Placé ici, dans
-  // l'en-tête commun, pour répondre même si le nouvel écran ne s'affiche pas.
+  // Nouvel / ancien affichage (Olivier 18/11/2026, « l'easter egg sur toutes les pages ») : trois appuis rapides
+  // sur le titre de n'importe quelle page basculent TOUTES les préversions de cet appareil (cookie vd_ancien, lu par
+  // isPreviewOn). Placé dans l'en-tête commun pour répondre même si un nouvel écran ne s'affiche pas. Seuls les
+  // comptes qui ont au moins une préversion (ou qui sont en ancien affichage) peuvent basculer.
   const appuisTitre = useRef<number[]>([])
+  const [ancienAff, setAncienAff] = useState(false)
+  useEffect(() => { try { setAncienAff(document.cookie.split('; ').includes('vd_ancien=1')) } catch {} }, [])
+  const aDesPreversions = ancienAff || ['dispatch_v2', 'facturation_v2', 'ma_journee', 'nav_espaces', 'nav_menu_v2'].some(k => navFlags[k])
   const onTitre = () => {
-    if (pathname !== '/dispatch' || !navFlags.dispatch_v2) return
+    if (!aDesPreversions) return
     const t = Date.now()
     appuisTitre.current = [...appuisTitre.current.filter(x => t - x < 900), t]
     if (appuisTitre.current.length < 3) return
     appuisTitre.current = []
-    const ancien = document.cookie.split('; ').includes('vd_dispatch_ancien=1')
-    document.cookie = `vd_dispatch_ancien=${ancien ? '' : '1'}; path=/; max-age=${ancien ? 0 : 31536000}; samesite=lax`
-    window.location.href = '/dispatch'
+    const ancien = document.cookie.split('; ').includes('vd_ancien=1')
+    for (const k of ['vd_ancien', 'vd_dispatch_ancien']) document.cookie = `${k}=${ancien ? '' : '1'}; path=/; max-age=${ancien ? 0 : 31536000}; samesite=lax`
+    window.location.reload()
   }
   // Menu v3 (lot 1) : zone « Maintenant » du rôle + favoris de l'utilisateur.
   const [navNow, setNavNow]   = useState<string[]>([])
@@ -346,6 +350,7 @@ export default function AppShell({
             <GlobalSearch shortcut={!navV2} />
           </div>
           <h1 onClick={onTitre} className="font-display text-ink font-bold text-lg select-none">{title}</h1>
+          {ancienAff && <span className="ml-2 rounded-full bg-stone-200 text-stone-800 text-[11px] font-semibold px-2 py-0.5">Ancien</span>}
           {headerExtra}
         </div>
 
@@ -381,6 +386,7 @@ export default function AppShell({
         <div className="hidden lg:block bg-surface border-b px-8 py-5 sticky top-0 z-20">
           <div className="flex items-center justify-between gap-4">
             <h1 onClick={onTitre} className="font-display text-ink font-bold text-2xl select-none">{title}</h1>
+            {ancienAff && <span className="ml-2 inline-block align-middle rounded-full bg-stone-200 text-stone-800 text-xs font-semibold px-2 py-0.5" title="Trois appuis rapides sur le titre pour revenir au nouvel affichage">Ancien affichage</span>}
             {headerExtra && <div className="flex-1 ml-8">{headerExtra}</div>}
             {work.available && <WorkModeButton mode={work.mode} />}
             <DispatchAlertBadge userRole={navRole} />

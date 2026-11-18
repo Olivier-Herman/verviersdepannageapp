@@ -62,8 +62,19 @@ export function previewVisible(mode: FlagMode, role: string | null | undefined, 
   return false
 }
 
+/** Ancien affichage choisi sur cet appareil (Olivier 18/11/2026 : trois appuis sur le titre de n'importe quelle page) :
+ *  toutes les préversions s'éteignent pour ce poste ; ce qui est ouvert à tous (mode « all ») ne bouge pas. */
+async function ancienAffichage(): Promise<boolean> {
+  try {
+    const { cookies } = await import('next/headers')
+    const c = cookies()
+    return c.get('vd_ancien')?.value === '1'
+  } catch { return false }   // hors requête (tâches planifiées) : pas d'appareil, pas de choix
+}
+
 export async function isPreviewOn(key: string, role: string | null | undefined, userId?: string | null): Promise<boolean> {
   const mode = await getFlagMode(key)
+  if (mode !== 'all' && await ancienAffichage()) return false
   return previewVisible(mode, role, userId, userId ? await getFlagPilots(key) : undefined)
 }
 
