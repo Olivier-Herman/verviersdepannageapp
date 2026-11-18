@@ -94,6 +94,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { driver_id: driverId, driver_name: driver.name, via: 'watch' },
   })
 
+  // Agent observateur (Olivier 18/11/2026) : note ce qu'il aurait proposé, en arrière-plan, sans rien toucher.
+  try { const { waitUntil } = await import('@vercel/functions'); const { observerAttribution } = await import('@/lib/dispatch/observateur'); waitUntil(observerAttribution(missionId, driverId, actorId)) } catch { /* jamais bloquant */ }
+
   // Creation dossier Odoo si la mission etait 'new' (assignation = confirmation implicite)
   if (wasNew) {
     try {

@@ -36,7 +36,11 @@ async function route(a: Coord, b: Coord) {
 }
 
 export type Proposition = { id: string; nom: string; telephone: string | null; eta_min: number | null; occupe: boolean; priorite: number | null; raison: string }
-export async function proposerChauffeurs(missionId: string): Promise<{ propositions: Proposition[]; tri: string; raison: string | null } | { erreur: string }> {
+export type Classe = Proposition & { estimee?: boolean }
+/** Classement complet des chauffeurs pour une mission. `retourDepot` (agent observateur, Olivier 18/11/2026) : un
+ *  chauffeur libre sans position récente est supposé sur la route du retour vers le dépôt depuis la fin de sa
+ *  dernière mission du jour, puis au dépôt — toujours en trajets routiers, jamais à vol d'oiseau. */
+export async function classerChauffeurs(missionId: string, opts: { retourDepot?: boolean } = {}): Promise<{ liste: Classe[]; nuit: boolean; raison: string | null } | { erreur: string }> {
   await ensureScheduleLoaded()
 
   const sb = createAdminClient()
@@ -47,7 +51,7 @@ export async function proposerChauffeurs(missionId: string): Promise<{ propositi
   const { data: cible } = await sb.from('incoming_missions').select('id, incident_lat, incident_lng, incident_address').eq('id', missionId).maybeSingle()
   if (!cible) return { erreur: 'Mission introuvable' }
   const but = coord(cible.incident_lat, cible.incident_lng)
-  if (!but) return { propositions: [], tri: '', raison: 'L\'adresse de la mission n\'est pas encore localisée : vérifiez-la dans la fiche complète.' }
+  if (!but) return { liste: [], nuit: false, raison: 'L\'adresse de la mission n\'est pas encore localisée : vérifiez-la dans la fiche complète.' }
 
   const [{ data: users }, { data: conges }, { data: enCours }, { data: duJour }] = await Promise.all([
     sb.from('users').select('id, name, phone, last_location_lat, last_location_lng, location_updated_at, schedule_day, schedule_night, priority_order, manual_offline, current_truck_id')
@@ -70,7 +74,7 @@ export async function proposerChauffeurs(missionId: string): Promise<{ propositi
   const candidats = (users || []).filter((d: any) => {
     if (enConge.has(d.id) || d.manual_offline === true) return false
     const frais = d.location_updated_at && depuis(d.location_updated_at) < FRAIS_MIN
-    return frais || deGarde(d) || missionsDe.has(d.id)
+    return frais || deGarde(d) || missionsDe.has(d.id) || (!!opts.retourDepot && (nbJour.get(d.id) || 0) > 0)
   })
 
   // Libres : une matrice pour tous ceux qui ont une position.
@@ -81,6 +85,38 @@ export async function proposerChauffeurs(missionId: string): Promise<{ propositi
       const mx = await getDrivingMatrix(libres.map((d: any) => coord(d.last_location_lat, d.last_location_lng)!), but)
       libres.forEach((d: any, i: number) => { const r = mx[i]; if (r && !r.approx) etaLibre.set(d.id, camion(r)) })
     } catch { /* sans matrice : pas d'estimation pour les libres */ }
+  }
+
+  // Agent observateur : libres sans position utilisable → route du retour au dépôt, puis dépôt.
+  const etaEstime = new Map<string, { eta: number; note: string }>()
+  if (opts.retourDepot) {
+    try {
+      const { loadDepots } = await import('@/lib/perf/police-trip')
+      const depot = (await loadDepots(sb)).def
+      const sansPos = candidats.filter((d: any) => !missionsDe.has(d.id) && !etaLibre.has(d.id))
+      if (depot && sansPos.length) {
+        const dep: Coord = { lat: depot.lat, lng: depot.lng }
+        const { data: finies } = await sb.from('incoming_missions').select('assigned_to, mission_type, completed_at, incident_lat, incident_lng, destination_lat, destination_lng')
+          .in('assigned_to', sansPos.map((d: any) => d.id)).gte('completed_at', debutJour).order('completed_at', { ascending: false })
+        const derniere = new Map<string, any>()
+        for (const m of finies || []) if (!derniere.has(m.assigned_to)) derniere.set(m.assigned_to, m)
+        let depuisDepot: number | null = null
+        const duDepot = async () => depuisDepot ?? (depuisDepot = await route(dep, but))
+        for (const d of sansPos) {
+          try {
+            const m = derniere.get(d.id)
+            const type = String(m?.mission_type || '').toLowerCase()
+            const fin = m ? ((type === 'depannage' || type === 'dsp') ? coord(m.incident_lat, m.incident_lng) : (coord(m.destination_lat, m.destination_lng) || coord(m.incident_lat, m.incident_lng))) : null
+            if (!m || !fin) { etaEstime.set(d.id, { eta: await duDepot(), note: 'libre, supposé au dépôt' }); continue }
+            const ecoule = depuis(m.completed_at), retour = await route(fin, dep)
+            if (ecoule >= retour) { etaEstime.set(d.id, { eta: await duDepot(), note: 'libre, supposé rentré au dépôt' }); continue }
+            // En route vers le dépôt : au plus « finir le retour puis repartir », ou « revenir à son point de départ puis y aller ».
+            const parDepot = (retour - ecoule) + await duDepot(), parRetour = ecoule + await route(fin, but)
+            etaEstime.set(d.id, { eta: Math.round(Math.min(parDepot, parRetour)), note: 'libre, supposé sur la route du retour au dépôt' })
+          } catch (e) { if (!(e instanceof SansRoute)) throw e }
+        }
+      }
+    } catch (e) { if (!(e instanceof SansRoute)) console.error('[proposition] retour dépôt', (e as any)?.message) }
   }
 
   // Occupés : fin estimée de ses missions en cours, puis route vers la nouvelle mission.
@@ -125,9 +161,11 @@ export async function proposerChauffeurs(missionId: string): Promise<{ propositi
   const resultats = await Promise.all(candidats.map(async (d: any) => {
     const occupe = missionsDe.has(d.id)
     const o = occupe ? await etaOccupe(d) : null
-    const eta = occupe ? (o?.eta ?? null) : (etaLibre.get(d.id) ?? null)
+    const est = !occupe && !etaLibre.has(d.id) ? etaEstime.get(d.id) : undefined
+    const eta = occupe ? (o?.eta ?? null) : (etaLibre.get(d.id) ?? est?.eta ?? null)
     const morceaux: string[] = []
     if (occupe) morceaux.push(o ? `finit à ${o.finit} vers ${new Date(Date.now() + o.libreA * 60000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' }).replace(':', ' h ')} (estimation)` : 'en mission, fin impossible à estimer')
+    else if (est) morceaux.push(est.note)
     else if (!coord(d.last_location_lat, d.last_location_lng)) morceaux.push('libre, position inconnue')
     else if (d.location_updated_at && depuis(d.location_updated_at) >= FRAIS_MIN) {
       const t = new Date(d.location_updated_at), jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(t)
@@ -138,10 +176,18 @@ export async function proposerChauffeurs(missionId: string): Promise<{ propositi
     if (deGarde(d)) morceaux.push('de garde')
     const n = nbJour.get(d.id) || 0
     morceaux.push(n ? `${n} mission${n > 1 ? 's' : ''} aujourd'hui` : 'aucune mission aujourd\'hui')
-    return { id: d.id, nom: d.name, telephone: d.phone || null, eta_min: eta, occupe, priorite: d.priority_order ?? null, raison: morceaux.join(', ') }
+    return { id: d.id, nom: d.name, telephone: d.phone || null, eta_min: eta, occupe, priorite: d.priority_order ?? null, raison: morceaux.join(', '), estimee: !!est }
   }))
 
   const nuit = isAutoDispatchNight(maintenant)
+  return { liste: resultats, nuit, raison: resultats.length ? null : 'Aucun chauffeur en service pour l\'instant (congé, hors ligne ou pas de garde).' }
+}
+
+export async function proposerChauffeurs(missionId: string): Promise<{ propositions: Proposition[]; tri: string; raison: string | null } | { erreur: string }> {
+  const c = await classerChauffeurs(missionId)
+  if ('erreur' in c) return c
+  if (!c.liste.length) return { propositions: [], tri: '', raison: c.raison }
+  const { nuit } = c, resultats = c.liste
   const prio = (x: any) => x.priorite ?? Number.MAX_SAFE_INTEGER
   const avec = resultats.filter(r => r.eta_min != null).sort((a, b) => nuit ? (prio(a) - prio(b)) || (a.eta_min! - b.eta_min!) : (a.eta_min! - b.eta_min!) || (prio(a) - prio(b)))
   const sans = resultats.filter(r => r.eta_min == null).sort((a, b) => prio(a) - prio(b))
@@ -149,8 +195,8 @@ export async function proposerChauffeurs(missionId: string): Promise<{ propositi
   if (liste[0] && !nuit && liste[0].eta_min != null && !liste[0].occupe) liste[0].raison = liste[0].raison.replace(/^libre/, 'libre, le plus proche')
 
   return {
-    propositions: liste.slice(0, 3),
+    propositions: liste.slice(0, 3).map(({ estimee, ...p }) => p),
     tri: nuit ? 'nuit : ordre des chauffeurs fixé par le dispatch' : 'jour : le plus rapide sur place',
-    raison: liste.length ? null : 'Aucun chauffeur en service pour l\'instant (congé, hors ligne ou pas de garde).',
+    raison: null,
   }
 }

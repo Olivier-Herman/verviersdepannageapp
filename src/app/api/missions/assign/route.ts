@@ -92,6 +92,9 @@ export async function POST(req: Request) {
       metadata:  { driver_id, driver_name: driver?.name }
     })
 
+    // Agent observateur (Olivier 18/11/2026) : note ce qu'il aurait proposé, en arrière-plan, sans rien toucher.
+    try { const { waitUntil } = await import('@vercel/functions'); const { observerAttribution } = await import('@/lib/dispatch/observateur'); waitUntil(observerAttribution(mission_id, driver_id, actor?.id || null)) } catch { /* jamais bloquant */ }
+
     // AXA go&assist : au moment de l'assignation VD Soft, on AFFECTE la mission
     // à notre technicien dans go&assist (appointmentAt = assignation + 1h).
     // On cible via axa_mission_order_id (le lien go&assist) — présent seulement
