@@ -98,7 +98,19 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     }
     if (doublonPossible && !recurrente) { directAllowed = false; directWhy = undefined }
     if (recurrente) { directAllowed = true; directWhy = 'facture mensuelle récurrente, référence différente (règle du 10/11/2026)' }
-    return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}) }, directAllowed, directWhy }
+    // Travaux anciens (Olivier 18/11/2026, Car Avenue Star : factures du 17/11 pour des ordres d'atelier d'avril et de
+    // juin) : la date des travaux lue sur la pièce (ordre d'atelier, intervention, livraison) est envoyée par l'agent ;
+    // au-delà du délai réglé, la facture ne se valide jamais seule et part chez Olivier avec l'alerte.
+    let travauxAnciens: string | null = null
+    const dt = String(p.date_travaux || '').trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dt)) {
+      const { getBusinessNumber } = await import('@/lib/settings/business')
+      const seuil = await getBusinessNumber('achat_alerte_travaux_jours').catch(() => 90)
+      const ecart = Math.round((Date.parse(b.invoice_date) - Date.parse(dt)) / 864e5)
+      if (ecart > seuil) travauxAnciens = `travaux du ${dt.split('-').reverse().join('/')}, ${Math.round(ecart / 30)} mois avant la facture`
+    }
+    if (travauxAnciens) { directAllowed = false; directWhy = undefined }
+    return { title: `${b.partner_id[1]} · ${b.ref || b.name || 'brouillon'}${doublonPossible ? ` · ⚠️ doublon possible : ${doublonPossible}` : ''}${travauxAnciens ? ` · ⚠️ ${travauxAnciens}` : ''}`, amount: b.amount_total, payload: { facture_id: id, fournisseur: b.partner_id[1], reference: b.ref, htva: b.amount_untaxed, peppol: Boolean(b.peppol_message_uuid), ...(dt ? { date_travaux: dt } : {}), ...(doublonPossible ? { doublon_possible: doublonPossible } : {}), ...(travauxAnciens ? { travaux_anciens: travauxAnciens } : {}) }, directAllowed, directWhy }
   }
 
   if (kind === 'lot_paiement') {
