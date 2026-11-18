@@ -142,7 +142,7 @@ export default function RequisitoiresClient(props: {
   }
 
   const body = (
-        <div className={`p-4 lg:p-6 space-y-4 max-w-5xl mx-auto ${props.embedded ? 'pt-2' : 'ambient-fade-up'}`}>
+        <div className={`p-4 lg:p-6 space-y-4 ${props.habille ? 'w-full min-w-0' : 'max-w-5xl'} mx-auto ${props.embedded ? 'pt-2' : 'ambient-fade-up'}`}>
 
           <div className="flex items-center justify-between flex-wrap gap-3">
             {!props.embedded && <div className="flex items-center gap-2">
@@ -190,7 +190,7 @@ export default function RequisitoiresClient(props: {
               Aucun réquisitoire {tab === 'pending' ? 'à rattacher' : 'dans cette catégorie'}.
             </div>
           ) : (
-            <div className={props.habille ? 'grid grid-cols-[minmax(0,1fr)] 2xl:grid-cols-[repeat(2,minmax(0,1fr))] gap-4 items-start' : 'space-y-4'}>
+            <div className={props.habille ? `grid grid-cols-[minmax(0,1fr)] ${items.length > 1 ? '2xl:grid-cols-[repeat(2,minmax(0,1fr))]' : ''} gap-4 items-start` : 'space-y-4'}>
               {items.map(item => <RequisitoireCard key={item.id} habille={!!props.habille} item={item} onAttach={attach} onIgnore={ignore} onCreateFiche={createFiche} onRequalify={requalify} onDelete={del} />)}
             </div>
           )}
@@ -423,10 +423,10 @@ function RequisitoireCard({ item, onAttach, onIgnore, onCreateFiche, onRequalify
 
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | null }) {
   return (
-    <div className="flex items-center gap-1.5 min-w-0">
-      <span className="text-ink-faint shrink-0">{icon}</span>
+    <div className="flex items-start gap-1.5 min-w-0">
+      <span className="text-ink-faint shrink-0 mt-0.5">{icon}</span>
       <span className="text-ink-faint shrink-0">{label} :</span>
-      <span className="text-ink font-medium truncate">{value || '—'}</span>
+      <span className="text-ink font-medium break-words min-w-0">{value || '—'}</span>
     </div>
   )
 }
