@@ -9,7 +9,7 @@
 // autoroute). La fiche en volet arrive à l'étape 2 : en attendant, une mission
 // s'ouvre dans la fiche actuelle.
 
-import { AppelPoliceBouton, AppelsPoliceEnCours } from '@/components/dispatch/AppelPolice'
+import { AppelPoliceBouton, useAppelsPolice, etatAppel, AnnulerAppel } from '@/components/dispatch/AppelPolice'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -562,6 +562,10 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
     fetch(`/api/dispatch/v2/proposition/${selId}`, { cache: 'no-store' }).then(r => r.json()).then(d => setProp(p => (p?.id === selId ? { id: selId, data: d } : p))).catch(() => setProp(p => (p?.id === selId ? { id: selId, data: { propositions: [], raison: 'La proposition n\'a pas pu être calculée.' } } : p)))
   }, [selId, aAffecter])   // eslint-disable-line react-hooks/exhaustive-deps
   const listeBrute = filtre === 'cours' ? (board?.lances || null) : autres
+  // Appels police du dispatch (Olivier 18/11) : des lignes de « En cours » tant que le chauffeur n'a pas créé la fiche.
+  const { appels: appelsPolice, annuler: annulerAppel } = useAppelsPolice()
+  const appelsVus = filtre === 'cours' ? appelsPolice.filter(a => !q || `${a.address} ${a.driver_name || ''}`.toLowerCase().includes(q.toLowerCase())) : []
+  const nCours = (board?.lances.length ?? 0) + appelsPolice.length
   const liste = useMemo(() => {
     if (!listeBrute) return null
     const s = q.trim().toLowerCase().replace(/[-\s.]/g, '')
@@ -657,7 +661,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
       <div className="p-2.5 lg:p-3 flex flex-col gap-2.5 min-w-0 max-w-full [contain:inline-size]">
         {/* Repères du jour */}
         <div className="flex flex-wrap gap-2 items-center rounded-2xl px-3 py-2.5 text-white" style={{ background: 'linear-gradient(135deg,#1b1220 0%,#4a1230 55%,#E11D2E 100%)' }}>
-          {([['À traiter', n, '#fca5a5'], ['En retard', enRetard, '#fcd34d'], ['En cours', board?.lances.length ?? 0, null]] as const).map(([l, v, c]) => (
+          {([['À traiter', n, '#fca5a5'], ['En retard', enRetard, '#fcd34d'], ['En cours', nCours, null]] as const).map(([l, v, c]) => (
             <span key={l} className="inline-flex items-center gap-2 min-h-[36px] px-3 rounded-full font-semibold text-sm bg-white/15 ring-1 ring-white/25 whitespace-nowrap">
               {c && <i className="w-2 h-2 rounded-full" style={{ background: c }} />}{l} <b className="text-base tabular-nums">{v}</b>
             </span>
@@ -670,9 +674,8 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
           <AppelPoliceBouton className="min-h-[44px] px-4 rounded-xl bg-red-700 ring-2 ring-white/70 text-white font-extrabold text-sm" />
           <Link href="/dispatch/new" className="min-h-[44px] px-4 rounded-xl bg-white text-red-900 font-extrabold text-sm inline-flex items-center">+ Nouvelle mission</Link>
         </div>
-        <AppelsPoliceEnCours />
         <div className="lg:hidden grid grid-cols-3 gap-1 bg-stone-100 rounded-xl p-1" role="tablist" aria-label="Vue">
-          {([['traiter', `À traiter · ${n}`], ['cours', `En cours · ${board?.lances.length ?? 0}${nAlertes ? ` · ⚠ ${nAlertes}` : ''}`], ['chauffeurs', 'Chauffeurs']] as const).map(([k, l]) => (
+          {([['traiter', `À traiter · ${n}`], ['cours', `En cours · ${nCours}${nAlertes ? ` · ⚠ ${nAlertes}` : ''}`], ['chauffeurs', 'Chauffeurs']] as const).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={ongletTel === k} onClick={() => setOngletTel(k)}
               className={`min-h-[44px] rounded-lg font-bold text-[13.5px] ${ongletTel === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}`}>{l}</button>
           ))}
@@ -723,7 +726,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               <input value={q} onChange={e => setQ(e.target.value)} type="search" placeholder="Plaque, client, adresse, n° de fiche…" aria-label="Chercher une mission"
                 className={`min-h-[44px] rounded-xl border border-stone-300 bg-stone-50 px-3 text-stone-900 ${vueCentre !== 'liste' ? 'lg:hidden' : ''}`} />
               <div className={`flex gap-1.5 flex-wrap ${vueCentre !== 'liste' ? 'lg:hidden' : ''}`}>
-                {([['cours', `En cours · ${board?.lances.length ?? 0}`], ['rdv', 'Rendez-vous'], ['vhu', 'VHU'], ['parked', 'À relivrer'], ['all', 'Toutes']] as const).map(([k, l]) => (
+                {([['cours', `En cours · ${nCours}`], ['rdv', 'Rendez-vous'], ['vhu', 'VHU'], ['parked', 'À relivrer'], ['all', 'Toutes']] as const).map(([k, l]) => (
                   <button key={k} type="button" onClick={() => setFiltre(k)}
                     className={`min-h-[40px] px-3.5 rounded-full border font-semibold text-sm ${filtre === k ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-900 border-stone-200'}`}>{l}</button>
                 ))}
@@ -731,9 +734,16 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
               </div>
             </header>
             <div className={`overflow-auto min-h-0 px-1 ${vueCentre !== 'liste' ? 'lg:hidden' : ''}`}>
-              {!liste ? <p className="px-3 py-2 text-stone-500">Chargement…</p> : liste.length === 0 ? <p className="px-3 py-2 text-stone-500">{q ? 'Aucune mission ne correspond.' : filtre === 'cours' ? 'Aucune mission lancée pour l\'instant.' : 'Rien dans cette vue.'}</p> : (
+              {!liste ? <p className="px-3 py-2 text-stone-500">Chargement…</p> : liste.length === 0 && !appelsVus.length ? <p className="px-3 py-2 text-stone-500">{q ? 'Aucune mission ne correspond.' : filtre === 'cours' ? 'Aucune mission lancée pour l\'instant.' : 'Rien dans cette vue.'}</p> : (
                 <>
                 <div className="lg:hidden flex flex-col gap-2 px-2 pb-2">
+                  {appelsVus.map(a => { const e = etatAppel(a); return (
+                    <div key={'ap-' + a.id} className="rounded-xl border-2 border-red-200 bg-red-50 p-2.5 flex flex-col gap-1.5 min-w-0">
+                      <div className="flex items-center justify-between gap-2"><b className="text-stone-900 text-[14px]">{a.driver_name || '?'}</b><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${e.cls}`}>{e.txt}</span></div>
+                      <div className="flex items-center gap-1.5 min-w-0 flex-wrap"><span className="px-2 py-0.5 rounded-md text-[11.5px] font-bold bg-red-700 text-white">Appel police</span><span className="text-stone-800 text-[13px] break-words">{a.address}</span></div>
+                      <span className="text-[12.5px] text-stone-700">{e.detail}</span>
+                      <AnnulerAppel onAnnuler={() => annulerAppel(a.id)} />
+                    </div>) })}
                   {liste.map(m => { const e = etat(m); return (
                     <div key={m.id} role="button" tabIndex={0} onClick={() => choisir(m)} onKeyDown={ev => { if (ev.key === 'Enter') choisir(m) }} className={`cursor-pointer text-left rounded-xl border p-2.5 flex flex-col gap-1.5 min-w-0 ${alertesPar.has(m.id) ? 'border-amber-500 border-2 vd-clignote' : `border-stone-200 ${couleurType(m).fond}`}`}>
                       {(alertesPar.get(m.id) || []).map(a => <span key={a.type} className="text-[13px] font-extrabold text-amber-900">⚠ {motifAlerte(a)}</span>)}
@@ -750,6 +760,13 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                 <table className="hidden lg:table w-full min-w-[520px] text-[13.5px]">
                   <thead><tr className="text-left text-[11.5px] uppercase tracking-wide text-stone-500"><th className="px-2 py-2">État</th><th className="px-2 py-2">Mission</th><th className="px-2 py-2">Trajet</th><th className="px-2 py-2">{filtre === 'parked' ? 'Au parc' : 'Chauffeur'}</th></tr></thead>
                   <tbody>
+                    {appelsVus.map(a => { const e = etatAppel(a); return (
+                      <tr key={'ap-' + a.id} className="border-t border-stone-200 align-top bg-red-50/60">
+                        <td className="px-2 py-2"><span className={`inline-block px-2 py-0.5 rounded-full text-[12px] font-bold whitespace-nowrap ${e.cls}`}>{e.txt}</span></td>
+                        <td className="px-2 py-2"><span className="px-1.5 py-0.5 rounded-md text-[11.5px] font-bold bg-red-700 text-white">Appel police</span><div className="mt-1 text-[12.5px] text-stone-600">{e.detail}</div></td>
+                        <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="break-words">{a.address}</div>{a.note && <div className="text-stone-600 text-[12.5px]">« {a.note} »</div>}<div className="mt-1"><AnnulerAppel onAnnuler={() => annulerAppel(a.id)} /></div></td>
+                        <td className="px-2 py-2 text-stone-900">{a.driver_name || '—'}</td>
+                      </tr>) })}
                     {liste.map(m => {
                       const e = etat(m)
                       return (

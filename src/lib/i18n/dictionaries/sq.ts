@@ -529,7 +529,7 @@ export const sq: Dictionary = {
     appel_sur_place:        'Jam në vend: zgjidh arsyen',
     appel_guidage:          'Navigimi',
     appel_mot_dispatch:     'Shënim nga dispeçeri',
-    appel_annule:           'Dispeçeri e anuloi këtë thirrje.',
+    appel_annule:           'Policia e anuloi këtë thirrje: nuk ke më pse të shkosh.',
     appel_autre:            'Kjo thirrje i është besuar një shoferi tjetër.',
     appel_ouvrir:           'Hap thirrjen',
     appel_adresse:          'Adresa e thirrjes',

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { moi } from '@/lib/appels-police/server'
+import { sendNotification } from '@/lib/notifications/send'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!u.dispatch) return NextResponse.json({ error: 'Réservé au dispatch' }, { status: 403 })
     if (a.status === 'complete') return NextResponse.json({ error: 'La fiche est déjà créée : annulez la fiche elle-même.' }, { status: 409 })
     await sb.from('appels_police').update({ status: 'annule', cancelled_at: now }).eq('id', a.id)
+    // Le chauffeur est prévenu (Olivier 18/11/2026 : « la police a annulé l'appel »).
+    await sendNotification(a.driver_id, 'appel_police_annule', {
+      title: '🚓 Appel police annulé',
+      body: `La police a annulé l'appel : ${a.address}. Tu n'as plus à y aller.`,
+      action_url: '/dashboard',
+      data: { appel_id: a.id },
+    }).catch(() => {})
     return NextResponse.json({ ok: true })
   }
   if (a.driver_id !== u.id) return NextResponse.json({ error: 'Cet appel est confié à un autre chauffeur.' }, { status: 403 })

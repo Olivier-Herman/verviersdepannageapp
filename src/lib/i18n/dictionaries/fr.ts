@@ -543,7 +543,7 @@ export const fr = {
     appel_sur_place:        'Je suis sur place : choisir le motif',
     appel_guidage:          'Guidage',
     appel_mot_dispatch:     'Mot du dispatch',
-    appel_annule:           'Le dispatch a annulé cet appel.',
+    appel_annule:           'La police a annulé cet appel : tu n\'as plus à y aller.',
     appel_autre:            'Cet appel est confié à un autre chauffeur.',
     appel_ouvrir:           'Ouvrir l\'appel',
     appel_adresse:          'Adresse de l\'appel',
