@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     const msg = String(e?.message || e)
     await sb.from('app_settings').upsert({ key: 'comptes_achats_last_run', value: JSON.stringify({ at: new Date().toISOString(), ok: false, erreur: msg }) }, { onConflict: 'key' }).then(() => {}, () => {})
     const chat = await getBusinessNumber('telegram_chat_mobi').catch(() => 0)
-    if (chat) await notifierTelegram(chat, `⚠️ Comptes des achats : le passage du matin a échoué.\n${msg.slice(0, 500)}`).catch(() => {})
+    if (chat) await notifierTelegram(chat, `⚠️ Comptes des achats : le passage du matin a échoué.\n${msg.slice(0, 500)}`, [], undefined, { urgent: true }).catch(() => {})
     return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
 }

@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { rapprocherAvis } from '@/lib/finance/rapprochement-auto'
 import { lettrerFraisSumup } from '@/lib/finance/sumup-frais'
-import { notifierTelegram } from '@/lib/notif/heures-mobi'
+import { informerMobi as notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getBusinessNumber } from '@/lib/settings/business'
 
 export const dynamic = 'force-dynamic'

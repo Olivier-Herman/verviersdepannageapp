@@ -190,7 +190,7 @@ export async function traiterFiches(): Promise<any[]> {
 
 async function resumer(fiche: string, devis: { client: string; devis: string; dates: string[]; ajout?: boolean; modif?: string }[], a_confirmer: { ligne: LigneFiche; raison: string }[], erreur?: string) {
   try {
-    const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+    const { informerMobi: notifierTelegram } = await import('@/lib/notif/heures-mobi')
     const chat = await getBusinessNumber('telegram_chat_mobi')
     const d = (s: string) => s.slice(8, 10) + '/' + s.slice(5, 7)
     const txt = erreur

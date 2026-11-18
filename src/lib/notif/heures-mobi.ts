@@ -100,3 +100,33 @@ export async function envoyerDifferes(): Promise<number> {
   }
   return n
 }
+
+/** Information pour Mobi → Supervision de l'app HOOS (Olivier 18/11/2026 : « les notifications passent dans l'app HOOS
+ *  à la place de Telegram, Telegram reste réservé aux urgences »). Mêmes paramètres que notifierTelegram, pour remplacer
+ *  l'appel tel quel. Hors des heures VD de Mobi, la ligne est écrite sans sonner son téléphone. Si la Supervision ne
+ *  répond pas (ou n'est pas configurée), repli sur Telegram : rien ne se perd. Aucun bouton : la Supervision ne renvoie
+ *  rien vers VD Soft pour l'instant. */
+export async function informerMobi(chatId: number, texte: string, rows: Rows = [], expediteur?: string, opts: { urgent?: boolean; lien?: string; cle?: string } = {}) {
+  const url = process.env.SUPERVISION_URL, cle = process.env.SUPERVISION_VDSOFT_CLE
+  const mobi = await getBusinessNumber('telegram_chat_mobi').catch(() => 0)
+  if (url && cle && chatId === mobi) {
+    try {
+      const lignes = String(texte || '').split('\n')
+      const titre = (lignes[0] || 'VD Soft').replace(/\s+/g, ' ').trim().slice(0, 300)
+      const reste = lignes.slice(1).join('\n').trim()
+      const notifier = opts.urgent ? true : await mobiEnHeuresVD().catch(() => true)
+      const r = await fetch(url, {
+        method: 'POST', cache: 'no-store',
+        headers: { Authorization: `Bearer ${cle}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          societe: 'Verviers Dépannage', titre, resume: (reste || titre).slice(0, 4000), contenu: String(texte).slice(0, 20000), type: 'info',
+          ...(expediteur ? { agent: expediteur } : {}), ...(opts.lien ? { lien: opts.lien } : {}), ...(opts.cle ? { cle: opts.cle.slice(0, 120) } : {}),
+          ...(notifier ? {} : { notifier: false }),
+        }),
+      })
+      if (r.status === 201 || r.ok) return { supervision: true }
+      console.error('[supervision]', r.status, (await r.text()).slice(0, 200))
+    } catch (e: any) { console.error('[supervision]', e?.message || e) }
+  }
+  return notifierTelegram(chatId, texte, rows, expediteur, { urgent: opts.urgent })
+}

@@ -12,7 +12,7 @@
 // à J+14, escalade à Mobi.
 
 import { getAppOnlyToken } from '@/lib/graph-mail-search'
-import { notifierTelegram } from '@/lib/notif/heures-mobi'
+import { informerMobi as notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { tgSend } from '@/lib/sam/telegram'
 import { addDoc, updatePoint } from '@/lib/compta/dossier'

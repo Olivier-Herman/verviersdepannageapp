@@ -52,7 +52,7 @@ export async function GET(req: Request) {
       const ilYa7j = new Date(Date.now() - 7 * 864e5).toISOString()
       if ((jours == null || jours > n) && (!deja || deja < ilYa7j)) {
         rappelControle = jours == null ? 'Aucun contrôle du parc enregistré.' : `Dernier contrôle du parc il y a ${jours} jours (rappel réglé à ${n} jours).`
-        const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+        const { informerMobi: notifierTelegram } = await import('@/lib/notif/heures-mobi')
         const chat = await getBusinessNumber('telegram_chat_mobi')
         await notifierTelegram(chat, `🅿️ ${rappelControle} Écran : Fourrière › Parc › Contrôle.`)
         await sb.from('app_settings').upsert({ key: 'controle_parc_rappel_last', value: JSON.stringify(new Date().toISOString()) }, { onConflict: 'key' })
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
     if (ids.length) await sendNotificationToMany(ids, 'alertes_parc', { title: 'Parc : à vérifier', body, action_url: '/fourriere' } as any)
   } catch (e: any) { console.error('[alertes-parc] notification', e?.message) }
   try {
-    const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+    const { informerMobi: notifierTelegram } = await import('@/lib/notif/heures-mobi')
     const { getBusinessNumber } = await import('@/lib/settings/business')
     const chat = await getBusinessNumber('telegram_chat_mobi')
     const texte = ['🅿️ Parc — à vérifier', ...(vieux.length ? ['', `Transit depuis plus de 48 h (${vieux.length}) :`, ...lignesT.map(l => `• ${l}`)] : []), ...(reqs.length ? ['', `Réquisitoires sans véhicule (${reqs.length}) :`, ...lignesR.map(l => `• ${l}`)] : [])].join('\n')

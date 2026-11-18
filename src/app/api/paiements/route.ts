@@ -5,7 +5,7 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 120
 
 import { NextRequest, NextResponse } from 'next/server'
-import { notifierTelegram } from '@/lib/notif/heures-mobi'
+import { informerMobi as notifierTelegram } from '@/lib/notif/heures-mobi'
 import { getServerSession }          from 'next-auth'
 import { authOptions }               from '@/lib/auth'
 import { accesPaiements }            from '@/lib/paiements/acces'

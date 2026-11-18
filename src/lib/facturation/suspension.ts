@@ -219,7 +219,7 @@ export async function rattraperApresReprise(sb: any): Promise<ResumeRattrapage> 
   await sb.from('app_settings').upsert({ key: 'facturation_auto_dernier_rattrapage', value: JSON.stringify(out) }, { onConflict: 'key' }).then(() => {}, () => {})
   try {
     const { getBusinessNumber } = await import('@/lib/settings/business')
-    const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+    const { informerMobi: notifierTelegram } = await import('@/lib/notif/heures-mobi')
     const chat = await getBusinessNumber('telegram_chat_mobi')
     await notifierTelegram(chat, texteRattrapage(out), [], undefined, { urgent: true })   // sa propre action : tout de suite
   } catch (e: any) { out.erreurs.push(`Telegram : ${e?.message || e}`) }

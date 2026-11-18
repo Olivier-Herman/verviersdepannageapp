@@ -8,7 +8,7 @@
 // Règles de contenu : aucun compte de l'ERP, pas de téléphone, pas de mention d'automatisation.
 
 import crypto from 'crypto'
-import { notifierTelegram } from '@/lib/notif/heures-mobi'
+import { informerMobi as notifierTelegram } from '@/lib/notif/heures-mobi'
 import { createAdminClient } from '@/lib/supabase'
 import { getBusinessNumber } from '@/lib/settings/business'
 import { tgSend } from '@/lib/sam/telegram'
