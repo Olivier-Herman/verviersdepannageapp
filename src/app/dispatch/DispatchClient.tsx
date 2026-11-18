@@ -19,7 +19,6 @@ import TouringImportButton from '@/components/dispatch/TouringImportButton'
 import AxaImportButton from '@/components/dispatch/AxaImportButton'
 import DispatcherOnDutyBadge from '@/components/dispatch/DispatcherOnDutyBadge'
 import { getSourceLabel, getSourceColor, type SourceDisplay as CatalogSource } from '@/lib/missions/source-display'
-import AutoDispatchButton from '@/components/dispatch/AutoDispatchButton'
 import PauseBadge from '@/components/missions/PauseBadge'
 import { HighwaySiabisModal, shouldOfferSiabis } from './HighwaySiabisModal'
 import NotifyDriverButton from './NotifyDriverButton'
@@ -986,13 +985,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
           className="px-3 py-1.5 bg-red-600/15 hover:bg-red-600/25 text-red-700 dark:text-red-400 border border-red-600/40 rounded-lg text-xs font-bold transition disabled:opacity-50">
           {refuseLoading ? '⏳…' : '✕ Refuser'}
         </button>
-        <AutoDispatchButton
-          missionId={mission.id}
-          missionType={mission.mission_type}
-          userRole={userRole}
-          userModules={userModules}
-          onTriggered={onRefresh}
-        />
+        {/* Ancien auto-dispatch arrêté (Olivier 18/11/2026) : remplacé par l'agent observateur, puis le palier 2. */}
         {showModal && (
           <DriverPickerModal
             missionId={mission.id}
@@ -1010,14 +1003,7 @@ function AssignAction({ mission, drivers, driverStatuses, onRefresh, onModalChan
           className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition">
           ⚡ Assigner
         </button>
-        <AutoDispatchButton
-          missionId={mission.id}
-          missionType={mission.mission_type}
-          userRole={userRole}
-          userModules={userModules}
-          isActive={!!mission.auto_dispatch_attempt_status}
-          onTriggered={onRefresh}
-        />
+        {/* Ancien auto-dispatch arrêté (Olivier 18/11/2026) : remplacé par l'agent observateur, puis le palier 2. */}
         {showModal && (
           <DriverPickerModal
             missionId={mission.id}

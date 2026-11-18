@@ -16,6 +16,8 @@ import { isRemorquage, isDsp } from '@/lib/missions/mission-types'
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
+  // Ancien auto-dispatch arrêté (Olivier 18/11/2026) : sa tâche ne tourne plus, une tentative ne se terminerait jamais.
+  if (process.env.AUTO_DISPATCH_ANCIEN !== 'oui') return NextResponse.json({ error: 'L’ancien auto-dispatch est arrêté : attribuez la mission avec « Assigner ».' }, { status: 410 })
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const userId = (session.user as any).id

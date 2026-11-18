@@ -8,11 +8,20 @@ import { createAdminClient } from '@/lib/supabase'
 import { classerChauffeurs } from './proposition'
 
 const TOLERANCE_MIN = 5
+// Hors comparaison (Olivier 18/11/2026) : ce qui se planifie (relivraisons, trajets à vide, transports, missions à une
+// heure fixée) — le plus proche n'y est pas forcément le bon choix. Ces attributions restent notées, sans accord.
+const PLANIFIES = new Set(['relivraison', 'rel', 'trajet_vide', 'transport'])
 
 export async function observerAttribution(missionId: string, driverId: string, actorId: string | null): Promise<void> {
   const sb = createAdminClient()
   try {
-    const { data: m } = await sb.from('incoming_missions').select('mission_type, source').eq('id', missionId).maybeSingle()
+    const { data: m } = await sb.from('incoming_missions').select('mission_type, source, intervention_date').eq('id', missionId).maybeSingle()
+    const type = String(m?.mission_type || '').toLowerCase()
+    const planifiee = PLANIFIES.has(type) || (!!m?.intervention_date && Date.parse(m.intervention_date) > Date.now() + 60 * 60000)
+    if (planifiee) {
+      await sb.from('dispatch_observations').insert({ mission_id: missionId, attribue_a: driverId, attribue_par: actorId, mission_type: m?.mission_type || null, source: m?.source || null, accord: null, erreur: 'mission planifiée : hors comparaison' })
+      return
+    }
     const c = await classerChauffeurs(missionId, { retourDepot: true })
     if ('erreur' in c) { await sb.from('dispatch_observations').insert({ mission_id: missionId, attribue_a: driverId, attribue_par: actorId, erreur: c.erreur }); return }
     const avec = c.liste.filter(x => x.eta_min != null).sort((a, b) => a.eta_min! - b.eta_min!)
