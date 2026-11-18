@@ -34,7 +34,7 @@ export async function GET() {
       client_name, client_phone, assisted_name, assisted_phone,
       vehicle_plate, vehicle_brand, vehicle_model,
       incident_address, incident_city, incident_lat, incident_lng,
-      destination_name, destination_address, redelivery_address,
+      destination_name, destination_address, redelivery_address, redelivery_source,
       received_at, intervention_date, status,
       assigned_to, assigned_at, accepted_at, on_way_at, on_site_at, loaded_at, delivering_at,
       accept_call_at, kaze_cancelled_after_accept, needs_siabis_decision,

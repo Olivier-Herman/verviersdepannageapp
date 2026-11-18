@@ -80,6 +80,8 @@ export async function PATCH(
     // Olivier 2026-06-22 : coords de l'adresse de relivraison (géocodées côté
     // navigateur par le dispatch) → tri par tournée de l'onglet À Relivrer.
     'redelivery_lat', 'redelivery_lng',
+    // Olivier 18/11/2026 : assistance qui reprend la relivraison, gardée avec l'adresse.
+    'redelivery_source',
     'depot_depart_id', 'depot_depart_locked',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',

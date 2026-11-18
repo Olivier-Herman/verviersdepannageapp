@@ -24,6 +24,7 @@ export default function RelivraisonModalButton({
   onDone,
   saisieWarning = false,
   parentSource = '',
+  currentReprise = null,
   compact = false,
 }: {
   missionId:      string
@@ -36,6 +37,8 @@ export default function RelivraisonModalButton({
   saisieWarning?: boolean
   /** Source de la mission parente (pour la bascule de source REL). */
   parentSource?:  string
+  /** Reprise déjà choisie avec l'adresse (Olivier 18/11/2026). */
+  currentReprise?: string | null
   /** Vue dossier (audit B7, 08/09/2026) : juste le bouton « Relivrer », l'adresse vit à côté. */
   compact?:       boolean
 }) {
@@ -52,7 +55,7 @@ export default function RelivraisonModalButton({
   const [err,  setErr]  = useState('')
   const [printing, setPrinting] = useState(false)
   const [printMsg, setPrintMsg] = useState('')
-  const [sourceOverride, setSourceOverride] = useState('')
+  const [sourceOverride, setSourceOverride] = useState(currentReprise || '')
   // Instructions chauffeur (une par ligne) → pop-up à l'acceptation de la REL.
   const [driverComments, setDriverComments] = useState('')
   // Tarif imposé sur la relivraison — facultatif. Vide = le calcul habituel
@@ -108,6 +111,8 @@ export default function RelivraisonModalButton({
 
   async function saveAddress(): Promise<boolean> {
     const body: any = { redelivery_address: addr.trim() }
+    // La reprise choisie est gardée avec l'adresse (Olivier 18/11/2026, 1YAT978).
+    if (allowsSource || requiresSource) body.redelivery_source = sourceOverride || null
     if (lat != null) body.redelivery_lat = lat
     if (lng != null) body.redelivery_lng = lng
     const res = await fetch(`/api/missions/${missionId}`, {

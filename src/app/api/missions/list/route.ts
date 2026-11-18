@@ -44,7 +44,7 @@ export async function GET(req: Request) {
       vehicle_plate, vehicle_brand, vehicle_model,
       incident_address, incident_city, incident_country,
       incident_lat, incident_lng,
-      destination_name, destination_address, redelivery_address,
+      destination_name, destination_address, redelivery_address, redelivery_source,
       parc_zone_key, parked_at,
       amount_guaranteed, incident_at, received_at, intervention_date, rdv_at,
       status, dispatch_mode,

@@ -238,7 +238,7 @@ function BlocChauffeur({ m, now, onReaffecter }: { m: M; now: number; onReaffect
 function Relivrer({ m, onCree }: { m: M; onCree: (id: string) => void }) {
   const [occupe, setOccupe] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [reprise, setReprise] = useState<string>('')
+  const [reprise, setReprise] = useState<string>(String((m as any).redelivery_source || ''))
   const [sources, setSources] = useState<{ key: string; label: string }[] | null>(null)
   const src = String(m.source || '').toLowerCase()
   const demandeSource = ['prive', 'police_snc', 'police_accident'].includes(src)
