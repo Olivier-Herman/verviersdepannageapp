@@ -81,7 +81,7 @@ export async function PATCH(
     // navigateur par le dispatch) → tri par tournée de l'onglet À Relivrer.
     'redelivery_lat', 'redelivery_lng',
     // Olivier 18/11/2026 : assistance qui reprend la relivraison, gardée avec l'adresse.
-    'redelivery_source',
+    'redelivery_source', 'redelivery_driver_comments', 'redelivery_imposed_htva',
     'depot_depart_id', 'depot_depart_locked',
     'extra_addresses',
     'amount_guaranteed', 'amount_to_collect', 'amount_currency', 'special_tarif_htva',

@@ -25,6 +25,8 @@ export default function RelivraisonModalButton({
   saisieWarning = false,
   parentSource = '',
   currentReprise = null,
+  currentConsignes = null,
+  currentTarifHtva = null,
   compact = false,
 }: {
   missionId:      string
@@ -39,6 +41,9 @@ export default function RelivraisonModalButton({
   parentSource?:  string
   /** Reprise déjà choisie avec l'adresse (Olivier 18/11/2026). */
   currentReprise?: string | null
+  /** Instructions et tarif imposé déjà enregistrés avec l'adresse (Olivier 18/11/2026). */
+  currentConsignes?: string | null
+  currentTarifHtva?: number | null
   /** Vue dossier (audit B7, 08/09/2026) : juste le bouton « Relivrer », l'adresse vit à côté. */
   compact?:       boolean
 }) {
@@ -57,11 +62,11 @@ export default function RelivraisonModalButton({
   const [printMsg, setPrintMsg] = useState('')
   const [sourceOverride, setSourceOverride] = useState(currentReprise || '')
   // Instructions chauffeur (une par ligne) → pop-up à l'acceptation de la REL.
-  const [driverComments, setDriverComments] = useState('')
+  const [driverComments, setDriverComments] = useState(currentConsignes || '')
   // Tarif imposé sur la relivraison — facultatif. Vide = le calcul habituel
   // s'applique (Olivier 2026-08-31). On stocke en HTVA ; le dispatcher peut
   // saisir l'un ou l'autre, c'est TVAC qu'on annonce le plus souvent au client.
-  const [tarif, setTarif]   = useState('')
+  const [tarif, setTarif]   = useState(currentTarifHtva && Number(currentTarifHtva) > 0 ? String(currentTarifHtva).replace('.', ',') : '')
   const [tarifTvac, setTarifTvac] = useState(false)
   const tarifNum   = Number(String(tarif).replace(',', '.'))
   const htvaImposé = tarif.trim() && tarifNum > 0
@@ -113,6 +118,8 @@ export default function RelivraisonModalButton({
     const body: any = { redelivery_address: addr.trim() }
     // La reprise choisie est gardée avec l'adresse (Olivier 18/11/2026, 1YAT978).
     if (allowsSource || requiresSource) body.redelivery_source = sourceOverride || null
+    body.redelivery_driver_comments = driverComments.trim() || null
+    body.redelivery_imposed_htva = htvaImposé
     if (lat != null) body.redelivery_lat = lat
     if (lng != null) body.redelivery_lng = lng
     const res = await fetch(`/api/missions/${missionId}`, {

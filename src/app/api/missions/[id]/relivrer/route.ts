@@ -39,13 +39,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // une redelivery_address déjà définie (= ancienne destination).
   const { data: parent } = await sb
     .from('incoming_missions')
-    .select('id, status, source, destination_address, destination_lat, destination_lng, redelivery_address, redelivery_source, park_stage_name')
+    .select('id, status, source, destination_address, destination_lat, destination_lng, redelivery_address, redelivery_source, redelivery_driver_comments, redelivery_imposed_htva, park_stage_name')
     .eq('id', params.id)
     .single()
   if (!parent) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 })
 
   // Reprise choisie avec l'adresse (Olivier 18/11/2026) : vaut choix si rien n'est envoyé maintenant.
   if (!body.source_override && (parent as any).redelivery_source) body.source_override = (parent as any).redelivery_source
+  if (!String(body.driver_comments || '').trim() && (parent as any).redelivery_driver_comments) body.driver_comments = (parent as any).redelivery_driver_comments
+  if (!(Number(body.imposed_htva) > 0) && Number((parent as any).redelivery_imposed_htva) > 0) body.imposed_htva = Number((parent as any).redelivery_imposed_htva)
   if (parent.status !== 'parked') {
     return NextResponse.json({ error: 'La mission n\'est pas en parc' }, { status: 422 })
   }

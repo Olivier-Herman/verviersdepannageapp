@@ -724,7 +724,7 @@ function RelivrerFromDossier({ d, leg, gmKey, onDone }: { d: Dossier; leg: Dossi
   const saisieWarning = String(d.source || '') === 'police_saisie' && !!d.parquet && d.parquet.state !== 'clos'
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      <RelivraisonModalButton compact missionId={d.root_id} currentAddress={leg.redelivery_address || ''} currentReprise={(leg as any).redelivery_source ?? null} gmKey={gmKey} onDone={onDone} parentSource={d.source || ''} saisieWarning={saisieWarning} />
+      <RelivraisonModalButton compact missionId={d.root_id} currentAddress={leg.redelivery_address || ''} currentReprise={(leg as any).redelivery_source ?? null} currentConsignes={(leg as any).redelivery_driver_comments ?? null} currentTarifHtva={(leg as any).redelivery_imposed_htva ?? null} gmKey={gmKey} onDone={onDone} parentSource={d.source || ''} saisieWarning={saisieWarning} />
       {!(leg.redelivery_address || '').trim() && <span className="text-amber-700 text-[11px]">adresse à renseigner d’abord</span>}
     </span>
   )
