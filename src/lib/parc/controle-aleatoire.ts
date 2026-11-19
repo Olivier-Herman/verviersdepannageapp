@@ -10,7 +10,8 @@
 //
 // Tirage : levée de saisie définitive depuis plus de 7 jours = toujours ; Transit > 14 nuits, jamais contrôlé ou contrôle
 // > 60 j (au-delà de 15 nuits) = priorité ; le reste au hasard, 3 fois plus de chances au-delà de 15 nuits. Jamais un véhicule vu présent depuis moins
-// de 14 jours. Hors tirage : zones T (garagiste), S (cyclos), dépôt de Verviers, et véhicules déjà non localisés.
+// de 14 jours. Hors tirage : zones T (garagiste), S (cyclos), dépôt de Verviers, véhicules déjà non localisés, et scooters ou cyclos où qu'ils
+// soient rangés (Olivier 19/11/2026).
 
 import type { createAdminClient } from '@/lib/supabase'
 import { nightsBetween } from '@/lib/parc/nights'
@@ -40,7 +41,7 @@ export interface Tire { mission_id: string; raison: string; zone: string | null;
 
 export async function tirerVehicules(sb: Sb, nb = NB): Promise<Tire[]> {
   const { data } = await sb.from('incoming_missions')
-    .select('id, mission_number, vehicle_plate, parc_zone_key, parked_at, created_at, levee_saisie_at, levee_saisie_type, police_levee_saisie_ok, parc_verified_at, parc_verified_present')
+    .select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_class, parc_zone_key, parked_at, created_at, levee_saisie_at, levee_saisie_type, police_levee_saisie_ok, parc_verified_at, parc_verified_present')
     .eq('status', 'parked').eq('dossier_leg', false)
   const now = Date.now()
   // « Vu » = dernier contrôle présent sur la fiche, ou dernier scan du contrôle complet du parc (table parc_controle_items).
@@ -56,7 +57,10 @@ export async function tirerVehicules(sb: Sb, nb = NB): Promise<Tire[]> {
     m.vu_at = t ? new Date(t).toISOString() : null
   }
   // Hors tirage, comme le contrôle complet : T (chez le garagiste), S (cyclos), dépôt de Verviers (pas de scan sur place).
-  const cands = ((data || []) as any[]).filter(m => !['T', 'S', 'Verviers'].includes(String(m.parc_zone_key || '')))
+  // Scooters et cyclos jamais tirés, quelle que soit leur zone (Olivier 19/11/2026 : un scooter rangé en zone J ou au box
+  // était tiré). Reconnus par la classe du véhicule ou par la marque et le modèle encodés.
+  const deuxRoues = (m: any) => /moto|cyclo/i.test(String(m.vehicle_class || '')) || /scoot|cyclo/i.test(`${m.vehicle_brand || ''} ${m.vehicle_model || ''}`)
+  const cands = ((data || []) as any[]).filter(m => !['T', 'S', 'Verviers'].includes(String(m.parc_zone_key || '')) && !deuxRoues(m))
     .filter(m => !(m.vu_at && now - Date.parse(m.vu_at) < 14 * DAY))
   const nuits = (m: any) => nightsBetween(m.parked_at || m.created_at)
   const raisons = (m: any): { force: boolean; prio: boolean; txt: string[] } => {
