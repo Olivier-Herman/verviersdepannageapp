@@ -179,14 +179,16 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     const exact = await exactBankMatch(company, line, p.parts)
     const regle = exact.ok ? null : await regleBanqueAutonome(company, line, p.parts)
     // Riga, autonomie complète (Olivier 02/11/2026, 21 validations sur 21) : Rémi rapproche seul, sauf s'il met un stop.
-    const rigaSeul = company === 2 && body?.stop !== true
+    // Étendue à VD le 19/11/2026 (Olivier au bureau, 30 validations et 11 faites seules en 30 jours, 0 correction) :
+    // Florent rapproche seul, sauf `stop: true` (pièce manquante, doute, ligne mise de côté par Olivier).
+    const rigaSeul = (company === 2 || company === 1) && body?.stop !== true
     return {
       title: `${line.journal_id?.[1] || 'Banque'} ${line.date} · ${Number(line.amount).toFixed(2)} € · ${String(line.payment_ref || '').replace(/\s+/g, ' ').slice(0, 60)}`,
       amount: Number(line.amount), payload: { ligne_id: lineId, parts: p.parts, ventilation: resume },
       // Riga (Olivier 20/10/2026, autonomie validée : 12 validations sur 12) : Rémi rapproche seul quand il est certain
       // (règles du 20/10 : frais bancaires, DGJ, 580000, NN). Une ligne qui demande une pièce reste chez Olivier.
       directAllowed: exact.ok || !!regle || rigaSeul,
-      directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : regle ? regle : rigaSeul ? 'Riga, autonomie complète (02/11/2026)' : undefined,
+      directWhy: exact.ok ? `bonne facture, montant exact (${exact.why})` : regle ? regle : rigaSeul ? (company === 2 ? 'Riga, autonomie complète (02/11/2026)' : 'VD, autonomie complète (19/11/2026)') : undefined,
     }
   }
 
