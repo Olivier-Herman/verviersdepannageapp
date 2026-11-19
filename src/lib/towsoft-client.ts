@@ -256,30 +256,30 @@ export function parseTowsoftDateUTC(s: string | null | undefined): string | null
   // YYYY-MM-DD HH:MM(:SS)?
   let m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
   if (m) {
-    const local = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}`)
+    const local = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}Z`)
     return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
   }
   // DD-MM-YYYY HH:MM(:SS)?
   m = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
   if (m) {
-    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}`)
+    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}Z`)
     return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
   }
   // DD/MM/YYYY HH:MM
   m = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/)
   if (m) {
-    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00`)
+    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00Z`)
     return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
   }
   // Date seule -> midi
   m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (m) {
-    const local = new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00`)
+    const local = new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00Z`)
     return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
   }
   m = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/)
   if (m) {
-    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00`)
+    const local = new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00Z`)
     return new Date(local.getTime() - brusselsOffsetMs(local)).toISOString()
   }
   return null
