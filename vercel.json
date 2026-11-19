@@ -82,6 +82,7 @@
     { "path": "/api/cron/touring-deroulement-sync",  "schedule": "0 5 * * *"    },
     { "path": "/api/cron/payment-advices",           "schedule": "0 3,4,10,11 * * *" },
     { "path": "/api/cron/scrada-coda",               "schedule": "0 4 * * *"    },
+    { "path": "/api/cron/envoi-peppol",              "schedule": "45 3 * * *"   },
     { "path": "/api/cron/aurelie-sel",               "schedule": "0 4-17 * * *" },
     { "path": "/api/cron/as24-domiciliations",       "schedule": "30 7 * * 1-5" },
     { "path": "/api/cron/especes",                   "schedule": "*/15 * * * *" },
