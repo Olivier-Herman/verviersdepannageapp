@@ -77,10 +77,12 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
   const parAutre = c?.status === 'en_cours' && c.started_by && c.started_by !== d?.moi
   // Reports comptés par VD Soft (Olivier 20/11/2026) : 3 libres, puis une demande à Mobi, puis plus rien.
   const max = Number(d?.reports_max ?? 3), restants = Math.max(0, max - Number(c?.reports || 0))
-  const plusDeReport = restants === 0
+  // Seulement chez les comptes limités (Jona) ; ailleurs (Mobi) : reports sans limite et « Passer pour aujourd'hui ».
+  const limite = d?.limite === true
+  const plusDeReport = limite && restants === 0
   const valid = d?.validateur || 'ton responsable'
   // Repoussé ailleurs (autre poste) ou 15 min accordées : la fenêtre se cache ici aussi jusqu'à l'heure prévue.
-  const jusqua = c?.status === 'demande' && c?.reporte_jusqua ? Date.parse(c.reporte_jusqua) : 0
+  const jusqua = limite && c?.status === 'demande' && c?.reporte_jusqua ? Date.parse(c.reporte_jusqua) : 0
   useEffect(() => { if (jusqua > Date.now()) onSnooze?.((jusqua - Date.now()) / 60_000) }, [jusqua])   // eslint-disable-line react-hooks/exhaustive-deps
   if (pathname.startsWith('/fourriere/controle-aleatoire/')) return null
   return (
@@ -112,7 +114,8 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
             {plusDeReport && c.prolongation === 'acceptee' && <p className="rounded-xl bg-red-50 border border-red-300 text-red-800 text-sm font-semibold px-3 py-2">Plus de report possible : le contrôle doit se faire maintenant.</p>}
             <div className={`grid gap-2 ${plusDeReport && c.prolongation ? '' : 'sm:grid-cols-2'}`}>
               <button type="button" disabled={busy} onClick={lancer} className="min-h-[52px] rounded-xl bg-sky-700 text-white font-bold px-3">{busy ? '…' : '📱 Faire le contrôle avec mon téléphone'}</button>
-              {!plusDeReport && <button type="button" disabled={busy} onClick={repousserSrv} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min{restants <= 1 ? ' (dernière fois)' : ` (encore ${restants} fois)`}</button>}
+              {!plusDeReport && <button type="button" disabled={busy} onClick={repousserSrv} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min{!limite ? '' : restants <= 1 ? ' (dernière fois)' : ` (encore ${restants} fois)`}</button>}
+              {!limite && d && <button type="button" disabled={busy} onClick={async () => { if (await poster({ action: 'passer' })) onDone() }} className="min-h-[52px] rounded-xl border-2 border-slate-300 bg-slate-100 text-slate-800 font-bold px-3 sm:col-span-2">⏭ Passer pour aujourd’hui</button>}
               {plusDeReport && !c.prolongation && !motifOuvert && <button type="button" disabled={busy} onClick={() => setMotifOuvert(true)} className="min-h-[52px] rounded-xl border-2 border-amber-500 bg-amber-50 text-amber-900 font-bold px-3">🙋 Demander 15 min de plus à {valid}</button>}
             </div>
             {plusDeReport && !c.prolongation && motifOuvert && (

@@ -217,6 +217,22 @@ export async function demarrer(sb: Sb, id: string, user: { id: string; name: str
 // ── Reports (Olivier 20/11/2026) ──────────────────────────────────────────────────────────────────────────────────
 // 3 reports de 15 min libres, puis un 4e sur demande motivée que Mobi accepte ou refuse, puis plus rien : il ne reste
 // que « Faire le contrôle ». Le compte est tenu ici (tous les postes de la personne voient le même).
+// Seulement pour les comptes du réglage controle_parc_reports_limites_user_ids (Jona) : les autres (Mobi) repoussent
+// sans limite ni compte, et peuvent passer le contrôle pour la journée (Olivier 20/11/2026 : « pour moi pas »).
+export async function estLimite(userId: string): Promise<boolean> {
+  const { getBusinessList } = await import('@/lib/settings/business')
+  return (await getBusinessList('controle_parc_reports_limites_user_ids').catch(() => [] as string[])).includes(userId)
+}
+/** Compte non limité : la fenêtre se ferme chez lui pour ce contrôle, le contrôle reste à faire chez les autres. */
+export async function passer(sb: Sb, id: string, user: { id: string; name: string | null }): Promise<{ ok: boolean; error?: string }> {
+  if (await estLimite(user.id)) return { ok: false, error: 'Ce contrôle doit être fait.' }
+  const { data: c } = await sb.from('parc_controles_aleatoires').select('request_group').eq('id', id).maybeSingle()
+  if (!c) return { ok: false, error: 'Contrôle introuvable' }
+  const now = new Date().toISOString()
+  await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('notif_type', NOTIF_BUREAU).eq('user_id', user.id).is('responded_at', null)
+    .eq('payload->data->>controle_id', id)
+  return { ok: true }
+}
 export async function reportsMax(): Promise<number> {
   const { getBusinessNumber } = await import('@/lib/settings/business')
   return getBusinessNumber('controle_parc_reports_max').catch(() => 3)
@@ -244,6 +260,8 @@ export async function repousser(sb: Sb, id: string, user: { id: string; name: st
   const { data: c } = await sb.from('parc_controles_aleatoires').select('status, reports, reporte_jusqua').eq('id', id).maybeSingle()
   if (!c) return { ok: false, error: 'Contrôle introuvable' }
   if (c.status !== 'demande') return { ok: false, error: 'Ce contrôle est déjà lancé ou terminé.' }
+  // Compte non limité : report sur son poste seulement, rien de compté (sinon la fenêtre de Jona se cacherait aussi).
+  if (!(await estLimite(user.id))) return { ok: true, reporte_jusqua: new Date(Date.now() + REPORT_MIN * 60_000).toISOString() }
   if (c.reporte_jusqua && Date.parse(c.reporte_jusqua) > Date.now()) return { ok: true, reporte_jusqua: c.reporte_jusqua, reports: c.reports }
   const max = await reportsMax()
   const n = Number(c.reports || 0)
@@ -259,6 +277,7 @@ export async function repousser(sb: Sb, id: string, user: { id: string; name: st
 export async function demanderProlongation(sb: Sb, id: string, user: { id: string; name: string | null }, motif: string): Promise<{ ok: boolean; error?: string }> {
   const m = String(motif || '').trim().slice(0, 200)
   if (!m) return { ok: false, error: 'Indique pourquoi tu as besoin de 15 minutes de plus.' }
+  if (!(await estLimite(user.id))) return { ok: false, error: 'Tu peux repousser sans demander.' }
   const { data: c } = await sb.from('parc_controles_aleatoires').select('status, reports, reporte_jusqua, prolongation').eq('id', id).maybeSingle()
   if (!c) return { ok: false, error: 'Contrôle introuvable' }
   if (c.status !== 'demande') return { ok: false, error: 'Ce contrôle est déjà lancé ou terminé.' }

@@ -3,12 +3,13 @@
 // POST { action: 'start' } | { action: 'scan', item_id, qr } | { action: 'absent', item_id } | { action: 'autre_zone', item_id, zone }
 //    | { action: 'resoudre', item_id, choix: 'retrouve'|'restitue'|'domaine'|'epave'|'recherche', zone?, date?, note? }
 //    | { action: 'repousser' } | { action: 'demander_prolongation', motif } | { action: 'decider_prolongation', accepte } (Olivier 20/11/2026)
+//    | { action: 'passer' } (compte sans limite de reports : plus de fenêtre pour ce contrôle)
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { sessionAccess } from '@/lib/access'
-import { lireControle, demarrer, repondre, pistes, resoudre, repousser, demanderProlongation, deciderProlongation, reportsMax, nomsValidateurs } from '@/lib/parc/controle-aleatoire'
+import { lireControle, demarrer, repondre, pistes, resoudre, repousser, demanderProlongation, deciderProlongation, reportsMax, nomsValidateurs, estLimite, passer } from '@/lib/parc/controle-aleatoire'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -27,7 +28,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (new URL(req.url).searchParams.get('pistes') === '1') {
     for (const it of r.items) if (it.resultat === 'absent' && !it.resolu_at) (it as any).pistes = await pistes(sb, it.id).catch(() => [])
   }
-  return NextResponse.json({ ...r, moi: u.id, reports_max: await reportsMax(), validateur: await nomsValidateurs(sb).catch(() => '') })
+  return NextResponse.json({ ...r, moi: u.id, reports_max: await reportsMax(), limite: await estLimite(u.id), validateur: await nomsValidateurs(sb).catch(() => '') })
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -43,6 +44,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   else if (b.action === 'repousser') r = await repousser(sb, params.id, u)
   else if (b.action === 'demander_prolongation') r = await demanderProlongation(sb, params.id, u, String(b.motif || ''))
   else if (b.action === 'decider_prolongation') r = await deciderProlongation(sb, params.id, u, b.accepte === true)
+  else if (b.action === 'passer') r = await passer(sb, params.id, u)
   else return NextResponse.json({ error: 'Action inconnue' }, { status: 400 })
   return NextResponse.json(r, { status: r.ok ? 200 : 409 })
 }
