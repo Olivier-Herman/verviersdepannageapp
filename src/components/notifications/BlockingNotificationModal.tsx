@@ -27,6 +27,7 @@ export default function BlockingNotificationModal({ notif, onDone, onSnooze }: {
   if (notif.notif_type === 'mission_address_changed') return <AddressChangeModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'rel_police_a_trancher') return <RelPoliceModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'controle_parc_aleatoire') return <ControleParcModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
+  if (notif.notif_type === 'controle_parc_prolongation') return <ProlongationControleModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'paiements_a_trier' || notif.notif_type === 'paiements_lot_du_jour') return <RappelModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
   if (notif.notif_type === 'conges_en_attente') return <CongesModal notif={notif} onDone={onDone} />
   if (notif.notif_type === 'levee_saisie_alarme') return <LeveeAlarmModal notif={notif} onDone={onDone} onSnooze={onSnooze} />
@@ -49,12 +50,38 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
     setBusy(true); setErr(null)
     try { const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) }); const j = await r.json(); if (!r.ok) setErr(j.error || 'Lancement impossible'); await charger() } catch { setErr('Erreur réseau') } finally { setBusy(false) }
   }
+  const [motifOuvert, setMotifOuvert] = useState(false)
+  const [motif, setMotif] = useState('')
+  async function poster(body: Record<string, any>) {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/parc/controle-aleatoire/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.ok) { setErr(j.error || 'Envoi impossible'); await charger(); return null }
+      return j
+    } catch { setErr('Erreur réseau'); return null } finally { setBusy(false) }
+  }
+  async function repousserSrv() {
+    const j = await poster({ action: 'repousser' })
+    if (j?.reporte_jusqua) onSnooze?.(Math.max(1, (Date.parse(j.reporte_jusqua) - Date.now()) / 60_000))
+  }
+  async function demander() {
+    const j = await poster({ action: 'demander_prolongation', motif })
+    if (j) { setMotifOuvert(false); await charger() }
+  }
   // Sur la page des scans (téléphone ouvert depuis la notification), la fenêtre du bureau ne se met pas par-dessus
   // (Olivier 17/11/2026 : « Commencer le contrôle » sur le téléphone ouvrait cette fenêtre au lieu des scans).
   const pathname = usePathname() || ''
   const c = d?.controle, items: any[] = d?.items || []
   const faits = items.filter(i => i.resultat).length, absents = items.filter(i => i.resultat === 'absent').length
   const parAutre = c?.status === 'en_cours' && c.started_by && c.started_by !== d?.moi
+  // Reports comptés par VD Soft (Olivier 20/11/2026) : 3 libres, puis une demande à Mobi, puis plus rien.
+  const max = Number(d?.reports_max ?? 3), restants = Math.max(0, max - Number(c?.reports || 0))
+  const plusDeReport = restants === 0
+  const valid = d?.validateur || 'ton responsable'
+  // Repoussé ailleurs (autre poste) ou 15 min accordées : la fenêtre se cache ici aussi jusqu'à l'heure prévue.
+  const jusqua = c?.status === 'demande' && c?.reporte_jusqua ? Date.parse(c.reporte_jusqua) : 0
+  useEffect(() => { if (jusqua > Date.now()) onSnooze?.((jusqua - Date.now()) / 60_000) }, [jusqua])   // eslint-disable-line react-hooks/exhaustive-deps
   if (pathname.startsWith('/fourriere/controle-aleatoire/')) return null
   return (
     <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
@@ -79,12 +106,31 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
             </div>
           )}
           {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
-          {c?.status === 'demande' && (
-            <div className="grid gap-2 sm:grid-cols-2">
+          {c?.status === 'demande' && (<>
+            {plusDeReport && c.prolongation === 'demandee' && <p className="rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm font-semibold px-3 py-2">⏳ Demande envoyée à {valid} : en attente de sa réponse. Tu peux commencer le contrôle à tout moment.</p>}
+            {plusDeReport && c.prolongation === 'refusee' && <p className="rounded-xl bg-red-50 border border-red-300 text-red-800 text-sm font-semibold px-3 py-2">{c.prolongation_decide_par_name || valid} a refusé le report : le contrôle doit se faire maintenant.</p>}
+            {plusDeReport && c.prolongation === 'acceptee' && <p className="rounded-xl bg-red-50 border border-red-300 text-red-800 text-sm font-semibold px-3 py-2">Plus de report possible : le contrôle doit se faire maintenant.</p>}
+            <div className={`grid gap-2 ${plusDeReport && c.prolongation ? '' : 'sm:grid-cols-2'}`}>
               <button type="button" disabled={busy} onClick={lancer} className="min-h-[52px] rounded-xl bg-sky-700 text-white font-bold px-3">{busy ? '…' : '📱 Faire le contrôle avec mon téléphone'}</button>
-              <button type="button" disabled={busy} onClick={() => onSnooze?.(15)} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min</button>
+              {!plusDeReport && <button type="button" disabled={busy} onClick={repousserSrv} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">⏰ Repousser de 15 min{restants <= 1 ? ' (dernière fois)' : ` (encore ${restants} fois)`}</button>}
+              {plusDeReport && !c.prolongation && !motifOuvert && <button type="button" disabled={busy} onClick={() => setMotifOuvert(true)} className="min-h-[52px] rounded-xl border-2 border-amber-500 bg-amber-50 text-amber-900 font-bold px-3">🙋 Demander 15 min de plus à {valid}</button>}
             </div>
-          )}
+            {plusDeReport && !c.prolongation && motifOuvert && (
+              <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3 space-y-2">
+                <p className="text-sm font-semibold text-amber-900">Pourquoi as-tu besoin de 15 minutes de plus ? {valid} accepte ou refuse ; ensuite, plus aucun report.</p>
+                <div className="flex flex-wrap gap-2">
+                  {['Avec un client', 'Au téléphone', 'Urgence au dispatch'].map(m => (
+                    <button key={m} type="button" onClick={() => setMotif(m)} className={`min-h-[44px] rounded-xl border-2 px-3 font-semibold ${motif === m ? 'border-amber-600 bg-amber-200 text-amber-900' : 'border-amber-300 bg-white text-amber-900'}`}>{m}</button>
+                  ))}
+                </div>
+                <input value={motif} onChange={e => setMotif(e.target.value)} maxLength={200} placeholder="Ou écris le motif" className="w-full min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-slate-900" />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button type="button" disabled={busy || !motif.trim()} onClick={demander} className="min-h-[48px] rounded-xl bg-amber-600 text-white font-bold px-3 disabled:opacity-50">{busy ? '…' : `Envoyer la demande à ${valid}`}</button>
+                  <button type="button" disabled={busy} onClick={() => { setMotifOuvert(false); setMotif('') }} className="min-h-[48px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">Annuler</button>
+                </div>
+              </div>
+            )}
+          </>)}
           {c?.status === 'en_cours' && !parAutre && (<>
             <p className="text-sm text-slate-700">La notification est partie sur ton téléphone : ouvre-la pour scanner les véhicules un par un. Cette fenêtre se met à jour toute seule.</p>
             <a href={`/fourriere/controle-aleatoire/${id}`} className="min-h-[52px] w-full rounded-xl bg-sky-700 text-white font-bold px-3 inline-flex items-center justify-center">📷 Je suis sur le téléphone : scanner maintenant</a>
@@ -93,6 +139,49 @@ function ControleParcModal({ notif, onDone, onSnooze }: { notif: NotifEvent; onD
             <div className="grid gap-2 sm:grid-cols-2">
               {absents > 0 && <a href={`/fourriere/controle-aleatoire/${id}`} className="min-h-[52px] rounded-xl bg-red-600 text-white font-bold px-3 inline-flex items-center justify-center">Rechercher les {absents} pas trouvé(s)</a>}
               <button type="button" onClick={onDone} className="min-h-[52px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold px-3">Fermer</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Contrôle du parc : 15 min de plus ? (Olivier 20/11/2026) ──
+// Les 3 reports libres sont épuisés : le bureau demande un dernier report motivé, le responsable accepte ou refuse.
+function ProlongationControleModal({ notif, onDone }: { notif: NotifEvent; onDone: () => void }) {
+  const d = notif.payload?.data || {}
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  async function decider(accepte: boolean) {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`/api/parc/controle-aleatoire/${d.controle_id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'decider_prolongation', accepte }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.ok) { setErr(j.error || 'Envoi impossible'); return }
+      if (j.deja) { setInfo(j.deja); return }
+      onDone()
+    } catch { setErr('Erreur réseau') } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[400] flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+      <div className="w-full max-w-lg rounded-2xl bg-white border-4 border-amber-500 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-700">Contrôle aléatoire du parc</p>
+          <p className="text-lg font-bold text-slate-900">{d.qui || 'Le bureau'} demande 15 minutes de plus</p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm text-slate-800">Motif : <span className="font-bold">{d.motif || '—'}</span></p>
+          <p className="text-sm text-slate-700">Déjà repoussé {d.reports ?? 3} fois. Si tu acceptes, la fenêtre revient dans 15 minutes sans plus aucun report possible. Si tu refuses, le contrôle doit se faire tout de suite.</p>
+          {err && <p className="text-sm font-semibold text-red-700">{err}</p>}
+          {info ? (<>
+            <p className="rounded-xl bg-slate-100 text-slate-800 text-sm font-semibold px-3 py-2">{info}</p>
+            <button type="button" onClick={onDone} className="w-full min-h-[48px] rounded-xl border-2 border-slate-400 text-slate-900 font-bold">Fermer</button>
+          </>) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={busy} onClick={() => decider(true)} className="min-h-[52px] rounded-xl bg-emerald-600 text-white font-bold px-3">{busy ? '…' : '✅ Accepter 15 min'}</button>
+              <button type="button" disabled={busy} onClick={() => decider(false)} className="min-h-[52px] rounded-xl bg-red-600 text-white font-bold px-3">{busy ? '…' : '⛔ Refuser'}</button>
             </div>
           )}
         </div>

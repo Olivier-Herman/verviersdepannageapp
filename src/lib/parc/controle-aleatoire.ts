@@ -4,7 +4,9 @@
 // Au lieu des inventaires complets : le mardi et le jeudi à une heure tirée au sort entre 10 h et 15 h, le samedi entre
 // 10 h et 11 h (heure de Bruxelles), 15 véhicules du parc à scanner. Une fenêtre s'ouvre au bureau (réglage
 // controle_parc_user_ids = Jona ; Mobi en plus seulement si son agenda indique « Verviers Dépannage » à ce moment-là).
-// On peut la repousser de 15 min, pas l'ignorer. « Faire le contrôle avec mon téléphone » envoie une notification qui
+// On peut la repousser de 15 min, pas l'ignorer : 3 reports libres (réglage controle_parc_reports_max), puis un 4e
+// seulement si Mobi l'accepte (réglage controle_parc_validateur_user_ids), puis plus aucun (Olivier 20/11/2026, contrôle du
+// 19/11 jamais fait). Les reports sont comptés ici, pas sur le poste. « Faire le contrôle avec mon téléphone » envoie une notification qui
 // ouvre les scans un par un (scanner l'étiquette, « Pas trouvé », « autre zone »). Le premier qui lance le contrôle le
 // prend. Un véhicule pas trouvé arrive au bureau avec des pistes (levée, dernier contrôle, factures, mails, Domaine…).
 //
@@ -20,6 +22,8 @@ import { sendNotification } from '@/lib/notifications/send'
 type Sb = ReturnType<typeof createAdminClient>
 export const NOTIF_BUREAU = 'controle_parc_aleatoire'
 export const NOTIF_TEL = 'controle_parc_scan'
+export const NOTIF_PROLONGATION = 'controle_parc_prolongation'
+const REPORT_MIN = 15
 const NB = 15
 const DAY = 86_400_000
 // Plages (heure de Bruxelles) : jour de la semaine (0 = dimanche) → [début, fin) en minutes.
@@ -199,12 +203,99 @@ export async function demarrer(sb: Sb, id: string, user: { id: string; name: str
   // Fenêtre fermée chez les autres ; elle reste ouverte chez celui qui a lancé (suivi en direct).
   await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('notif_type', NOTIF_BUREAU).is('responded_at', null)
     .eq('payload->data->>request_group', data[0].request_group).neq('user_id', user.id)
+  // Une demande de 15 min de plus en attente n'a plus d'objet : elle se ferme chez Mobi.
+  await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('notif_type', NOTIF_PROLONGATION).is('responded_at', null).eq('payload->data->>request_group', `cpp-${id}`)
   await sendNotification(user.id, NOTIF_TEL, {
     title: '🔍 Contrôle du parc : 15 véhicules',
     body: 'Touchez pour commencer les scans.',
     action_url: `/fourriere/controle-aleatoire/${id}`,
     data: { kind: 'controle_parc_scan', controle_id: id },
   }).catch(() => {})
+  return { ok: true }
+}
+
+// ── Reports (Olivier 20/11/2026) ──────────────────────────────────────────────────────────────────────────────────
+// 3 reports de 15 min libres, puis un 4e sur demande motivée que Mobi accepte ou refuse, puis plus rien : il ne reste
+// que « Faire le contrôle ». Le compte est tenu ici (tous les postes de la personne voient le même).
+export async function reportsMax(): Promise<number> {
+  const { getBusinessNumber } = await import('@/lib/settings/business')
+  return getBusinessNumber('controle_parc_reports_max').catch(() => 3)
+}
+async function validateurs(): Promise<string[]> {
+  const { getBusinessList } = await import('@/lib/settings/business')
+  return getBusinessList('controle_parc_validateur_user_ids').catch(() => [] as string[])
+}
+export async function nomsValidateurs(sb: Sb): Promise<string> {
+  const ids = await validateurs()
+  if (!ids.length) return ''
+  const { data } = await sb.from('users').select('name').in('id', ids)
+  return (data || []).map((u: any) => u.name).filter(Boolean).join(' ou ')
+}
+async function alerteMobi(texte: string) {
+  try {
+    const { getBusinessNumber } = await import('@/lib/settings/business')
+    const { notifierTelegram } = await import('@/lib/notif/heures-mobi')
+    await notifierTelegram(await getBusinessNumber('telegram_chat_mobi'), texte, [], undefined, { urgent: true })
+  } catch (e: any) { console.error('[controle-parc] Telegram impossible :', e?.message) }
+}
+const lien = (id: string) => `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.verviersdepannage.com'}/fourriere/controle-aleatoire/${id}`
+
+export async function repousser(sb: Sb, id: string, user: { id: string; name: string | null }): Promise<{ ok: boolean; error?: string; reporte_jusqua?: string; reports?: number }> {
+  const { data: c } = await sb.from('parc_controles_aleatoires').select('status, reports, reporte_jusqua').eq('id', id).maybeSingle()
+  if (!c) return { ok: false, error: 'Contrôle introuvable' }
+  if (c.status !== 'demande') return { ok: false, error: 'Ce contrôle est déjà lancé ou terminé.' }
+  if (c.reporte_jusqua && Date.parse(c.reporte_jusqua) > Date.now()) return { ok: true, reporte_jusqua: c.reporte_jusqua, reports: c.reports }
+  const max = await reportsMax()
+  const n = Number(c.reports || 0)
+  if (n >= max) return { ok: false, error: 'Plus de report possible sans accord.' }
+  const jusqua = new Date(Date.now() + REPORT_MIN * 60_000).toISOString()
+  // Conditionnel sur le compte lu : deux clics simultanés ne comptent qu'un report.
+  const { data } = await sb.from('parc_controles_aleatoires').update({ reports: n + 1, reporte_jusqua: jusqua }).eq('id', id).eq('status', 'demande').eq('reports', n).select('reports')
+  if (!data?.length) return { ok: false, error: 'Le contrôle a changé entre-temps : recharge la fenêtre.' }
+  if (n + 1 === max) await alerteMobi(`🔍 Contrôle du parc : ${user.name || 'le bureau'} l’a repoussé ${max} fois. Au prochain retour de la fenêtre, plus de report sans ton accord. ${lien(id)}`)
+  return { ok: true, reporte_jusqua: jusqua, reports: n + 1 }
+}
+
+export async function demanderProlongation(sb: Sb, id: string, user: { id: string; name: string | null }, motif: string): Promise<{ ok: boolean; error?: string }> {
+  const m = String(motif || '').trim().slice(0, 200)
+  if (!m) return { ok: false, error: 'Indique pourquoi tu as besoin de 15 minutes de plus.' }
+  const { data: c } = await sb.from('parc_controles_aleatoires').select('status, reports, reporte_jusqua, prolongation').eq('id', id).maybeSingle()
+  if (!c) return { ok: false, error: 'Contrôle introuvable' }
+  if (c.status !== 'demande') return { ok: false, error: 'Ce contrôle est déjà lancé ou terminé.' }
+  if (c.prolongation) return { ok: false, error: 'La demande a déjà été faite pour ce contrôle.' }
+  if (Number(c.reports || 0) < await reportsMax()) return { ok: false, error: 'Tu peux encore repousser sans demander.' }
+  if (c.reporte_jusqua && Date.parse(c.reporte_jusqua) > Date.now()) return { ok: false, error: 'Le contrôle est déjà repoussé.' }
+  const now = new Date().toISOString()
+  const { data } = await sb.from('parc_controles_aleatoires').update({ prolongation: 'demandee', prolongation_motif: m, prolongation_par: user.id, prolongation_par_name: user.name, prolongation_at: now })
+    .eq('id', id).eq('status', 'demande').is('prolongation', null).select('id')
+  if (!data?.length) return { ok: false, error: 'La demande a déjà été faite pour ce contrôle.' }
+  const qui = user.name || 'Le bureau'
+  let recus = 0
+  for (const u of await validateurs()) {
+    const r: any = await sendNotification(u, NOTIF_PROLONGATION, {
+      title: `🔍 ${qui} demande 15 min de plus pour le contrôle du parc`,
+      body: `Motif : ${m}. Déjà repoussé ${c.reports} fois.`,
+      action_url: `/fourriere/controle-aleatoire/${id}`,
+      data: { modal: true, kind: 'controle_parc_prolongation', controle_id: id, request_group: `cpp-${id}`, qui, motif: m, reports: c.reports },
+    }).catch(() => null)
+    if (r?.ok) recus++
+  }
+  if (!recus) await alerteMobi(`⚠️ Contrôle du parc : ${qui} demande 15 min de plus (motif : ${m}), mais la demande n’a pu être envoyée à personne. Réponds depuis ${lien(id)}`)
+  return { ok: true }
+}
+
+export async function deciderProlongation(sb: Sb, id: string, user: { id: string; name: string | null }, accepte: boolean): Promise<{ ok: boolean; error?: string; deja?: string }> {
+  if (!(await validateurs()).includes(user.id)) return { ok: false, error: 'Seul le responsable désigné peut répondre à cette demande.' }
+  const now = new Date()
+  const maj: Record<string, any> = { prolongation: accepte ? 'acceptee' : 'refusee', prolongation_decide_par_name: user.name, prolongation_decide_at: now.toISOString() }
+  if (accepte) maj.reporte_jusqua = new Date(now.getTime() + REPORT_MIN * 60_000).toISOString()
+  const { data } = await sb.from('parc_controles_aleatoires').update(maj).eq('id', id).eq('prolongation', 'demandee').select('id')
+  const fin = now.toISOString()
+  await sb.from('notifications_log').update({ responded_at: fin, read_at: fin }).eq('notif_type', NOTIF_PROLONGATION).is('responded_at', null).eq('payload->data->>request_group', `cpp-${id}`)
+  if (!data?.length) {
+    const { data: c } = await sb.from('parc_controles_aleatoires').select('prolongation, prolongation_decide_par_name').eq('id', id).maybeSingle()
+    return { ok: true, deja: c?.prolongation ? `Déjà ${c.prolongation === 'acceptee' ? 'acceptée' : 'refusée'}${c.prolongation_decide_par_name ? ` par ${c.prolongation_decide_par_name}` : ''}.` : 'Plus de demande en cours.' }
+  }
   return { ok: true }
 }
 

@@ -721,6 +721,15 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
   {
+    // Après 3 reports, le bureau demande 15 min de plus : le responsable accepte ou refuse (Olivier 20/11/2026).
+    key:             'controle_parc_prolongation',
+    label:           'Contrôle du parc : demande de 15 min de plus',
+    description:     'Le contrôle a déjà été repoussé 3 fois : accepter ou refuser un dernier report de 15 minutes.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
+  {
     // Talkie « Garde de nuit » (Olivier 30/09/2026) : message reçu alors que le talkie
     // n'était pas ouvert. Cf /talkie et /api/talkie/messages.
     key:             'talkie_message',
