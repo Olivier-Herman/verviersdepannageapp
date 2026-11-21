@@ -133,7 +133,11 @@ async function destinataires(_sb: Sb): Promise<string[]> {
 
 export async function tickControleParc(sb: Sb, opts: { force?: boolean } = {}): Promise<Record<string, any>> {
   const now = new Date(), b = bxl(now)
-  const plage = PLAGES[b.wd]
+  // Jours supplémentaires (réglage controle_parc_jours_supplementaires, dates AAAA-MM-JJ) : le contrôle tourne aussi ces
+  // jours-là, avec la plage du samedi le samedi et celle de la semaine sinon (Olivier 21/11/2026 : « envoie-lui un contrôle
+  // tous les jours » la semaine du 23/11, Jona ayant repoussé ceux du 19 et du 21/11).
+  const extra = await (async () => { try { const { getBusinessList } = await import('@/lib/settings/business'); return (await getBusinessList('controle_parc_jours_supplementaires')).includes(b.jour) } catch { return false } })()
+  const plage = PLAGES[b.wd] || (extra && b.wd !== 0 ? (b.wd === 6 ? PLAGES[6] : PLAGES[2]) : undefined)
   if (!plage && !opts.force) return { skipped: 'pas un jour de contrôle' }
   const { jourOuvrable } = await import('@/lib/paiements/fournisseurs')
   if (!opts.force && b.wd !== 6 && !jourOuvrable(now)) return { skipped: 'jour férié' }
