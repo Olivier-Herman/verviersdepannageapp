@@ -131,8 +131,51 @@ async function destinataires(_sb: Sb): Promise<string[]> {
   return [...ids]
 }
 
+/**
+ * Rattrapage automatique (Olivier 21/11/2026 : « 45 véhicules par semaine ; si des jours ont été totalement sautés, on
+ * rajoute le nombre de jours à 15 véhicules pour arriver à la bonne moyenne »). Un contrôle prévu par VD Soft (jour de
+ * base ou de rattrapage — pas les contrôles lancés à la main) sans aucun véhicule scanné, annulé ou dont le jour est
+ * passé, ajoute le premier lundi, mercredi ou vendredi ouvrable libre au réglage controle_parc_jours_supplementaires.
+ * Chaque contrôle n'est rattrapé qu'une fois (réglage controle_parc_rattrapes : jours déjà rattrapés).
+ */
+async function rattraperControlesSautes(sb: Sb, b: ReturnType<typeof bxl>): Promise<string[]> {
+  const { getBusinessList } = await import('@/lib/settings/business')
+  const { jourOuvrable } = await import('@/lib/paiements/fournisseurs')
+  const [extras, faits] = await Promise.all([
+    getBusinessList('controle_parc_jours_supplementaires').catch(() => [] as string[]),
+    getBusinessList('controle_parc_rattrapes').catch(() => [] as string[]),
+  ])
+  const depuis = new Date(Date.now() - 21 * DAY).toISOString().slice(0, 10)
+  const { data: ctrls } = await sb.from('parc_controles_aleatoires').select('id, jour, status, prevu_at').gte('jour', depuis).lte('jour', b.jour)
+  const sautes: string[] = []
+  for (const c of (ctrls || []) as any[]) {
+    if (faits.includes(c.jour)) continue
+    // Prévu par VD Soft : le jour du contrôle est celui de son heure prévue, et c'est un jour de base ou de rattrapage.
+    const p = bxl(new Date(c.prevu_at))
+    if (p.jour !== c.jour || !(PLAGES[p.wd] || extras.includes(c.jour))) continue
+    if (!(c.status === 'annule' || (c.jour < b.jour && c.status !== 'termine'))) continue
+    const { count } = await sb.from('parc_aleatoire_items').select('id', { count: 'exact', head: true }).eq('controle_id', c.id).not('resultat', 'is', null)
+    if (count) continue
+    sautes.push(c.jour)
+  }
+  if (!sautes.length) return []
+  const ajout: string[] = [], pris = new Set(extras)
+  let t = Date.parse(`${b.jour}T12:00:00Z`) + (b.min < 600 ? 0 : DAY)
+  for (const _ of sautes) {
+    for (let i = 0; i < 60; i++, t += DAY) {
+      const d = new Date(t), j = d.toISOString().slice(0, 10), wd = d.getUTCDay()
+      if ([1, 3, 5].includes(wd) && !pris.has(j) && jourOuvrable(d)) { pris.add(j); ajout.push(j); t += DAY; break }
+    }
+  }
+  await sb.from('app_settings').upsert({ key: 'controle_parc_jours_supplementaires', value: JSON.stringify([...extras, ...ajout].sort()) }, { onConflict: 'key' })
+  await sb.from('app_settings').upsert({ key: 'controle_parc_rattrapes', value: JSON.stringify([...faits, ...sautes].sort()) }, { onConflict: 'key' })
+  return ajout.map((j, i) => `${sautes[i]} rattrapé le ${j}`)
+}
+
 export async function tickControleParc(sb: Sb, opts: { force?: boolean } = {}): Promise<Record<string, any>> {
   const now = new Date(), b = bxl(now)
+  const rattrapes = await rattraperControlesSautes(sb, b).catch((e: any) => { console.error('[controle-parc] rattrapage :', e?.message); return [] as string[] })
+  if (rattrapes.length) console.log('[controle-parc] rattrapages :', rattrapes.join(' ; '))
   // Jours supplémentaires (réglage controle_parc_jours_supplementaires, dates AAAA-MM-JJ) : le contrôle tourne aussi ces
   // jours-là, avec la plage du samedi le samedi et celle de la semaine sinon (Olivier 21/11/2026 : « envoie-lui un contrôle
   // tous les jours » la semaine du 23/11, Jona ayant repoussé ceux du 19 et du 21/11).
