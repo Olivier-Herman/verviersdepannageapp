@@ -95,7 +95,7 @@ export async function GET() {
       .not('external_id', 'like', 'UNKNOWN_SENDER_%')
       .or('parse_confidence.is.null,parse_confidence.gte.0.3,assigned_to.not.is.null')
     // Les fiches de test ne sont visibles qu'au superadmin, badge compris.
-    if (!estSuperadmin) q = q.not('vehicle_plate', 'ilike', 'TEST')
+    if (!estSuperadmin) q = q.or('vehicle_plate.is.null,vehicle_plate.not.ilike.TEST')
     const { count } = await q
     if (count) badges['/dispatch'] = count
   }

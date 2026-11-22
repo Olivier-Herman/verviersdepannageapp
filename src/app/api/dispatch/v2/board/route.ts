@@ -53,7 +53,7 @@ export async function GET() {
     .or(`intervention_date.is.null,intervention_date.lte.${seuilRdv},status.eq.new`)
     .order('id', { ascending: true })
     .range(0, 299)
-  if ((u.role || '') !== 'superadmin') q = q.not('vehicle_plate', 'ilike', 'TEST')
+  if ((u.role || '') !== 'superadmin') q = q.or('vehicle_plate.is.null,vehicle_plate.not.ilike.TEST')
 
   const { data: missions, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -130,7 +130,7 @@ export async function GET() {
     .not('status', 'in', '(cancelled,ignored)')
     .order('id', { ascending: true })
     .range(0, 499)
-  if ((u.role || '') !== 'superadmin') qj = qj.not('vehicle_plate', 'ilike', 'TEST')
+  if ((u.role || '') !== 'superadmin') qj = qj.or('vehicle_plate.is.null,vehicle_plate.not.ilike.TEST')
   const { data: journee } = await qj
   // Missions lancées hier soir et encore en cours aujourd'hui : déjà dans `lances`, on les ajoute au planning.
   const ids2 = new Set((journee || []).map((m: any) => m.id))

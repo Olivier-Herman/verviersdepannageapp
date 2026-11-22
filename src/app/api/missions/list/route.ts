@@ -85,7 +85,9 @@ export async function GET(req: Request) {
   // Mission Touring pas encore acceptée et absente de COMEX : masquée tant qu'elle
   // n'y revient pas (annulée après 14 min). Olivier 30/09/2026, cf. touring/cancel-detect.
   query = query.or('touring_missing_since.is.null,status.not.in.(new,dispatching)')
-  if (!estSuperadmin) query = query.not('vehicle_plate', 'ilike', 'TEST')
+  // Une plaque VIDE n'est pas « TEST » : `not ilike` écartait aussi toutes les fiches sans plaque (NULL), invisibles pour
+  // tout le monde sauf le superadmin — mission Allianz du 22/11 sans plaque jamais vue par Matthieu, affectation expirée.
+  if (!estSuperadmin) query = query.or('vehicle_plate.is.null,vehicle_plate.not.ilike.TEST')
 
   // Seuil RDV : au-delà de +12h, une intervention planifiée va dans l'onglet RDV.
   const RDV_THRESHOLD = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
