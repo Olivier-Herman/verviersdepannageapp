@@ -95,7 +95,7 @@ RÈGLES D'EXTRACTION:
 - "Lieu de survenance" = incident_address + incident_city + incident_country
 - "Lieu de livraison" = destination_address ; le NOM du garage est souvent dans "Information additionnelle" → destination_name
 - "Date et heure programmée" : si un créneau est renseigné (ex "2026-09-04T11:00:00 2026-09-04T11:30:00", heure de Bruxelles), scheduled_at = DÉBUT du créneau, en heure de Bruxelles telle qu'écrite, format AAAA-MM-JJTHH:MM:SS SANS fuseau (aucune conversion) ; sinon null
-- "Langue parlée" → client_language : French→fr, Dutch/Nederlands→nl, German/Deutsch→de, English→en
+- "Langue parlée" → client_language : French→fr, Dutch/Nederlands→nl, German/Deutsch→de, English→en. UNIQUEMENT si un champ explicite « Langue parlée » / « Gesproken taal » / « Spoken language » / « Sprache » figure dans le document ; JAMAIS déduit de la langue dans laquelle le mail ou le PDF est rédigé (les mails Allianz sont en néerlandais pour tous les clients) ; sinon null
 - "Est en sous-sol" : OUI → underground = true, NON → false
 - "Diagnostique" contient des codes internes AXA (COUNTRIES, CASE_SOURCE…) : à IGNORER
 - "Prix de l'intervention" = "Selon prix d'application" : pas un montant, amount_guaranteed = null`,
@@ -366,7 +366,15 @@ export async function parseMissionContent(
     incident_at:          (parsed.incident_at          as string | null) || null,
     // Heure belge rendue sans fuseau par le modèle → UTC dans le code (le modèle ne connaît pas l'heure d'été, 25/10/2026).
     scheduled_at:         toScheduledUtc(parsed.scheduled_at as string | null),
-    client_language:      (() => { const l = String(parsed.client_language || '').toLowerCase().slice(0, 2); return ['fr', 'nl', 'de', 'en'].includes(l) ? l : null })(),
+    // Langue du client : seulement si le document a un vrai champ « langue parlée » (Olivier 22/11/2026 : « Client parle
+    // néerlandais » sur toutes les fiches Allianz, déduit des mails Hexalite rédigés en néerlandais). Pour un PDF, la
+    // consigne du prompt suffit ; pour un texte, le champ doit y figurer.
+    client_language:      (() => {
+      const l = String(parsed.client_language || '').toLowerCase().slice(0, 2)
+      if (!['fr', 'nl', 'de', 'en'].includes(l)) return null
+      if (!content.pdfBase64 && !/langue\s+parl|gesproken\s+taal|spoken\s+language|sprache|taal\s+(van\s+)?(de\s+)?klant/i.test(content.textContent || '')) return null
+      return l
+    })(),
     underground:          typeof parsed.underground === 'boolean' ? parsed.underground : null,
     confidence:           parseFloat(String(parsed.confidence))          || 0.5,
   }

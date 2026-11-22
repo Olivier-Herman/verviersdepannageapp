@@ -33,6 +33,11 @@ export type GopData = {
   incident_at: string | null
   payer: string | null
   payer_vat: string | null
+  vehicle_brand: string | null
+  vehicle_model: string | null
+  incident_address: string | null
+  incident_city: string | null
+  panne: string | null
 }
 
 /** La pièce jointe « GOP … .pdf » d'un mail Allianz, sinon null. */
@@ -45,7 +50,7 @@ export async function readGop(pdfBase64: string): Promise<GopData> {
   const client = aiClient('missions/gop', { apiKey: process.env.ANTHROPIC_API_KEY! }) as Anthropic
   const prompt = `Ceci est une garantie de paiement d'une compagnie d'assistance adressée à un dépanneur.
 Réponds en JSON STRICT, sans texte autour :
-{"payer":"entité qui garantit (ex. AWP P&C S.A. - Belgian Branch)","payer_vat":"n° d'entreprise ou de TVA de cette entité (ex. 0837.437.919)","dossier_ref":"n° de dossier tel qu'écrit","assistance_mission":"n° de mission (chiffres seuls)","plate":"plaque","vin":"NIV/VIN","amount_ttc":<montant garanti TVA comprise, nombre>,"client_name":"…","client_address":"rue, CP ville","client_phone":"…","incident_at":"date et heure de l'incident telles qu'écrites"}
+{"payer":"entité qui garantit (ex. AWP P&C S.A. - Belgian Branch)","payer_vat":"n° d'entreprise ou de TVA de cette entité (ex. 0837.437.919)","dossier_ref":"n° de dossier tel qu'écrit","assistance_mission":"n° de mission (chiffres seuls)","plate":"plaque","vin":"NIV/VIN","amount_ttc":<montant garanti TVA comprise, nombre>,"client_name":"…","client_address":"rue, CP ville","client_phone":"…","incident_at":"date et heure de l'incident telles qu'écrites","vehicle_brand":"marque","vehicle_model":"modèle","incident_address":"lieu de l'assistance : rue et n°, CP ville","incident_city":"ville du lieu de l'assistance","panne":"raison et description de la panne ou des dégâts, en une phrase, telles qu'écrites"}
 Une donnée absente = null. Ne devine rien. Si le montant est indiqué hors TVA, mets null.`
   const res = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 800, messages: [{ role: 'user', content: [
     { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
@@ -62,6 +67,7 @@ Une donnée absente = null. Ne devine rien. Si le montant est indiqué hors TVA,
     amount_ttc: Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) / 100 : null,
     client_name: s(j.client_name), client_address: s(j.client_address), client_phone: s(j.client_phone),
     incident_at: s(j.incident_at), payer: s(j.payer),
+    vehicle_brand: s(j.vehicle_brand), vehicle_model: s(j.vehicle_model), incident_address: s(j.incident_address), incident_city: s(j.incident_city), panne: s(j.panne),
     payer_vat: (() => { const d = String(j.payer_vat ?? '').replace(/\D/g, ''); return d.length === 10 ? `BE${d}` : d.length === 9 ? `BE0${d}` : null })(),
   }
 }
@@ -87,6 +93,30 @@ export async function findGopMission(sb: any, g: GopData): Promise<{ id: string;
   if (cands.length === 1) return { id: cands[0].id, mission_number: cands[0].mission_number, how: `véhicule ${g.plate || g.vin}`, reprise: !['mondial', 'allianz'].includes(cands[0].source) }
   if (!cands.length) return { id: null, why: `aucune fiche récente pour ${g.plate || g.vin} hors autres affectations de l'assistance` }
   return { id: null, why: `${cands.length} fiches possibles pour ${g.plate || g.vin} (${cands.map((m: any) => m.mission_number).join(', ')})` }
+}
+
+/**
+ * Fiche Allianz restée vide (Olivier 22/11/2026, 10233949) : l'affectation Hexalite a expiré avant acceptation, Hexalite
+ * n'a rien donné, et Allianz envoie la mission par mail avec la garantie. On remplit depuis la garantie les champs VIDES
+ * de la fiche (adresse, véhicule, client, panne, n° de dossier) ; un champ déjà rempli n'est jamais remplacé.
+ */
+async function completerFicheDepuisGop(sb: any, missionId: string, g: GopData): Promise<void> {
+  const { data: m } = await sb.from('incoming_missions').select('external_id, dossier_number, vehicle_plate, vehicle_vin, vehicle_brand, vehicle_model, client_name, client_phone, client_address, assisted_name, assisted_phone, incident_address, incident_city, incident_description, remarks_general, incident_at').eq('id', missionId).single()
+  if (!m) return
+  const upd: Record<string, any> = {}
+  const put = (k: string, v: any) => { if (v != null && v !== '' && (m[k] == null || String(m[k]).trim() === '')) upd[k] = v }
+  put('vehicle_plate', g.plate); put('vehicle_vin', g.vin); put('vehicle_brand', g.vehicle_brand); put('vehicle_model', g.vehicle_model)
+  put('client_name', g.client_name); put('client_phone', g.client_phone); put('client_address', g.client_address)
+  put('assisted_name', g.client_name); put('assisted_phone', g.client_phone)
+  put('incident_address', g.incident_address); put('incident_city', g.incident_city)
+  put('incident_description', g.panne); put('remarks_general', g.panne)
+  // N° de dossier : celui de la garantie (« 2026 05362156 »), au lieu du n° d'affectation recopié faute de mieux.
+  const dossier = (g.dossier_ref || '').replace(/\D/g, '')
+  if (dossier && (!m.dossier_number || m.dossier_number === m.external_id)) upd.dossier_number = dossier
+  if (!m.incident_at && g.incident_at) { const { parseTowsoftDateUTC } = await import('@/lib/towsoft-client'); const d = parseTowsoftDateUTC(g.incident_at); if (d) upd.incident_at = d }
+  if (!Object.keys(upd).length) return
+  await sb.from('incoming_missions').update(upd).eq('id', missionId)
+  await sb.from('mission_logs').insert({ mission_id: missionId, action: 'note', notes: `Fiche complétée depuis la garantie ${g.dossier_ref || ''} : ${Object.keys(upd).join(', ')}.` })
 }
 
 const eur = (n: number) => n.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -115,6 +145,7 @@ export async function intakeGop(sb: any, opts: { att: GopAttachment; sourceEmail
   // remarque ni montant sur la fiche, la facturation passe par l'assistance comme d'habitude.
   if (hit.id && !hit.reprise) {
     await sb.from('mission_logs').insert({ mission_id: hit.id, action: 'guarantee_received', notes: `Garantie de paiement ${g.dossier_ref || ''} reçue (${g.amount_ttc != null ? `${eur(g.amount_ttc)} € TVAC` : 'montant non lu'})`, metadata: { from: opts.fromEmail, doc_path: docPath } })
+    await completerFicheDepuisGop(sb, hit.id, g).catch((e: any) => console.error('[gop] complétion de la fiche :', e?.message))
   }
   // Reprise d'un remorquage à nous (police, accident…) : tout est mis sur la fiche.
   if (hit.id && hit.reprise) {
