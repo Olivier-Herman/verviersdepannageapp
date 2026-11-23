@@ -19,7 +19,9 @@ interface Dump {
 interface Mission { missionNumber: string; detailHref: string; detail: any; dump: Dump }
 interface Field { name: string; value: string }
 
-export default function VabConsoleClient() {
+type Ouverts = { at: string; lignes: { aid: string; plaque: string | null; fiche: number | null; raison: string; geste: string }[] } | null
+
+export default function VabConsoleClient({ ouverts }: { ouverts?: Ouverts }) {
   const [mission, setMission] = useState<Mission | null>(null)
   const [count, setCount]     = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -91,6 +93,29 @@ export default function VabConsoleClient() {
       </div>
 
       <div className="flex-1 px-5 py-5 space-y-4">
+        {/* Dossiers encore ouverts chez VAB (contrôle du matin) : le détail que la notification ne peut pas montrer. */}
+        <section className="bg-surface-2 border border-app rounded-2xl p-4">
+          <h2 className="text-ink font-bold">Dossiers encore ouverts chez VAB</h2>
+          <p className="text-xs text-ink-muted">Relevé du contrôle du matin{ouverts?.at ? ` · ${new Date(ouverts.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+          {!ouverts?.lignes?.length ? <p className="text-sm text-ink-muted italic mt-2">Aucun dossier ouvert à signaler.</p> : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs uppercase tracking-wider text-ink-muted"><tr><th className="text-left py-1 pr-3">Dossier VAB</th><th className="text-left py-1 pr-3">Véhicule</th><th className="text-left py-1 pr-3">Pourquoi il est ouvert</th><th className="text-left py-1">Que faire</th></tr></thead>
+                <tbody>
+                  {ouverts.lignes.map(l => (
+                    <tr key={l.aid} className="border-t border-app align-top">
+                      <td className="py-2 pr-3 font-mono text-ink">{l.aid}</td>
+                      <td className="py-2 pr-3 text-ink">{l.plaque || '—'}{l.fiche ? <span className="block text-xs text-ink-muted">fiche {l.fiche}</span> : null}</td>
+                      <td className="py-2 pr-3 text-ink">{l.raison}</td>
+                      <td className="py-2 text-ink-secondary">{l.geste}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         {err && <p className="text-critical text-sm bg-critical-soft border border-critical rounded-xl px-3 py-2">⚠️ {err}</p>}
         {loading ? <p className="text-ink-muted text-sm">Chargement de la mission VAB…</p>
         : !mission ? <p className="text-ink-muted text-sm italic">Aucune mission VAB disponible {count != null ? `(${count})` : ''}.</p>

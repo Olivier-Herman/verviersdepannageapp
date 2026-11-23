@@ -4,6 +4,7 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { redirect }          from 'next/navigation'
 import VabConsoleClient      from './VabConsoleClient'
+import { createAdminClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,5 +14,9 @@ export default async function VabConsolePage() {
   const user = session.user as any
   const roles = Array.isArray(user.roles) ? user.roles : [user.role].filter(Boolean)
   if (!roles.includes('superadmin')) redirect('/dashboard?error=access_denied')
-  return <VabConsoleClient />
+  // Dossiers encore ouverts chez VAB, relevés par le contrôle du matin (cron vab-open-alert), avec la raison de chacun.
+  const { data } = await createAdminClient().from('app_settings').select('value').eq('key', 'vab_dossiers_ouverts_dernier').maybeSingle()
+  let ouverts: any = null
+  try { ouverts = data?.value ? JSON.parse(data.value) : null } catch { ouverts = null }
+  return <VabConsoleClient ouverts={ouverts} />
 }

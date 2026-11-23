@@ -37,9 +37,10 @@ async function handleGET(req: Request) {
     const { loginVab, listVabMissions, vabTaskTypes, estVehiculeRemplacementVab } = await import('@/lib/vab/scraper')
     const session = await loginVab()
     const { missions } = await listVabMissions(session)
-    const tous = [...new Set((missions as any[])
-      .map(m => String(m.detailHref || '').replace(/.*AssignmentId=/, '').trim())
-      .filter(Boolean))]
+    // N° de dossier lu comme la clôture le lit (scraper) : un transfert porte « AssignmentId_Delivery= » ; l'ancien
+    // replace laissait toute l'adresse de la page (« TransferAssignments_Details.aspx… »), jamais retrouvée (22/11/2026).
+    const aidOf = (h: any) => (String(h || '').match(/[?&]AssignmentId(?:_Delivery)?=(\d+)/i) || [])[1] || null
+    const tous = [...new Set((missions as any[]).map(m => aidOf(m.detailHref)).filter(Boolean) as string[])]
     // Les livraisons de véhicule de remplacement se clôturent à la main : elles
     // ne sont pas des ratés du filet, et les compter comme tels ferait crier
     // l'alerte tous les matins pour rien.
@@ -57,7 +58,7 @@ async function handleGET(req: Request) {
     //                   humaine — accepter, refuser — pas une clôture.
     const { data: fiches } = ouverts.length
       ? await sb.from('incoming_missions')
-          .select('vehicle_plate, external_id, status, vab_assignment_ids, updated_at')
+          .select('id, mission_number, vehicle_plate, external_id, status, vab_assignment_ids, updated_at')
           .overlaps('vab_assignment_ids', ouverts)
       : { data: [] as any[] }
 
@@ -74,17 +75,41 @@ async function handleGET(req: Request) {
     const couverts  = new Set(((fiches || []) as any[]).flatMap(f => f.vab_assignment_ids || []))
     const àRegarder = ouverts.filter(aid => !aClôturer.some(f => (f.vab_assignment_ids || []).includes(aid)))
 
+    // Détail dossier par dossier, avec la RAISON (Olivier 23/11/2026 : « 3 dossiers sans fiche en face, comment c'est
+    // possible ? » — l'un était une relivraison pas encore faite, l'autre un transfert mal lu). La liste complète est
+    // gardée (vab_dossiers_ouverts_dernier) et affichée dans la Console VAB ; la notification reste courte.
+    const lignes: { aid: string; plaque: string | null; fiche: number | null; raison: string; geste: string }[] = []
+    for (const aid of [...ouverts, ...vr]) {
+      const f = ((fiches || []) as any[]).find(x => (x.vab_assignment_ids || []).includes(aid)) || null
+      const L = { aid, plaque: f?.vehicle_plate || null, fiche: f?.mission_number || null, raison: '', geste: '' }
+      if (vr.includes(aid)) { L.raison = 'véhicule de remplacement'; L.geste = 'clôturer à la main dans Comet (infos conducteur)' }
+      else if (àAccepter.includes(aid)) { L.raison = 'jamais accepté chez VAB'; L.geste = 'accepter ou refuser dans Comet' }
+      else if (aClôturer.some(x => (x.vab_assignment_ids || []).includes(aid))) { L.raison = `terminée chez nous (${f?.status}), clôture VAB en échec`; L.geste = 'le filet réessaie ; à clôturer à la main s’il n’y arrive pas' }
+      else if (!f) { L.raison = 'aucune fiche chez nous'; L.geste = 'vérifier la mission dans Comet : créer la fiche ou refuser' }
+      else if (f.status === 'ignored' || f.status === 'cancelled') {
+        const { data: parc } = f.vehicle_plate ? await sb.from('incoming_missions').select('mission_number').eq('vehicle_plate', f.vehicle_plate).eq('status', 'parked').eq('dossier_leg', false).limit(1) : { data: [] as any[] }
+        if (parc?.length) { L.raison = `relivraison pas encore faite : véhicule au parc (fiche #${parc[0].mission_number})`; L.geste = 'rien à faire : la clôture suivra la relivraison' }
+        else { L.raison = `fiche ${f.status === 'ignored' ? 'ignorée' : 'annulée'} chez nous`; L.geste = 'refuser ou clôturer le dossier chez VAB' }
+      } else { L.raison = `intervention pas encore terminée chez nous (${f.status})`; L.geste = 'rien à faire si la mission est en cours' }
+      lignes.push(L)
+    }
+    await sb.from('app_settings').upsert({ key: 'vab_dossiers_ouverts_dernier', value: JSON.stringify({ at: new Date().toISOString(), lignes }) }, { onConflict: 'key' })
+
     if (!aClôturer.length && !àRegarder.length && !vr.length && !àAccepter.length) {
       return NextResponse.json({ ok: true, ouverts: ouverts.length, rien: true })
     }
 
+    const compte = (re: RegExp) => lignes.filter(l => re.test(l.raison)).length
     const plaques = aClôturer.map(f => f.vehicle_plate).filter(Boolean).join(', ')
     const corps = [
-      aClôturer.length ? `${aClôturer.length} clôture(s) que le filet n'arrive pas à passer : ${plaques}` : '',
-      àRegarder.length ? `${àRegarder.length} dossier(s) sans fiche terminée en face (à accepter, refuser ou vérifier) : ${àRegarder.join(', ')}` : '',
-      àAccepter.length ? `${àAccepter.length} dossier(s) JAMAIS ACCEPTÉ(S) chez VAB — à accepter ou refuser dans Comet : ${àAccepter.join(', ')}` : '',
-      vr.length ? `${vr.length} véhicule(s) de remplacement à clôturer À LA MAIN (infos conducteur)` : '',
-    ].filter(Boolean).join(' · ')
+      aClôturer.length ? `${aClôturer.length} clôture(s) bloquée(s) : ${plaques}` : '',
+      compte(/^jamais accepté/) ? `${compte(/^jamais accepté/)} jamais accepté(s)` : '',
+      compte(/^aucune fiche/) ? `${compte(/^aucune fiche/)} sans fiche chez nous` : '',
+      compte(/^fiche (ignorée|annulée)/) ? `${compte(/^fiche (ignorée|annulée)/)} fiche(s) ignorée(s)/annulée(s)` : '',
+      compte(/^relivraison pas encore faite/) ? `${compte(/^relivraison pas encore faite/)} relivraison(s) pas encore faite(s)` : '',
+      compte(/^intervention pas encore terminée/) ? `${compte(/^intervention pas encore terminée/)} en cours chez nous` : '',
+      vr.length ? `${vr.length} véhicule(s) de remplacement à clôturer à la main` : '',
+    ].filter(Boolean).join(' · ') + ' — détail dans la Console VAB'
 
     // Le worker du VPS est censé faire ces clôtures : s'il se tait, autant le
     // dire dans la même alerte plutôt que de chercher pourquoi le filet rame.
@@ -103,7 +128,7 @@ async function handleGET(req: Request) {
     const envoi = await sendNotificationToRoles(['superadmin'], 'vab_dossiers_ouverts', {
       title:      `🚨 VAB : ${ouverts.length} dossier(s) encore ouvert(s)`,
       body:       corpsComplet.length > 180 ? corpsComplet.slice(0, 177) + '…' : corpsComplet,
-      action_url: '/dispatch',
+      action_url: '/admin/vab-console',
     })
 
     console.log(`[cron vab-open-alert] ouverts=${ouverts.length} àClôturer=${aClôturer.length} àRegarder=${àRegarder.length}`)
