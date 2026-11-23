@@ -42,7 +42,7 @@ export async function pollAllianzNouvelles(): Promise<PollAllianzResult> {
   for (const a of liste) {
     const num = String(a?.assignmentNumber || '').trim()
     if (!/^\d{8,20}$/.test(num) || !a?.assignmentId) continue
-    const { data: deja } = await sb.from('incoming_missions').select('id, status').or(`external_id.eq.${num},dossier_number.eq.${num}`).limit(5)
+    const { data: deja } = await sb.from('incoming_missions').select('id, status, vehicle_plate').or(`external_id.eq.${num},dossier_number.eq.${num}`).limit(5)
     // Une affectation encore « À accepter » chez Allianz dont la seule fiche est « ignorée » a été
     // écartée à tort (avis sans données, 1FPV443 le 23/11/2026) : on la remet dans la file et on la complète.
     const ignorees = (deja || []).filter((d: any) => d.status === 'ignored')
@@ -60,6 +60,12 @@ export async function pollAllianzNouvelles(): Promise<PollAllianzResult> {
       }, 'dispatch_new_mission').catch(() => {})
       creees.push(num)
       continue
+    }
+    // Fiche connue mais restée VIDE (lecture à l'arrivée ratée) : on la complète, une affectation
+    // encore à accepter ne doit jamais rester sans véhicule ni adresse au dispatch (22/11, 23/11).
+    const vide = (deja || []).find((d: any) => d.status !== 'ignored' && d.status !== 'cancelled' && !d.vehicle_plate)
+    if (vide) {
+      try { const { completeAllianzMissionFromApi } = await import('@/lib/allianz/intake'); await completeAllianzMissionFromApi(vide.id) } catch {}
     }
     if (deja?.length) { connues++; continue }
 

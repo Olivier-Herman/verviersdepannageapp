@@ -1627,6 +1627,29 @@ async function processEmailMessageInner(messageId: string): Promise<ProcessResul
       await reserveTowForParkedVehicle({ sb: supabase, missionId: targetId, actorName: `rattaché automatiquement à la réception du mail ${source}` })
     }
 
+    // ── Allianz : lecture DIRECTE d'Hexalite avec l'accès permanent (Olivier 23/11/2026) ──
+    // L'avis « Nieuwe toewijzing » ne porte que le n° d'affectation. Jusqu'ici la fiche n'était remplie
+    // qu'après un aller-retour code OTP (demande → mail du code → lecture), qui casse : code jamais reçu
+    // (panne Microsoft 13/11), code validé mais plus rattaché à la fiche (20/11, 22/11), demande refusée
+    // sans trace (1FPV443, 23/11) → fiche vide, ignorée, invisible au dispatch. L'accès Hexalite est
+    // tenu valide en permanence (maintenirConnexionAllianz) : on lit l'affectation tout de suite.
+    // Non destructif (champs vides seulement) ; le flux OTP reste en secours.
+    let allianzLabel = ''
+    if (source === 'mondial' && targetId && /^\d{8,20}$/.test(String(parsed.external_id || '').trim())) {
+      try {
+        const { completeAllianzMissionFromApi } = await import('@/lib/allianz/intake')
+        const r = await completeAllianzMissionFromApi(targetId)
+        if (!r.ok) {
+          await supabase.from('mission_logs').insert({
+            mission_id: targetId, action: 'enrich_failed',
+            notes: `Données Allianz non lues à l'arrivée (${r.reason || 'raison inconnue'}) — nouvel essai automatique toutes les 5 min.`,
+          }).then(() => {}, () => {})
+        }
+        const { data: f } = await supabase.from('incoming_missions').select('vehicle_brand, vehicle_model, vehicle_plate').eq('id', targetId).maybeSingle()
+        allianzLabel = [f?.vehicle_brand, f?.vehicle_model, f?.vehicle_plate].filter(Boolean).join(' ')
+      } catch (e: any) { console.warn('[Allianz] lecture directe KO :', e?.message) }
+    }
+
     await markAsRead(token, messageId)
 
     await supabase.from('mission_logs').insert({
@@ -1646,7 +1669,7 @@ async function processEmailMessageInner(messageId: string): Promise<ProcessResul
     // Notification push seulement si c'est une nouvelle mission
     if (!existingMissionId) await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
       title: `${typeLabel} — ${source.toUpperCase()}`,
-      body:  vehicleLabel || parsed.client_name || 'Nouvelle mission reçue',
+      body:  vehicleLabel || allianzLabel || parsed.client_name || 'Nouvelle mission reçue',
       url:   '/dispatch',
       tag:   `mission-${targetId}`,
       icon:  '/icons/apple-touch-icon.png'
