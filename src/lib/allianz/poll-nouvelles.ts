@@ -42,7 +42,25 @@ export async function pollAllianzNouvelles(): Promise<PollAllianzResult> {
   for (const a of liste) {
     const num = String(a?.assignmentNumber || '').trim()
     if (!/^\d{8,20}$/.test(num) || !a?.assignmentId) continue
-    const { data: deja } = await sb.from('incoming_missions').select('id').or(`external_id.eq.${num},dossier_number.eq.${num}`).limit(1)
+    const { data: deja } = await sb.from('incoming_missions').select('id, status').or(`external_id.eq.${num},dossier_number.eq.${num}`).limit(5)
+    // Une affectation encore « À accepter » chez Allianz dont la seule fiche est « ignorée » a été
+    // écartée à tort (avis sans données, 1FPV443 le 23/11/2026) : on la remet dans la file et on la complète.
+    const ignorees = (deja || []).filter((d: any) => d.status === 'ignored')
+    if (deja?.length && ignorees.length === deja.length) {
+      const id = ignorees[0].id
+      await sb.from('incoming_missions').update({ status: 'new', closing_notes: null, updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'ignored')
+      try { const { completeAllianzMissionFromApi } = await import('@/lib/allianz/intake'); await completeAllianzMissionFromApi(id) } catch {}
+      await sb.from('mission_logs').insert({
+        mission_id: id, action: 'restored',
+        notes: `Remise dans la file : affectation Allianz ${num} toujours à accepter dans Hexalite alors que la fiche était ignorée.`,
+      }).then(() => {}, () => {})
+      await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+        title: '📋 Mission — MONDIAL', body: 'Mission Allianz à accepter (remise dans la file)',
+        url: '/dispatch', tag: `mission-${id}`, icon: '/icons/apple-touch-icon.png',
+      }, 'dispatch_new_mission').catch(() => {})
+      creees.push(num)
+      continue
+    }
     if (deja?.length) { connues++; continue }
 
     const data = await allianzFetchMissionData(token, a.assignmentId).catch(() => null)

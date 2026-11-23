@@ -1466,7 +1466,11 @@ async function processEmailMessageInner(messageId: string): Promise<ProcessResul
       // de référence dans le mail) n'est pas une prise : deux mails Touring au
       // corps vide sont restés en « En commande » grâce à lui (16/09/2026).
       const dossierReel = !!parsed.dossier_number && !/^UNKNOWN_/i.test(String(parsed.dossier_number))
-      const aucunePrise = !parsed.vehicle_plate && !parsed.incident_address && !dossierReel
+      // Avis Allianz « Nieuwe toewijzing » : le mail ne porte QUE le n° d'affectation (external_id),
+      // les données viennent ensuite d'Hexalite. Ce n° est une vraie prise : jamais « ignoré »
+      // (1FPV443, mission 10234759, ignorée à tort le 23/11/2026 — Momo ne la voyait pas).
+      const affectationAllianz = source === 'mondial' && /^\d{8,20}$/.test(String(parsed.external_id || '').trim())
+      const aucunePrise = !parsed.vehicle_plate && !parsed.incident_address && !dossierReel && !affectationAllianz
       // Rien à dispatcher — ni plaque, ni lieu, ni dossier — c'est « ignoré »,
       // quelle que soit la confiance : une lettre d'accompagnement Ethias à 0,3
       // ou un corps vide Touring à 0,5 encombraient la file et le bureau les
