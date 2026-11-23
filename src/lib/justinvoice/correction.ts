@@ -40,7 +40,11 @@ async function download(sb: any, path: string): Promise<Buffer | null> {
 }
 
 export async function submitJustInvoiceCorrection(
-  sb: any, dossierId: string, efId: string, opts: { docs: CorrectionDoc[]; comment: string },
+  sb: any, dossierId: string, efId: string,
+  // costStatePdf : PDF déposé à la place de l'état de frais reconstruit — la FACTURE quand la taxation la demande
+  // (Olivier 23/11/2026, 581137-26 : « pas le numéro de compte sur votre état de frais », ils veulent payer). L'état de
+  // frais garde alors son statut (facturé) au lieu de repasser « déposé ».
+  opts: { docs: CorrectionDoc[]; comment: string; costStatePdf?: { name: string; content: Buffer } },
 ): Promise<CorrectionResult> {
   const { data: ef } = await sb.from('saisie_etats_frais').select('id, numero, justinvoice_ref, status_note, validation_doc_path, dossier_id').eq('id', efId).eq('dossier_id', dossierId).maybeSingle()
   if (!ef) return { ok: false, error: 'État de frais introuvable.' }
@@ -53,7 +57,9 @@ export async function submitJustInvoiceCorrection(
 
   // Pièces, préparées AVANT toute connexion (rien ne part si une pièce manque).
   const pieces = new Map<CorrectionDoc, { name: string; content: Buffer }>()
-  if (docs.includes('CostState')) {
+  if (docs.includes('CostState') && opts.costStatePdf) {
+    pieces.set('CostState', opts.costStatePdf)
+  } else if (docs.includes('CostState')) {
     const { pdf } = await renderEtatFraisFromRow(sb, dossierId, efId)
     pieces.set('CostState', { name: `etat-de-frais-${ef.numero}-corrige.pdf`, content: pdf })
   }
@@ -103,9 +109,9 @@ export async function submitJustInvoiceCorrection(
   const okDocs = files.filter(f => after.filter((x: any) => x.DocType === f.docType).length >= f.docVersion).map(f => f.docType)
   if (okDocs.length !== files.length) return { ok: false, error: 'Envoyé, mais le portail n’affiche pas encore la nouvelle version : vérifie le dossier dans quelques minutes.' }
 
-  const label: Record<string, string> = { CostState: 'état de frais', Claim: 'réquisitoire', Approval: 'approbation' }
+  const label: Record<string, string> = { CostState: opts.costStatePdf ? `facture (${opts.costStatePdf.name})` : 'état de frais', Claim: 'réquisitoire', Approval: 'approbation' }
   const note = `Correction envoyée sur JustInvoice le ${new Date().toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels' })} (${okDocs.map(t => label[t]).join(', ')}).`
-  await sb.from('saisie_etats_frais').update({ status: 'depose', status_note: note }).eq('id', efId)
+  await sb.from('saisie_etats_frais').update(opts.costStatePdf ? { status_note: note } : { status: 'depose', status_note: note }).eq('id', efId)
   await sb.from('saisie_dossiers').update({ state: 'justinvoice', updated_at: new Date().toISOString() }).eq('id', dossierId)
   if (d?.mission_id) await sb.from('mission_logs').insert({ mission_id: d.mission_id, action: 'justinvoice_correction', notes: `${ef.numero} : ${note}${opts.comment ? ` Commentaire : « ${opts.comment} »` : ''}` }).then(() => {}, () => {})
   return { ok: true, ref: ef.justinvoice_ref, sent: okDocs.map(t => label[t]), status: 'Correction soumise' }
