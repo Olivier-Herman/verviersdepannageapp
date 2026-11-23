@@ -37,6 +37,7 @@ export default function EspecesAlert() {
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [fouIds, setFouIds] = useState<number[]>([])   // caisse fourrière : paiements à encoder (code PIN d'Olivier)
 
   const load = useCallback(async () => {
     const r = await fetch('/api/especes', { cache: 'no-store' }).then(x => x.json()).catch(() => null)
@@ -72,21 +73,25 @@ export default function EspecesAlert() {
 
   // ── Olivier ────────────────────────────────────────────────────────────
   if (role === 'admin') {
-    const todo = items.filter(x => x.status === 'pending')
+    const todo = items.filter(x => x.status === 'pending' && x.journal !== 'FOU1')
+    // Caisse fourrière (23/11/2026) : Olivier l'encode lui-même dans la caisse, sans passer par Momo.
+    const todoFou = items.filter(x => x.status === 'pending' && x.journal === 'FOU1')
+    const fouSel = todoFou.filter(x => fouIds.includes(x.odoo_payment_id))
+    const fouTotal = todoFou.reduce((s, x) => s + Number(x.amount), 0)
     const waiting = items.filter(x => x.status === 'transferred' || x.status === 'requested')
     const late = items.filter(x => x.alerte)
     const total = todo.reduce((s, x) => s + Number(x.amount), 0)
     if (!open) return (
       // Au-dessus du bouton du talkie (même coin, bas à droite) — 06/10/2026 : il le cachait à moitié.
       <button type="button" data-flottant="especes" onClick={() => setOpen(true)} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)' }} className="fixed right-3 z-40 min-h-[44px] px-4 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg">
-        Espèces · {todo.length}
+        Espèces · {todo.length + todoFou.length}
       </button>
     )
     return (
       <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-3">
         <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl">
           <div className="flex items-start justify-between gap-3 p-4 border-b">
-            <div><p className="font-bold text-slate-900">Espèces à remettre à Momo</p><p className="text-sm text-slate-700">{todo.length} paiement{todo.length > 1 ? 's' : ''} · {eur(total)}</p></div>
+            <div><p className="font-bold text-slate-900">Espèces</p><p className="text-sm text-slate-700">{todo.length > 0 && <>À remettre à Momo : {todo.length} paiement{todo.length > 1 ? 's' : ''} · {eur(total)}</>}{todo.length > 0 && todoFou.length > 0 && ' — '}{todoFou.length > 0 && <>Caisse fourrière : {todoFou.length} · {eur(fouTotal)}</>}</p></div>
             <button type="button" aria-label="Fermer" onClick={() => setOpen(false)} className="w-11 h-11 rounded-xl border text-slate-700">✕</button>
           </div>
           <div className="divide-y">
@@ -105,6 +110,27 @@ export default function EspecesAlert() {
               </div>
             ))}
           </div>
+          {todoFou.length > 0 && (
+            <div className="border-t">
+              <div className="px-4 py-2 bg-amber-50 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-amber-900">Caisse fourrière · à encoder dans la caisse (vous validez avec votre code PIN)</p>
+                {todoFou.length > 1 && <button type="button" disabled={busy} onClick={() => { setPin(''); setMsg(null); setFouIds(todoFou.map(x => x.odoo_payment_id)) }} className="min-h-[44px] px-3 rounded-xl bg-amber-700 text-white text-sm font-semibold">Tout encoder ({todoFou.length})</button>}
+              </div>
+              <div className="divide-y">
+                {todoFou.map(it => (
+                  <div key={it.odoo_payment_id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-900"><b>{short(it.payment_name)}</b> · facture {it.invoice || '?'} · {d(it.payment_date)} · {it.client}</p>
+                      <p className="text-xs text-slate-700">Caisse fourrière{it.last_error ? <span className="text-red-800"> · souci à l’encodage : {it.last_error}</span> : null}</p>
+                    </div>
+                    <p className="font-bold text-slate-900 tabular-nums">{eur(it.amount)}</p>
+                    <button type="button" disabled={busy} onClick={() => { setPin(''); setMsg(null); setFouIds([it.odoo_payment_id]) }} className="min-h-[44px] px-3 rounded-xl bg-amber-700 text-white text-sm font-semibold">Encoder dans la caisse</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {msg && !fouIds.length && <p className="px-4 py-2 text-sm font-semibold text-red-800 bg-red-50 border-t">{msg}</p>}
           {waiting.length > 0 && <p className="px-4 py-2 text-xs text-slate-700 bg-slate-50 border-t">En attente chez Momo : {waiting.map(x => `${short(x.payment_name)} (${x.status === 'requested' ? 'demandé' : 'transféré'})`).join(', ')}</p>}
           {late.length > 0 && <p className="px-4 py-2 text-xs text-red-800 bg-red-50 border-t">Confirmés par Momo mais toujours pas rapprochés après 3 jours ouvrables : {late.map(x => short(x.payment_name)).join(', ')} — vérifier le relevé Scrada.</p>}
           <div className="p-4 flex flex-wrap gap-2 justify-end border-t">
@@ -112,6 +138,25 @@ export default function EspecesAlert() {
             {todo.length > 1 && <button type="button" disabled={busy} onClick={async () => { await post({ action: 'transfer', ids: todo.map(x => x.odoo_payment_id) }); load() }} className="min-h-[44px] px-4 rounded-xl bg-orange-600 text-white font-semibold">Tout transférer à Momo</button>}
           </div>
         </div>
+        {fouIds.length > 0 && (
+          <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+            <div className="w-full max-w-xs bg-white rounded-2xl p-4 space-y-3 shadow-xl">
+              <p className="font-bold text-slate-900">Encoder dans la caisse</p>
+              <p className="text-sm text-slate-700">{fouSel.length} paiement{fouSel.length > 1 ? 's' : ''} de la caisse fourrière · {eur(fouSel.reduce((s, x) => s + Number(x.amount), 0))}</p>
+              <p className="text-sm text-slate-700">Votre code PIN VD Soft :</p>
+              <PinInput value={pin} onChange={setPin} autoFocus className="w-full min-h-[52px] text-2xl border rounded-xl text-slate-900" />
+              {msg && <p className="text-sm font-semibold text-red-800">{msg}</p>}
+              <div className="flex flex-col gap-2">
+                <button type="button" disabled={busy || pin.length !== 4 || !fouSel.length} onClick={async () => {
+                  const r = await post({ action: 'encode_fourriere', ids: fouIds, pin })
+                  if (!r?.ok) { setMsg(r?.error || 'Refusé'); return }
+                  setFouIds([]); setMsg(r.errors?.length ? `Encodé, avec un souci : ${r.errors[0]}` : null); load()
+                }} className="w-full min-h-[48px] rounded-xl bg-amber-700 disabled:opacity-40 text-white font-bold">{busy ? 'Encodage…' : 'Valider'}</button>
+                <button type="button" onClick={() => { setFouIds([]); setMsg(null) }} className="w-full min-h-[48px] rounded-xl border text-slate-800 font-semibold">Annuler</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }

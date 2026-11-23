@@ -1,11 +1,12 @@
 // src/app/api/especes/route.ts — remise des espèces à Momo (Olivier 06/10/2026).
 //   GET  → { role, items } : vue d'Olivier (à remettre) ou de Momo (à confirmer maintenant).
 //   POST { action: 'transfer'|'request', ids }                 (Olivier)
+//        { action: 'encode_fourriere', ids, pin }               (Olivier, caisse fourrière)
 //        { action: 'confirm', ids, pin } | 'not_received' | 'remind'   (Momo)
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { role, adminView, adminAction, momoView, momoConfirm, momoNotReceived, momoRemind } from '@/lib/especes/actions'
+import { role, adminView, adminAction, adminEncodeFourriere, momoView, momoConfirm, momoNotReceived, momoRemind } from '@/lib/especes/actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
   const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
   if (!ids.length) return NextResponse.json({ error: 'Aucun paiement' }, { status: 400 })
   if (r === 'admin' && (b.action === 'transfer' || b.action === 'request')) return NextResponse.json({ ok: true, n: await adminAction(ids, b.action) })
+  // Caisse fourrière : Olivier encode lui-même, avec son code PIN (23/11/2026).
+  if (r === 'admin' && b.action === 'encode_fourriere') return NextResponse.json(await adminEncodeFourriere(u.id, ids, String(b.pin || '')))
   if (r === 'momo' || r === 'admin') {
     // Olivier peut aussi répondre à la place de Momo depuis son écran ? Non : seul Momo confirme la réception.
     if (r === 'momo' && b.action === 'confirm') return NextResponse.json(await momoConfirm(u.id, ids, String(b.pin || '')))

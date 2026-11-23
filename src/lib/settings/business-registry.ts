@@ -34,6 +34,8 @@ export const BUSINESS_SETTINGS: BusinessSettingDef[] = [
   { key: 'odoo_journal_encaissement_chauffeur', label: 'Journal « Encaissement Chauffeur »', group: 'Odoo', kind: 'number', seed: 15 },
   { key: 'odoo_methode_especes_depannage',     label: 'Mode « Espèces » (Dépannage caisse)', group: 'Odoo', kind: 'number', seed: 7 },
   { key: 'odoo_methode_especes_chauffeur',     label: 'Mode « Espèces » (Encaissement Chauffeur)', group: 'Odoo', kind: 'number', seed: 14 },
+  { key: 'odoo_journal_caisse_fourriere',      label: 'Journal « Fourrière caisse »',       group: 'Odoo', kind: 'number', seed: 14 },
+  { key: 'odoo_methode_especes_fourriere',     label: 'Mode « Espèces » (Fourrière caisse)', group: 'Odoo', kind: 'number', seed: 9 },
   { key: 'scrada_type_paiement_client',        label: 'Scrada — type « Paiement client »',  group: 'Odoo', kind: 'text', seed: '5781be90-4778-4ae4-973c-3b4690b3776d' },
   { key: 'odoo_journal_scrada',          label: 'Journal « Scrada » (livre de caisse)',      group: 'Odoo', kind: 'number', seed: 40, help: 'Reçoit chaque matin les relevés CODA de Scrada.' },
   { key: 'odoo_journal_paiement_fournisseurs', label: 'Journal bancaire des lots de paiement fournisseurs', group: 'Odoo', kind: 'number', seed: 12, help: 'Verviers Dépannage : les paiements fournisseurs partent toujours d’ING (Olivier 04/10/2026). Utilisé par les lots préparés par les agents.' },

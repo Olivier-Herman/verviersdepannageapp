@@ -3,10 +3,11 @@
 // jamais la confirmation de Momo ni Scrada, il est seulement journalisé. La référence « <paiement> du <date> »
 // rend l'envoi idempotent côté HOOS (200 + deja_ecrite au lieu de 201).
 import { getBusinessText } from '@/lib/settings/business'
+import { valideur } from './scrada'
 
 const fr = (iso: string) => String(iso).slice(0, 10).split('-').reverse().join('/')
 
-export async function copieLivreHoos(it: { amount: number; client: string | null; invoice: string | null; payment_name: string; payment_date: string }, confirmedAt: string): Promise<void> {
+export async function copieLivreHoos(it: { amount: number; client: string | null; invoice: string | null; payment_name: string; payment_date: string; journal?: string | null }, confirmedAt: string): Promise<void> {
   try {
     const actif = (await getBusinessText('especes_hoos_caisse_actif').catch(() => 'non')).toLowerCase() === 'oui'
     if (!actif) return
@@ -19,7 +20,7 @@ export async function copieLivreHoos(it: { amount: number; client: string | null
       body: JSON.stringify({
         type: 'paiement_client', montant: Math.round(Math.abs(Number(it.amount)) * 100) / 100,
         tiers: it.client || '', facture: it.invoice || '',
-        remarque: `Validation Momo du ${fr(confirmedAt)}`, reference: `${it.payment_name} du ${fr(it.payment_date)}`, auteur: 'Momo',
+        remarque: `Validation ${valideur(it)} du ${fr(confirmedAt)}`, reference: `${it.payment_name} du ${fr(it.payment_date)}`, auteur: valideur(it),
       }),
     })
     if (!r.ok) throw new Error(`HOOS ${r.status} : ${(await r.text()).slice(0, 200)}`)

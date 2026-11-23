@@ -11,6 +11,9 @@ import { createAdminClient } from '@/lib/supabase'
 import { getBusinessNumber, getBusinessText } from '@/lib/settings/business'
 
 const CHAU1_DEPUIS = '2026-06-15'
+// Caisse fourrière (Olivier 23/11/2026) : validée par Olivier lui-même, jamais remise à Momo.
+// Jusqu'au 21/11 inclus, Olivier l'a encodée à la main dans Scrada : on part du 22/11.
+const FOU1_DEPUIS = '2026-11-22'
 const strip = (h: string) => String(h || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -47,11 +50,12 @@ export async function movementFor(p: { amount: number; date: string; partner_id?
 
 export async function syncCashInventory(): Promise<{ total: number; added: number; closed: number }> {
   const sb = createAdminClient()
-  const [jDep, jChau, mDep, mChau] = await Promise.all([getBusinessNumber('odoo_journal_caisse_depannage'), getBusinessNumber('odoo_journal_encaissement_chauffeur'), getBusinessNumber('odoo_methode_especes_depannage'), getBusinessNumber('odoo_methode_especes_chauffeur')])
+  const [jDep, jChau, mDep, mChau, jFou, mFou] = await Promise.all([getBusinessNumber('odoo_journal_caisse_depannage'), getBusinessNumber('odoo_journal_encaissement_chauffeur'), getBusinessNumber('odoo_methode_especes_depannage'), getBusinessNumber('odoo_methode_especes_chauffeur'), getBusinessNumber('odoo_journal_caisse_fourriere'), getBusinessNumber('odoo_methode_especes_fourriere')])
   const { data: users } = await sb.from('users').select('id, name, odoo_user_id').eq('active', true)
   const U = (users || []) as U[]
-  const pays: any[] = await odooRpc('account.payment', 'search_read', [['|', '&', '&', ['journal_id', '=', jDep], ['payment_method_line_id', '=', mDep], ['state', '!=', 'canceled'],
-    '&', '&', '&', ['journal_id', '=', jChau], ['payment_method_line_id', '=', mChau], ['state', '!=', 'canceled'], ['date', '>=', CHAU1_DEPUIS]]],
+  const pays: any[] = await odooRpc('account.payment', 'search_read', [['|', '|', '&', '&', ['journal_id', '=', jDep], ['payment_method_line_id', '=', mDep], ['state', '!=', 'canceled'],
+    '&', '&', '&', ['journal_id', '=', jChau], ['payment_method_line_id', '=', mChau], ['state', '!=', 'canceled'], ['date', '>=', CHAU1_DEPUIS],
+    '&', '&', '&', ['journal_id', '=', jFou], ['payment_method_line_id', '=', mFou], ['state', '!=', 'canceled'], ['date', '>=', FOU1_DEPUIS]]],
     { fields: ['id', 'name', 'date', 'amount', 'memo', 'partner_id', 'create_uid', 'is_matched', 'journal_id'] })
   const { data: known } = await sb.from('cash_handover_items').select('odoo_payment_id, status')
   const kmap = new Map((known || []).map((k: any) => [k.odoo_payment_id, k.status]))
@@ -75,6 +79,16 @@ export async function syncCashInventory(): Promise<{ total: number; added: numbe
       continue
     }
     if (st) continue   // déjà suivi : on ne touche ni au statut ni à l'attribution
+    // Caisse fourrière : l'argent est dans la caisse du bureau, pas chez un chauffeur ; seul Olivier valide.
+    if (p.journal_id?.[0] === jFou) {
+      const invF = String(p.memo || '').split(/[\s(]/)[0]
+      await sb.from('cash_handover_items').insert({
+        odoo_payment_id: p.id, journal: 'FOU1', payment_name: p.name, payment_date: p.date, amount: p.amount,
+        invoice: invF || null, client: p.partner_id?.[1] || null, holder_user_id: null, holder_label: 'Caisse fourrière', status: 'pending',
+      })
+      added++
+      continue
+    }
     const invoiceName = String(p.memo || '').split(/[\s(]/)[0]
     const inv: any[] = invoiceName ? await odooRpc('account.move', 'search_read', [[['name', '=', invoiceName], ['move_type', '=', 'out_invoice']]], { fields: ['id', 'x_studio_plaque_1'], limit: 1 }) : []
     // Qui a l'argent : le mouvement d'encaissement VD Soft fait foi (Olivier 06/10/2026),

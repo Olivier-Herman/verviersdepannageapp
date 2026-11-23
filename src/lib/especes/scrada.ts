@@ -13,7 +13,10 @@ export function scradaConfigured(): boolean {
   return Boolean(process.env.SCRADA_API_KEY && process.env.SCRADA_API_PASSWORD && process.env.SCRADA_COMPANY_ID)
 }
 
-export async function encodeCashLine(it: { amount: number; client: string | null; invoice: string | null; payment_name: string; payment_date: string }, confirmedAt: string, typeId: string): Promise<string> {
+/** Qui valide la remise : Olivier pour la caisse fourrière, Momo pour le reste. */
+export const valideur = (it: { journal?: string | null }) => (it.journal === 'FOU1' ? 'Mobi' : 'Momo')
+
+export async function encodeCashLine(it: { amount: number; client: string | null; invoice: string | null; payment_name: string; payment_date: string; journal?: string | null }, confirmedAt: string, typeId: string): Promise<string> {
   const C = process.env.SCRADA_COMPANY_ID
   const books: any[] = await (await fetch(`${B}/company/${C}/cashBook`, { headers: H(), cache: 'no-store' })).json()
   const book = (books || []).find(b => b.active)
@@ -22,7 +25,7 @@ export async function encodeCashLine(it: { amount: number; client: string | null
   const amount = Math.round(Number(it.amount) * 100) / 100
   const body = {
     date: new Date().toISOString().slice(0, 10), startBalance: start, endBalance: Math.round((start + amount) * 100) / 100,
-    lines: [{ lineType: 1, transactionTypeID: typeId, amount, companyName: it.client || '', invoiceNumber: it.invoice || '', remark: `Validation Momo du ${fr(confirmedAt)}`, externalReference: `${it.payment_name} du ${fr(it.payment_date)}` }],
+    lines: [{ lineType: 1, transactionTypeID: typeId, amount, companyName: it.client || '', invoiceNumber: it.invoice || '', remark: `Validation ${valideur(it)} du ${fr(confirmedAt)}`, externalReference: `${it.payment_name} du ${fr(it.payment_date)}` }],
   }
   const r = await fetch(`${B}/company/${C}/cashBook/${book.id}/lines`, { method: 'PUT', headers: H(), body: JSON.stringify(body), cache: 'no-store' })
   const t = await r.text()

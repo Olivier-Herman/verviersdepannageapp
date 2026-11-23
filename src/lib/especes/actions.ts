@@ -61,7 +61,7 @@ export async function adminAction(ids: number[], action: 'transfer' | 'request')
   const sb = createAdminClient()
   const now = new Date().toISOString()
   const patch = action === 'request' ? { status: 'requested', requested_at: now, next_show_at: null, updated_at: now } : { status: 'transferred', transferred_at: now, next_show_at: null, updated_at: now }
-  const { data } = await sb.from('cash_handover_items').update(patch).in('odoo_payment_id', ids).in('status', OPEN).select('odoo_payment_id')
+  const { data } = await sb.from('cash_handover_items').update(patch).in('odoo_payment_id', ids).in('status', OPEN).neq('journal', 'FOU1').select('odoo_payment_id')
   const n = (data || []).length
   // Momo n'a pas forcément VD Soft ouvert : notification sur ses deux comptes (Olivier 06/10/2026).
   // Un transfert hors 13 h–14 h est notifié par la tâche de 13 h (notifyMomoDue).
@@ -114,18 +114,58 @@ export async function momoRemind(ids: number[]) {
   }
 }
 
-/** Confirmation par PIN : sortie de la caisse du chauffeur, puis encodage Scrada (si activé). */
-export async function momoConfirm(userId: string, ids: number[], pin: string): Promise<{ ok: boolean; error?: string; confirmed?: number; encoded?: number; errors?: string[] }> {
+/** Code PIN VD Soft de l'utilisateur (5 essais faux par quart d'heure). */
+async function checkPin(userId: string, pin: string): Promise<string | null> {
   const sb = createAdminClient()
   const since = new Date(Date.now() - 15 * 60_000).toISOString()
   const { count } = await sb.from('especes_pin_failures').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('at', since)
-  if ((count || 0) >= 5) return { ok: false, error: 'Trop de codes faux : réessaie dans 15 minutes.' }
+  if ((count || 0) >= 5) return 'Trop de codes faux : réessaie dans 15 minutes.'
   const { data: me } = await sb.from('users').select('id, verify_pin_hash').eq('id', userId).single()
-  if (!me?.verify_pin_hash) return { ok: false, error: 'Aucun code PIN sur ce compte.' }
+  if (!me?.verify_pin_hash) return 'Aucun code PIN sur ce compte.'
   if (!/^\d{4}$/.test(String(pin)) || !(await bcrypt.compare(String(pin), me.verify_pin_hash))) {
     await sb.from('especes_pin_failures').insert({ user_id: userId })
-    return { ok: false, error: 'Code PIN incorrect : rien n’est confirmé.' }
+    return 'Code PIN incorrect : rien n’est confirmé.'
   }
+  return null
+}
+
+/** Caisse fourrière (Olivier 23/11/2026) : Olivier valide lui-même avec son code PIN, sans passer
+ *  par Momo. L'argent est déjà dans la caisse du bureau : pas de transfert de caisse chauffeur,
+ *  seulement l'encodage Scrada (« Validation Mobi du … ») et sa copie dans le livre HOOS. */
+export async function adminEncodeFourriere(userId: string, ids: number[], pin: string): Promise<{ ok: boolean; error?: string; confirmed?: number; encoded?: number; errors?: string[] }> {
+  const err = await checkPin(userId, pin)
+  if (err) return { ok: false, error: err }
+  const sb = createAdminClient()
+  const scradaOn = (await getBusinessText('especes_scrada_actif').catch(() => 'non')).toLowerCase() === 'oui' && scradaConfigured()
+  if (!scradaOn) return { ok: false, error: 'L’encodage dans la caisse est coupé (réglage « Espèces → Scrada »).' }
+  const typeId = await getBusinessText('scrada_type_paiement_client')
+  const { data: items } = await sb.from('cash_handover_items').select('*').in('odoo_payment_id', ids).eq('journal', 'FOU1').eq('status', 'pending')
+  const out = { ok: true, confirmed: 0, encoded: 0, errors: [] as string[] }
+  for (const it of items || []) {
+    const now = new Date().toISOString()
+    // « confirmed » d'abord : si Scrada échoue après avoir écrit, la ligne n'est jamais renvoyée
+    // en double (le rattrapage ignore les lignes en erreur, elles restent à vérifier à la main).
+    const { data: claimed } = await sb.from('cash_handover_items').update({ status: 'confirmed', confirmed_at: now, confirmed_by: userId, updated_at: now }).eq('odoo_payment_id', it.odoo_payment_id).eq('status', 'pending').select('odoo_payment_id')
+    if (!claimed?.length) continue
+    out.confirmed++
+    try {
+      const lineId = await encodeCashLine(it, now, typeId)
+      await sb.from('cash_handover_items').update({ status: 'encoded', encoded_at: new Date().toISOString(), scrada_line_id: lineId || null, last_error: null }).eq('odoo_payment_id', it.odoo_payment_id)
+      out.encoded++
+      await copieLivreHoos(it, now)   // essai livre de caisse HOOS : jamais bloquant
+    } catch (e: any) {
+      await sb.from('cash_handover_items').update({ last_error: String(e?.message || e).slice(0, 300) }).eq('odoo_payment_id', it.odoo_payment_id)
+      out.errors.push(`${it.payment_name} : Scrada — ${e?.message || e}`)
+    }
+  }
+  return out
+}
+
+/** Confirmation par PIN : sortie de la caisse du chauffeur, puis encodage Scrada (si activé). */
+export async function momoConfirm(userId: string, ids: number[], pin: string): Promise<{ ok: boolean; error?: string; confirmed?: number; encoded?: number; errors?: string[] }> {
+  const pinErr = await checkPin(userId, pin)
+  if (pinErr) return { ok: false, error: pinErr }
+  const sb = createAdminClient()
   const receiver = await getBusinessText('especes_receveur_user_id')
   const scradaOn = (await getBusinessText('especes_scrada_actif').catch(() => 'non')).toLowerCase() === 'oui' && scradaConfigured()
   const typeId = scradaOn ? await getBusinessText('scrada_type_paiement_client') : ''
