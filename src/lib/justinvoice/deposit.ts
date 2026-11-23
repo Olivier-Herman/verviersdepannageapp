@@ -50,8 +50,12 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
   }
   if (!reqPath || !isRequisitoireDoc(reqPath)) return { ok: false, error: REQUISITOIRE_DOC_ERROR }
 
-  const [ef, reqBuf] = await Promise.all([dl(sb, efRow.validation_doc_path), dl(sb, reqPath)])
-  if (!ef || !reqBuf) return { ok: false, error: 'Téléchargement des documents échoué.' }
+  const [signe, reqBuf] = await Promise.all([dl(sb, efRow.validation_doc_path), dl(sb, reqPath)])
+  if (!signe || !reqBuf) return { ok: false, error: 'Téléchargement des documents échoué.' }
+  // État de frais refait au dépôt (mêmes lignes, même total) pour qu'il porte toujours le n° de compte, même quand le
+  // Parquet a signé une version d'avant le 14/10 sans IBAN ; la version signée part comme approbation (Olivier 23/11/2026,
+  // 581137-26 : « mieux vaut un paiement anticipé que des retours pour correction »). Repli : la version signée.
+  const ef = await (async () => { try { const { renderEtatFraisFromRow } = await import('@/lib/missions/saisie-dossier'); return (await renderEtatFraisFromRow(sb, dossierId, efRow.id)).pdf } catch { return signe } })()
 
   const comments = `${missionNumber != null ? '#' + missionNumber : (d.dossier_ref || '')}${efRow.numero ? ' - ' + efRow.numero : ''}`.trim()
   const res = await submitJustInvoiceClaim({
@@ -59,6 +63,8 @@ export async function depositEtatFrais(sb: any, dossierId: string, efId?: string
     etatFrais: ef,
     requisitoire: reqBuf,
     etatFraisName: `etat-de-frais-${efRow.numero || d.vehicle_plate || 'saisie'}.pdf`,
+    approbation: signe,
+    approbationName: `etat-de-frais-approuve-${efRow.numero || d.vehicle_plate || 'saisie'}.pdf`,
     requisitoireName: `requisitoire-${d.vehicle_plate || 'saisie'}.${requisitoireDocExt(reqPath)}`,
   })
   if (!res.ok) {

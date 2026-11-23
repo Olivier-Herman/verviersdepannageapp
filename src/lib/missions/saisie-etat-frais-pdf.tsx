@@ -88,6 +88,10 @@ const styles = StyleSheet.create({
   grand:    { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, backgroundColor: RED, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 13 },
   grandT:   { fontSize: 11, fontWeight: 700, color: '#F4D3D7' },
   grandV:   { fontSize: 13, fontWeight: 700, color: '#fff' },
+  pay:      { marginTop: 8, borderWidth: 1.5, borderColor: RED, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
+  payT:     { fontSize: 8, fontWeight: 700, color: RED, textTransform: 'uppercase', letterSpacing: 0.6 },
+  payV:     { fontSize: 11, fontWeight: 700, color: '#1c1917', marginTop: 3 },
+  payC:     { fontSize: 9, color: '#44403c', marginTop: 2 },
 
   // Pied
   foot:     { flexDirection: 'row', gap: 24, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: LINE_STRONG, borderTopStyle: 'dashed' },
@@ -245,6 +249,14 @@ function EtatFraisDoc({ input, qr, logo }: { input: EtatFraisInput; qr: string |
               <View style={styles.totrow}><Text style={styles.totT}>Total HTVA</Text><Text style={styles.totV}>{eur(b.totalHtva)}</Text></View>
               <View style={styles.totrow}><Text style={styles.totT}>TVA 21 %</Text><Text style={styles.totV}>{eur(tva)}</Text></View>
               <View style={styles.grand}><Text style={styles.grandT}>Total à charge {RECIP[input.recipient]}</Text><Text style={styles.grandV}>{eur(b.totalTvac)}</Text></View>
+              {/* Paiement bien en vue (Olivier 23/11/2026 : la taxation de Liège ne trouvait pas le n° de compte, 581137-26 ;
+                  « mieux vaut un paiement anticipé que des retours pour correction »). */}
+              <View style={styles.pay}>
+                <Text style={styles.payT}>Paiement</Text>
+                <Text style={styles.payV}>IBAN {COMPANY.iban}</Text>
+                <Text style={styles.payC}>BIC {COMPANY.bic} · au nom de {COMPANY.name}</Text>
+                <Text style={styles.payC}>Communication : {input.numero}</Text>
+              </View>
             </View>
           </View>
 
