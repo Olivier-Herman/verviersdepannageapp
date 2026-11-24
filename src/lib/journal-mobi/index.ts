@@ -131,8 +131,12 @@ export async function agregerJour(sb: Sb, jour: string): Promise<Record<string, 
   try {
     const { data: items } = await sb.from('mail_agent_items').select('status, applied_by').gte('created_at', d1).lt('created_at', d2).limit(2000)
     const fini = (items || []).filter((x: any) => !['to_decide', 'to_verify'].includes(String(x.status)))
-    const parMobi = fini.filter((x: any) => x.applied_by && mobiIds.includes(String(x.applied_by))).length
-    const seuls = fini.filter((x: any) => !x.applied_by).length
+    // applied_by porte le nom ou l'e-mail de la session (jamais l'identifiant) et « agent » quand c'est automatique
+    // (corrigé le 24/11/2026 : la comparaison aux identifiants donnait toujours 0, et « agent » n'était jamais « seul »).
+    const { data: mobiUsers } = mobiIds.length ? await sb.from('users').select('name, email').in('id', mobiIds) : { data: [] as any[] }
+    const noms = new Set((mobiUsers || []).flatMap((u: any) => [u.name, u.email]).filter(Boolean).map((s: string) => s.toLowerCase()))
+    const parMobi = fini.filter((x: any) => x.applied_by && noms.has(String(x.applied_by).toLowerCase())).length
+    const seuls = fini.filter((x: any) => !x.applied_by || x.applied_by === 'agent').length
     if (seuls) rows.push({ jour, type: 'auto', domaine: 'mails_auto', titre: 'Mails traités seuls (factures fournisseurs encodées, rejets, tri)', quantite: seuls, ref: `auto:${jour}:mails_auto` })
     if (parMobi) rows.push({ jour, type: 'mobi', domaine: 'mails_decides', titre: 'Mails de factures et de rejets décidés', quantite: parMobi, ref: `mobi:${jour}:mails_decides` })
   } catch (e: any) { console.warn('[journal-mobi] agent mail', e?.message) }

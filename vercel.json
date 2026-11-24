@@ -58,6 +58,7 @@
     { "path": "/api/cron/sam-copilote",              "schedule": "*/2 * * * *" },
     { "path": "/api/cron/siabis-reprise",            "schedule": "*/2 * * * *" },
     { "path": "/api/cron/journal-mobi",              "schedule": "0 2 * * *" },
+    { "path": "/api/cron/supervision",               "schedule": "0 19,20 * * *" },
     { "path": "/api/cron/paiements-lot",             "schedule": "30 11,12,13 * * 1-5" },
     { "path": "/api/cron/conges-rappel",             "schedule": "45 8,9 * * 1-5" },
     { "path": "/api/cron/controle-parc",             "schedule": "*/5 8-14 * * 1-6" },
