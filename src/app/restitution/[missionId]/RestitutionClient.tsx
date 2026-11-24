@@ -211,6 +211,9 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
   useEffect(() => { if (R?.who_kind) setWhoLocal(R.who_kind) }, [R?.who_kind])
   const who = whoLocal
   const hasPhoto = !!c.idDoc?.count
+  // Dérogation « pas de pièce d'identité » accordée : le client existant redevient sélectionnable (Olivier 24/11/2026 :
+  // l'étape passait sans client choisi, les résultats restaient grisés).
+  const derogId = (c.derogations || []).some((d: any) => d.kind === 'identite' && d.status === 'approved')
   // Téléphone (app ou navigateur mobile) : l'appareil photo s'ouvre ici. PC : on
   // envoie une notification au téléphone de l'utilisateur (Olivier 28/09/2026).
   const onPhone = typeof navigator !== 'undefined' && (/VDNav\//.test(navigator.userAgent) || /iPhone|iPad|Android/i.test(navigator.userAgent))
@@ -285,13 +288,14 @@ function WhoStep({ c, R, act, busy, gmKey, setErr, setC, load, missionId, onDero
         {!onPhone && <Btn kind={mode === 'existing' ? 'ok' : 'ghost'} onClick={() => setMode('existing')}>🔎 Client existant</Btn>}
       </div>
       {mode === 'existing' && <div className="flex flex-col gap-2">
-        {['owner', 'mandate'].includes(who) && !hasPhoto && <p className="text-sm text-warning font-semibold">Propriétaire ou mandataire : photographiez d’abord la pièce d’identité (bouton ci-dessus), puis choisissez le client.</p>}
+        {['owner', 'mandate'].includes(who) && !hasPhoto && !derogId && <p className="text-sm text-warning font-semibold">Propriétaire ou mandataire : photographiez d’abord la pièce d’identité (bouton ci-dessus), puis choisissez le client. Sans pièce : « Pas de pièce : dérogation… » en bas.</p>}
+        {['owner', 'mandate'].includes(who) && !hasPhoto && derogId && <p className="text-sm text-ink-secondary font-semibold">Dérogation « pas de pièce d’identité » accordée : choisissez le client.</p>}
         <div className="flex gap-2">
           <input className={input} placeholder="Nom, téléphone, e-mail ou n° de TVA (3 lettres min.)" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') doSearch() }} aria-label="Rechercher un client" />
           <Btn onClick={doSearch} disabled={searching || q.trim().length < 3}>{searching ? '…' : 'Rechercher'}</Btn>
         </div>
         {hits.length > 0 && <div className="flex flex-col gap-1.5">{hits.map((h: any) => (
-          <button key={h.id} type="button" onClick={() => act('client_existing', { partner_id: h.id })} disabled={busy || (['owner', 'mandate'].includes(who) && !hasPhoto)}
+          <button key={h.id} type="button" onClick={() => act('client_existing', { partner_id: h.id })} disabled={busy || (['owner', 'mandate'].includes(who) && !hasPhoto && !derogId)}
             className="text-left rounded-xl border border-strong bg-surface px-3 py-2.5 min-h-[48px] disabled:opacity-50">
             <span className="font-semibold text-ink">{h.name}</span>
             <span className="block text-xs text-ink-muted">{[h.street, [h.zip, h.city].filter(Boolean).join(' '), h.phone, h.email, h.vat].filter(Boolean).join(' · ') || 'sans coordonnées'}</span>

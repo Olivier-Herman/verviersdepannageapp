@@ -336,7 +336,11 @@ async function handlePOST(req: Request, { params }: { params: { missionId: strin
         await ensure()
         const pid = Number(body.partner_id)
         if (!pid) return NextResponse.json({ error: 'Client manquant' }, { status: 400 })
-        if (['owner', 'mandate'].includes(rest!.who_kind || '') && !rest!.id_document_id) return NextResponse.json({ error: 'Photographiez d’abord la pièce d’identité.' }, { status: 400 })
+        if (['owner', 'mandate'].includes(rest!.who_kind || '') && !rest!.id_document_id) {
+          // Sans pièce : seulement avec une dérogation « pièce d'identité » accordée pour CETTE restitution (24/11/2026).
+          const { data: dg } = await sb.from('derogation_requests').select('id').eq('mission_id', m.id).eq('restitution_id', rest!.id).eq('kind', 'identite').eq('status', 'approved').limit(1)
+          if (!dg?.length) return NextResponse.json({ error: 'Photographiez d’abord la pièce d’identité (ou demandez une dérogation « pas de pièce »).' }, { status: 400 })
+        }
         const [p] = await odooRpc<any[]>('res.partner', 'read', [[pid]], { fields: ['name', 'street', 'zip', 'city', 'phone', 'email', 'vat', 'is_company', 'country_id'] })
         if (!p) return NextResponse.json({ error: 'Client introuvable dans la facturation' }, { status: 404 })
         const client = { kind: p.is_company || p.vat ? 'pro' : 'prive', source: 'odoo', name: p.name, company: p.is_company ? p.name : null, vat: p.vat || null, street: p.street || null, zip: p.zip || null, city: p.city || null, country: 'BE', phone: p.phone || null, email: p.email || null }
