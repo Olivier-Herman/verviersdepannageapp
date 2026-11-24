@@ -55,6 +55,24 @@ const btnGhost = 'inline-flex items-center justify-center gap-1.5 min-h-[44px] p
 const More = ({ href, n }: { href: string; n: number }) => n > SHOW ? <Link href={href} className="flex items-center justify-center gap-1 px-4 py-3 text-sm font-semibold text-ink-secondary hover:text-ink">Voir les {n} <ArrowRight size={15} /></Link> : null
 const Empty = ({ children }: { children: React.ReactNode }) => <p className="px-4 py-4 text-sm text-ink-muted">{children}</p>
 
+// Appels Teams sans fiche (Olivier 24/11/2026) : nombre seulement, le choix se fait sur /appels.
+function CarteAppels() {
+  const [n, setN] = useState<number | null>(null)
+  const [ok, setOk] = useState(true)
+  useEffect(() => {
+    const lire = async () => {
+      try { const r = await fetch('/api/appels?onglet=a&compte=1', { cache: 'no-store' }); if (r.status === 403) { setOk(false); return } const j = await r.json(); if (r.ok) setN(j.comptes?.a ?? 0) } catch { /* réessai à la minute */ }
+    }
+    lire(); const t = setInterval(lire, 60_000); return () => clearInterval(t)
+  }, [])
+  if (!ok) return null
+  return (
+    <Card tone="bg-sky-700" n={n == null ? '…' : n} title="Appels à rattacher" sub="Appels des dernières 48 h sans fiche évidente" action={<Link href="/appels" className="inline-flex items-center min-h-[40px] px-3 rounded-xl border border-white/70 text-[13px] font-bold">Ouvrir</Link>}>
+      {n === 0 ? <Empty>Tous les appels ont trouvé leur fiche.</Empty> : <Empty>Choisissez la fiche de chaque appel, ou « pas lié ».</Empty>}
+    </Card>
+  )
+}
+
 export default function MaJourneeClient({ firstName, dossiers: initial, autoById, comexById, canFacturation, canFourriere, canMails }: {
   firstName: string; dossiers: Dossier[]; autoById: Record<string, boolean>; comexById: Record<string, ComexInfo>
   canFacturation: boolean; canFourriere: boolean; canMails: boolean
@@ -316,6 +334,8 @@ export default function MaJourneeClient({ firstName, dossiers: initial, autoById
             {!loading && mails.length === 0 && <Empty>Aucun mail en attente.</Empty>}
           </Card>
         )}
+
+        <CarteAppels />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-muted">

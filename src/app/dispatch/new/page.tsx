@@ -10,7 +10,7 @@ import { isPreviewOn }       from '@/lib/feature-flags'
 
 export const dynamic = 'force-dynamic'
 
-export default async function NewMissionPage({ searchParams }: { searchParams?: { ancien?: string } }) {
+export default async function NewMissionPage({ searchParams }: { searchParams?: { ancien?: string; tel?: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -65,6 +65,7 @@ export default async function NewMissionPage({ searchParams }: { searchParams?: 
       userRole={user.role || ''}
       userModules={user.modules || []}
       googleMapsKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
+      telAppel={searchParams?.tel || ''}
     />
   )
 }

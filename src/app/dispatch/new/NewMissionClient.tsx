@@ -219,7 +219,7 @@ function DestinationsBlock({ destinations, onChange, gmKey }: {
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function NewMissionClient({
-  drivers, warnings, sources, userName, userRole, userModules = [], userEmail, userId, googleMapsKey, rapide = false, raccourcis = []
+  drivers, warnings, sources, userName, userRole, userModules = [], userEmail, userId, googleMapsKey, rapide = false, raccourcis = [], telAppel = ''
 }: {
   drivers: Driver[]; warnings: Warning[]; sources: Array<{ key: string; label: string; display_color?: string | null; group_key?: string | null }>;
   userName: string; userRole: string; userModules?: string[]; userEmail?: string; userId?: string; googleMapsKey: string
@@ -227,6 +227,8 @@ export default function NewMissionClient({
   rapide?: boolean
   /** Sources les plus utilisées ces 3 derniers mois (raccourcis du mode rapide). */
   raccourcis?: string[]
+  /** Numéro de l'appel en cours (page « Appel en cours » → « Nouvelle fiche », Olivier 24/11/2026). */
+  telAppel?: string
 }) {
   const gardiennageLabels = useGardiennageRegimeLabels(false)
   // Sub-types Police : sources du catalog avec group_key='police'.
@@ -300,7 +302,7 @@ export default function NewMissionClient({
 
   // ── Client assisté ────────────────────────────────────────────────────────
   const [assistedName,  setAssistedName]  = useState('')
-  const [assistedPhone, setAssistedPhone] = useState('')
+  const [assistedPhone, setAssistedPhone] = useState(telAppel)
   const [assistedAddr,  setAssistedAddr]  = useState('')
 
   // ── Type + mission ────────────────────────────────────────────────────────

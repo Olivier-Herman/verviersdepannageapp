@@ -63,6 +63,7 @@ import Flux2ClosureCard from '@/components/dispatch/Flux2ClosureCard'
 import PointagesCard from '@/components/dispatch/PointagesCard'
 import { useGardiennageRegimeLabels } from '@/lib/tarifs/gardiennage-labels-client'
 import PinInput from '@/components/ui/PinInput'
+import AppelsFiche from '@/components/appels/AppelsFiche'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -4097,6 +4098,9 @@ export default function MissionDetailClient({
 
               {/* Contacts & interactions (répertoire + visites/appels/notes) */}
               <FicheContactsPanel missionId={initialMission.id} />
+
+              {/* Appels Teams rattachés à la fiche (Olivier 24/11/2026) : rien tant qu'aucun appel n'est lié. */}
+              <AppelsFiche missionId={initialMission.id} />
 
               {/* Échange du chauffeur avec Sam / Sonic sur cette mission (Olivier 03/10/2026). */}
               <SamConversations missionId={initialMission.id} showDriver />

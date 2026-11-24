@@ -277,6 +277,15 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
     defaultEnabled:  true,
   },
 
+  // ── Appels entrants (VD Soft dans l'appel, Olivier 24/11/2026) ──────────
+  {
+    key:             'appel_entrant',
+    label:           'Appel entrant d’un service',
+    description:     'Un appel sonne sur un service suivi (essai : Fourrière service) : numéro de l’appelant et sa fiche, avant de décrocher.',
+    category:        'dispatcher',
+    applicableRoles: ['dispatcher', 'admin', 'superadmin'],
+    defaultEnabled:  true,
+  },
   // ── Dispatcher de garde (escalade) ───────────────────────────────────
   {
     key:             'escalation_call',
