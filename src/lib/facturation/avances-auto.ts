@@ -48,8 +48,12 @@ export async function refacturerAvancesManquantes(opts: { depuis?: string; simul
   const out: AvanceAuto[] = []
   const achats: any[] = await odooRpcCompany(VD, 'account.move', 'search_read', [[['move_type', '=', 'in_invoice'], ['state', '=', 'posted'], ['invoice_date', '>=', depuis], ['x_studio_plaque_1', '!=', false]]],
     { fields: ['id', 'name', 'ref', 'partner_id', 'invoice_date', 'amount_untaxed', 'amount_total', 'x_studio_plaque_1'], order: 'invoice_date asc' })
+  // Achats que Mobi a déclarés « pas une avance » (sous-traitance, dégât chauffeur…) : jamais refacturés (24/11/2026).
+  const { data: ex } = await sb.from('app_settings').select('value').eq('key', 'avances_auto_exclus').maybeSingle()
+  let exclus: string[] = []; try { exclus = JSON.parse(String(ex?.value || '[]')).map((x: any) => String(x?.achat || x)) } catch { exclus = [] }
   const { data: flor } = await sb.from('agent_accounts').select('id, name, role_label, companies, kinds, direct_kinds, validator_user_id, active').eq('name', 'Florent').maybeSingle()
   for (const a of achats) {
+    if (exclus.includes(a.name)) continue
     const plaque = norm(String(a.x_studio_plaque_1[1]).split('/').pop())
     if (plaque.length < 5) continue
     // Fiche(s) du véhicule payées par une assistance, autour de la date de l'achat.
