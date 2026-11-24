@@ -380,7 +380,15 @@ async function finSiComplet(sb: Sb, id: string) {
   if ((rest || []).length) return false
   const now = new Date().toISOString()
   const { data: c } = await sb.from('parc_controles_aleatoires').update({ status: 'termine', termine_at: now }).eq('id', id).neq('status', 'termine').select('request_group')
-  if (c?.length) await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('notif_type', NOTIF_BUREAU).is('responded_at', null).eq('payload->data->>request_group', c[0].request_group)
+  if (c?.length) {
+    await sb.from('notifications_log').update({ responded_at: now, read_at: now }).eq('notif_type', NOTIF_BUREAU).is('responded_at', null).eq('payload->data->>request_group', c[0].request_group)
+    // Pas trouvés : mail à Mobi avec les infos pour traiter (Olivier 23/11/2026), après la réponse au téléphone.
+    const mail = async () => {
+      try { const { envoyerMailAbsents } = await import('@/lib/parc/controle-absents-mail'); await envoyerMailAbsents(sb, id) }
+      catch (e: any) { console.error('[controle-parc] mail des pas trouvés :', e?.message) }
+    }
+    try { const { waitUntil } = await import('@vercel/functions'); waitUntil(mail()) } catch { await mail() }
+  }
   return true
 }
 
