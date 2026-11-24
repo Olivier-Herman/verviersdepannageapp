@@ -29,7 +29,10 @@ export async function envoyerMailAbsents(sb: Sb, controleId: string): Promise<{ 
   const { data: pris } = await sb.from('parc_controles_aleatoires').update({ absents_mail_at: new Date().toISOString() }).eq('id', controleId).is('absents_mail_at', null).select('id')
   if (!pris?.length) return { ok: true, skipped: 'déjà envoyé' }
 
-  const { data: ms } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, vehicle_color, source, parked_at, created_at, driver_photos').in('id', absents.map((a: any) => a.mission_id))
+  // Pas de colonne « couleur » dans incoming_missions : la demander faisait échouer la requête et le mail partait
+  // sans plaque ni n° de fiche (24/11/2026). Une erreur de lecture se voit désormais dans les journaux.
+  const { data: ms, error: msErr } = await sb.from('incoming_missions').select('id, mission_number, vehicle_plate, vehicle_brand, vehicle_model, source, parked_at, created_at, driver_photos').in('id', absents.map((a: any) => a.mission_id))
+  if (msErr) console.error('[contrôle du parc] lecture des fiches pour le mail :', msErr.message)
   const fiche = new Map((ms || []).map((m: any) => [m.id, m]))
   const qui = c.started_by_name || 'Le bureau'
   const presents = (items || []).filter((i: any) => i.resultat === 'present').length
@@ -50,7 +53,7 @@ export async function envoyerMailAbsents(sb: Sb, controleId: string): Promise<{ 
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
           ${photo ? `<td width="120" valign="top" style="padding-right:12px"><a href="${esc(photo)}"><img src="${esc(photo)}" width="110" style="border-radius:8px;display:block" alt=""></a></td>` : ''}
           <td valign="top" style="font-family:Arial,sans-serif;font-size:14px;color:#0f172a">
-            <div style="font-size:16px;font-weight:bold">${esc(m.vehicle_plate || 'sans plaque')} <span style="font-weight:normal;color:#334155">${esc([m.vehicle_brand, m.vehicle_model, m.vehicle_color].filter(Boolean).join(' '))}</span></div>
+            <div style="font-size:16px;font-weight:bold">${esc(m.vehicle_plate || 'sans plaque')} <span style="font-weight:normal;color:#334155">${esc([m.vehicle_brand, m.vehicle_model].filter(Boolean).join(' '))}</span></div>
             <div style="color:#334155;margin:2px 0 6px">Fiche n° ${esc(m.mission_number)} · doit être en zone <b>${esc(a.zone_attendue || '?')}</b> · ${nightsBetween(m.parked_at || m.created_at)} nuits au parc${m.source ? ` · ${esc(m.source)}` : ''}</div>
             ${ps.map(p => `<div style="color:#1e293b;margin:2px 0">${esc(p.icone)} ${esc(p.texte)}</div>`).join('')}
             <div style="margin-top:6px"><a href="${base}/dispatch/${esc(m.id)}" style="color:#0369a1">Ouvrir la fiche</a></div>
