@@ -81,7 +81,10 @@ export async function createSaisieParquetInvoice(sb: any, dossierId: string, efI
 
   const lines: QuoteLine[] = (ef.lines_json as any[]).map(l => ({
     kind:       l.kind as ProductCode,
-    name:       l.period ? `${l.name} — ${fmtD(l.period.from)} au ${fmtD(l.period.to)}` : l.name,
+    // Gardiennage : affiché à partir du LENDEMAIN de l'entrée (nuits pleines), comme sur l'état de frais — la taxation de
+    // Liège a mis « hors délais » / contesté le 584017-26 (facture 2026/01/218 « du 25/10 au 24/11 » pour un enlèvement
+    // du 25/10, Olivier 24/11/2026). Même quantité, même montant ; une ligne de nouvelle année (01/01) commence déjà au bon jour.
+    name:       l.period ? `${l.name} — ${fmtD(l.kind === 'SERV-PARC' && !/-01-01$/.test(String(l.period.from).slice(0, 10)) ? lendemain(l.period.from) : l.period.from)} au ${fmtD(l.period.to)}` : l.name,
     qty:        Number(l.qty) || 0,
     price_unit: Number(l.unitPrice) || 0,
   }))
