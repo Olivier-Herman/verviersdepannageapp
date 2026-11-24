@@ -276,6 +276,11 @@ export async function prepare(kind: ProposalKind, agent: AgentAccount, company: 
     if (!x?.x_studio_plaque_1) throw new Error('Plaque absente sur l’achat : la relier d’abord (plaque_achat).')
     const deja: any[] = await odooRpcCompany(company, 'account.move', 'search_read', [[['move_type', '=', 'out_invoice'], ['invoice_origin', '=', b.name], ['state', '!=', 'cancel']]], { fields: ['name'], limit: 1 })
     if (deja.length) throw new Error(`Déjà refacturée (${deja[0].name || 'brouillon'}).`)
+    // Garde-fou anti-doublon (24/11/2026) : une avance refacturée à la main n'a pas d'origine ; on cherche aussi une
+    // vente d'avance du même montant sur le même dossier ou le même véhicule.
+    const { avanceDejaRefacturee } = await import('@/lib/facturation/avances-auto')
+    const manuelle = await avanceDejaRefacturee({ id, name: b.name, amount_untaxed: Number(b.amount_untaxed), amount_total: Number(b.amount_total), plaqueId: x.x_studio_plaque_1[0] }, dossier)
+    if (manuelle) throw new Error(`Déjà refacturée (${manuelle}, même montant sur ce dossier ou ce véhicule).`)
     const [c]: any[] = await odooRpcCompany(company, 'res.partner', 'read', [[client]], { fields: ['name', 'is_company', 'active'] })
     if (!c?.active) throw new Error('Client introuvable.')
     return { title: `${b.name} (${b.partner_id?.[1] || ''}) → ${c.name} · dossier ${dossier}`, amount: b.amount_untaxed, payload: { achat_id: id, achat: b.name, garage: b.partner_id?.[1] || null, plaque: x.x_studio_plaque_1[1], client_id: client, client: c.name, dossier, htva: b.amount_untaxed }, directAllowed: true, directWhy: 'refacturation d’avance (quand Olivier l’activera)' }
