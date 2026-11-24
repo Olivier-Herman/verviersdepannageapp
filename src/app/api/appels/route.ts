@@ -9,7 +9,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import type { Appel } from '@/lib/supervision/appels'
-import { peutVoirAppels, fichesDuNumero, retenirNumero, appelUtile, motifNumero, COLS_FICHE, libelleFiche, numeroLisible, numerosPersonnel, numerosIgnores, type FicheCourte } from '@/lib/appels-fiches'
+import { peutVoirAppels, fichesDuNumero, retenirNumero, appelUtile, motifNumero, COLS_FICHE, libelleFiche, numeroLisible, numerosPersonnel, numerosIgnores, numeroDecroche, numeroSurFiche, type FicheCourte } from '@/lib/appels-fiches'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -73,7 +73,24 @@ export async function GET(req: NextRequest) {
         const l = (liens || []).find((x: any) => x.appel_id === a.id) as any
         return { ...vueAppel(a), lien: l.mode === 'manuel' && noms[l.par] ? `rattaché à la main par ${noms[l.par]}` : MODES[l.mode] }
       }).sort((a, b) => b.debut.localeCompare(a.debut))
-      return NextResponse.json({ appels: out, numeros: ((nums || []) as any[]).map(n => ({ numero8: n.numero8, numero: numeroLisible(n.numero) })) })
+      // Notes « En appel » : leur motif s'affiche sur la ligne de l'appel ; sans appel retrouvé, elles ont leur propre ligne.
+      const { data: notes } = await sb.from('appel_notes').select('id, at, user_id, motif, texte, numero, appel_id').in('mission_id', ids).order('at', { ascending: false })
+      const nNoms = await nomsUsers(sb, ((notes || []) as any[]).map(n => n.user_id))
+      const motifNote = (n: any) => [n.motif, n.texte].filter(Boolean).join(' — ')
+      for (const a of out as any[]) { const n = ((notes || []) as any[]).find(x => x.appel_id === a.id); if (n) a.motif = motifNote(n) }
+      const seules = ((notes || []) as any[]).filter(n => !n.appel_id || !out.some(a => a.id === n.appel_id)).map(n => ({
+        id: `note:${n.id}`, debut: n.at, sens: 'note', perdu: false, service: null, numero_lisible: n.numero ? numeroLisible(n.numero) : 'Numéro à venir',
+        duree_s: 0, resume: `Noté par ${nNoms[n.user_id] || '?'}`, lien: n.appel_id ? 'appel retrouvé' : 'l’appel sera retrouvé environ 30 min après la fin', motif: motifNote(n), note: true,
+      }))
+      const { data: mo } = await sb.from('app_settings').select('value').eq('key', 'appels_motifs').maybeSingle()
+      let motifs: string[] = []; try { motifs = mo?.value ? JSON.parse(mo.value as any) : [] } catch { /* illisible */ }
+      const me = (session.user as any).id as string
+      const dec = await numeroDecroche(sb, me)
+      return NextResponse.json({
+        appels: [...out, ...seules].sort((a: any, b: any) => b.debut.localeCompare(a.debut)),
+        numeros: ((nums || []) as any[]).map(n => ({ numero8: n.numero8, numero: numeroLisible(n.numero) })),
+        motifs, numero_decroche: dec ? numeroLisible(dec) : null,
+      })
     }
 
     // ── Écran « Appels à rattacher » ─────────────────────────────────────────────────────────
@@ -117,15 +134,21 @@ export async function GET(req: NextRequest) {
           .gte('created_at', new Date(t - 20 * 60e3).toISOString()).lte('created_at', new Date(t + 30 * 60e3).toISOString()).order('created_at').limit(200)
         const proches: string[] = []
         for (const g of (logs || []) as any[]) if (!proches.includes(g.mission_id) && !parNumero.some(f => f.id === g.mission_id)) proches.push(g.mission_id)
+        // Fiche créée pendant ou juste après l'appel (appel de dépannage avant la fiche) : proposée en premier.
+        const { data: creees } = await sb.from('incoming_missions').select(COLS_FICHE).eq('dossier_leg', false)
+          .gte('created_at', new Date(t - 5 * 60e3).toISOString()).lte('created_at', new Date(t + 45 * 60e3).toISOString()).order('created_at').limit(5)
+        const neuves = ((creees || []) as FicheCourte[]).filter(f => !parNumero.some(x => x.id === f.id))
+        for (const f of neuves) { const i = proches.indexOf(f.id); if (i >= 0) proches.splice(i, 1) }
         const { data: fp } = proches.length ? await sb.from('incoming_missions').select(COLS_FICHE).in('id', proches.slice(0, 6)) : { data: [] }
         const quand = (iso: string) => new Date(iso).toLocaleTimeString('fr-BE', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' })
         suggestions = [
+          ...neuves.map(f => { const x = libelleFiche(f); return { id: f.id, titre: x.titre, detail: `${x.detail} · créée à ${quand(f.created_at)}, pendant l’appel` } }),
           ...parNumero.map(f => { const x = libelleFiche(f); return { id: f.id, titre: x.titre, detail: `${x.detail} · même numéro` } }),
           ...proches.slice(0, 6).map(id => ((fp || []) as FicheCourte[]).find(f => f.id === id)).filter(Boolean).map(f => {
             const x = libelleFiche(f!); const g = (logs as any[]).find(y => y.mission_id === f!.id)
             return { id: f!.id, titre: x.titre, detail: `${x.detail} · modifiée à ${quand(g.created_at)}` }
           }),
-        ].slice(0, 6)
+        ].slice(0, 8)
       }
       const f = l?.mission_id ? fiches.get(l.mission_id) : null
       out.push({
@@ -159,6 +182,19 @@ export async function POST(req: NextRequest) {
       }
       if (numero && (b.retenir || !b.appel_id)) await retenirNumero(sb, numero, b.mission_id, me)
       return NextResponse.json({ ok: true })
+    }
+    if (b.action === 'noter') {
+      // Bouton « En appel » : le motif est noté tout de suite ; le numéro aussi s'il a été transmis au décroché,
+      // sinon le relevé suivant retrouve l'appel de la personne à ce moment-là (completerNotes).
+      const motif = String(b.motif || '').trim().slice(0, 120), texte = String(b.texte || '').trim().slice(0, 1000)
+      if (!b.mission_id || (!motif && !texte)) return NextResponse.json({ error: 'Choisissez un motif ou écrivez quelques mots.' }, { status: 400 })
+      const numero = await numeroDecroche(sb, me)
+      const { error } = await sb.from('appel_notes').insert({ mission_id: b.mission_id, user_id: me, motif: motif || null, texte: texte || null, numero })
+      if (error) throw new Error(error.message)
+      let fiche: string | null = null
+      if (numero) fiche = await numeroSurFiche(sb, b.mission_id, numero, me)
+      await sb.from('mission_logs').insert({ mission_id: b.mission_id, actor_id: me, action: 'note', notes: `📞 Appel${numero ? ` du ${numeroLisible(numero)}` : ''} : ${[motif, texte].filter(Boolean).join(' — ')}` }).then(() => {}, () => {})
+      return NextResponse.json({ ok: true, numero: numero ? numeroLisible(numero) : null, fiche })
     }
     if (b.action === 'pas_lie' && b.appel_id) {
       const { error } = await sb.from('appel_fiches').upsert({ appel_id: b.appel_id, mission_id: null, mode: 'pas_lie', par: me, at: new Date().toISOString() }, { onConflict: 'appel_id' })

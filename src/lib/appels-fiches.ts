@@ -159,3 +159,70 @@ export function libelleFiche(f: FicheCourte): { titre: string; detail: string } 
     detail: [vehicule, f.client_name, `du ${quand}`, f.en_cours === false ? 'terminée' : null].filter(Boolean).join(' · '),
   }
 }
+
+// ── Bouton « En appel » (notes d'appel sur la fiche, Olivier 24/11/2026) ─────────────────────────────────────────────
+
+/** Comptes Teams d'une personne de VD Soft (réglage appels_comptes_vdsoft : nom Teams → comptes VD Soft). */
+export async function comptesTeamsDe(sb: Sb, userId: string): Promise<string[]> {
+  const { data } = await sb.from('app_settings').select('value').eq('key', 'appels_comptes_vdsoft').maybeSingle()
+  let m: Record<string, string[]> = {}
+  try { m = data?.value ? JSON.parse(data.value as any) : {} } catch { /* illisible */ }
+  return Object.entries(m).filter(([, ids]) => (ids || []).includes(userId)).map(([nom]) => nom)
+}
+
+/** Dernier numéro transmis par Teams au décroché pour cette personne (page /appel), s'il est récent. */
+export async function numeroDecroche(sb: Sb, userId: string, minutes = 20): Promise<string | null> {
+  const { data } = await sb.from('appel_ouvertures').select('numero, at').eq('user_id', userId)
+    .gte('at', new Date(Date.now() - minutes * 60e3).toISOString()).order('at', { ascending: false }).limit(1)
+  return (data?.[0] as any)?.numero || null
+}
+
+/** Le numéro d'un appel noté complète la fiche : retenu, et recopié comme téléphone du client si elle n'en a pas. */
+export async function numeroSurFiche(sb: Sb, missionId: string, numero: string, par: string | null): Promise<'rempli' | 'retenu' | null> {
+  const m = motifNumero(numero)
+  if (!m || m.includes('_')) return null
+  await retenirNumero(sb, numero, missionId, par)
+  const { data: f } = await sb.from('incoming_missions').select('client_phone').eq('id', missionId).maybeSingle()
+  const actuel = String((f as any)?.client_phone || '').trim()
+  if (actuel && motifNumero(actuel)) return 'retenu'
+  const { error } = await sb.from('incoming_missions').update({ client_phone: numero }).eq('id', missionId)
+  if (error) throw new Error(`Téléphone du client : ${error.message}`)
+  return 'rempli'
+}
+
+/**
+ * Notes d'appel sans appel : retrouve l'appel où la personne était en ligne au moment de la note (relevé Microsoft),
+ * le rattache à la fiche (à la main : la note fait foi, même si l'appel était parti ailleurs tout seul) et complète la
+ * fiche avec son numéro. Les notes de plus de 48 h sans appel retrouvé restent telles quelles.
+ */
+export async function completerNotes(sb: Sb): Promise<{ completees: number; en_attente: number }> {
+  const { data: notes, error } = await sb.from('appel_notes').select('*').is('appel_id', null)
+    .gte('at', new Date(Date.now() - 48 * 3600e3).toISOString()).order('at')
+  if (error) throw new Error(`Notes d'appel : ${error.message}`)
+  let completees = 0, en_attente = 0
+  for (const n of (notes || []) as any[]) {
+    const noms = await comptesTeamsDe(sb, n.user_id)
+    if (!noms.length) { en_attente++; continue }
+    const t = +new Date(n.at)
+    const { data: cands } = await sb.from('supervision_appels').select('*').in('sens', ['entrant', 'sortant'])
+      .gte('debut', new Date(t - 3 * 3600e3).toISOString()).lte('debut', new Date(t + 2 * 60e3).toISOString())
+    // L'appel de la personne qui couvre l'instant de la note (2 min de marge de chaque côté), sinon le plus proche avant.
+    let best: { a: Appel; ecart: number } | null = null
+    for (const a of (cands || []) as Appel[]) {
+      for (const p of a.parts) {
+        if (!noms.includes(p.nom)) continue
+        const d = +new Date(p.debut), f = d + p.sec * 1000
+        const ecart = t < d ? d - t : t > f ? t - f : 0
+        if (ecart <= 2 * 60e3 && (!best || ecart < best.ecart)) best = { a, ecart }
+      }
+    }
+    if (!best) { en_attente++; continue }
+    const a = best.a
+    await sb.from('appel_fiches').upsert({ appel_id: a.id, mission_id: n.mission_id, mode: 'manuel', par: n.user_id, at: new Date().toISOString() }, { onConflict: 'appel_id' })
+    const numero = n.numero || a.numero
+    if (numero && !n.numero) await numeroSurFiche(sb, n.mission_id, numero, n.user_id).catch(() => null)
+    await sb.from('appel_notes').update({ appel_id: a.id, numero, complete_at: new Date().toISOString() }).eq('id', n.id)
+    completees++
+  }
+  return { completees, en_attente }
+}

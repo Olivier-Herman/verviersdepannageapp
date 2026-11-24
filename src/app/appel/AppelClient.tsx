@@ -29,7 +29,7 @@ export default function AppelClient({ numero, numeroLisible, fiches, erreur }: {
           <p className="text-sm text-ink-secondary">
             {!numeroLisible ? 'L’appelant cache son numéro : cherchez la fiche.'
               : fiches.length ? `${fiches.length} fiche${fiches.length > 1 ? 's' : ''} avec ce numéro : laquelle concerne cet appel ?`
-              : 'Ce numéro n’est sur aucune fiche : cherchez-la, ou créez-en une.'}
+              : 'Ce numéro n’est sur aucune fiche : cherchez-la, ou créez-en une (le numéro y sera déjà).'}
           </p>
         </div>
       </div>
@@ -39,7 +39,7 @@ export default function AppelClient({ numero, numeroLisible, fiches, erreur }: {
       </div>
       {busy && <p className="flex items-center gap-2 text-sm text-ink-secondary"><Loader2 size={16} className="animate-spin" /> Ouverture de la fiche…</p>}
       <div className="flex flex-wrap gap-2">
-        <Link href="/dispatch/new" className="inline-flex items-center gap-1.5 min-h-[44px] px-4 rounded-xl text-sm font-semibold border bg-surface text-ink hover:bg-surface-hover"><Plus size={16} /> Nouvelle fiche</Link>
+        <Link href={numeroLisible ? `/dispatch/new?tel=${encodeURIComponent(numero)}` : '/dispatch/new'} className="inline-flex items-center gap-1.5 min-h-[44px] px-4 rounded-xl text-sm font-semibold border bg-surface text-ink hover:bg-surface-hover"><Plus size={16} /> Nouvelle fiche</Link>
       </div>
       {numeroLisible && <p className="text-xs text-ink-muted">La fiche choisie retient ce numéro : ses prochains appels l’ouvriront directement et s’y rattacheront tout seuls.</p>}
     </div>

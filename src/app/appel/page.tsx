@@ -19,9 +19,12 @@ export default async function AppelPage({ searchParams }: { searchParams?: { tel
   const u = session.user as any
   if (!peutVoirAppels(u)) redirect('/dashboard?error=access_denied')
 
+  const sb = createAdminClient()
+  // Le numéro transmis au décroché sert au bouton « En appel » de la fiche (numéro connu tout de suite).
+  if (motifNumero(tel) && !searchParams?.choisir) await sb.from('appel_ouvertures').insert({ user_id: u.id, numero: tel })
   let fiches: Awaited<ReturnType<typeof fichesDuNumero>> = []
   let erreur: string | null = null
-  try { fiches = await fichesDuNumero(createAdminClient(), tel) } catch (e: any) { erreur = String(e?.message || e) }
+  try { fiches = await fichesDuNumero(sb, tel) } catch (e: any) { erreur = String(e?.message || e) }
   const evidente = ficheEvidente(fiches)
   if (evidente && !searchParams?.choisir) redirect(`/dispatch/${evidente.id}`)
 

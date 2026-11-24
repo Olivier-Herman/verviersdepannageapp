@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { lireConfig } from '@/lib/supervision'
 import { releverAppels } from '@/lib/supervision/appels'
-import { lierAppels } from '@/lib/appels-fiches'
+import { lierAppels, completerNotes } from '@/lib/appels-fiches'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -24,7 +24,10 @@ export async function GET(req: NextRequest) {
     releves = r.n; erreurs.push(...r.erreurs)
   } catch (e: any) { erreurs.push(`Relevé : ${String(e?.message || e).slice(0, 160)}`) }
   try { ({ lies, restants } = await lierAppels(sb)) } catch (e: any) { erreurs.push(`Rattachement : ${String(e?.message || e).slice(0, 160)}`) }
-  const etat = { at: new Date().toISOString(), releves, lies, restants, erreurs }
+  // Notes « En appel » d'abord complétées : elles font foi sur le rattachement automatique.
+  let notes = { completees: 0, en_attente: 0 }
+  try { notes = await completerNotes(sb) } catch (e: any) { erreurs.push(`Notes d’appel : ${String(e?.message || e).slice(0, 160)}`) }
+  const etat = { at: new Date().toISOString(), releves, lies, restants, notes, erreurs }
   await sb.from('app_settings').upsert({ key: 'appels_fiches_dernier', value: JSON.stringify(etat), updated_at: etat.at }, { onConflict: 'key' })
   return NextResponse.json({ ok: !erreurs.length, ...etat })
 }
