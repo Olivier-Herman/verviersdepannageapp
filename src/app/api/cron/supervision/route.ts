@@ -7,12 +7,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendEmail } from '@/lib/emails'
 import { gardeHeureBxl, heureBxl } from '@/lib/cron/heure-bxl'
-import { lireConfig, collecter, filesEnAttente, rapportJour, rapportPeriode, bornesJour, semaineDe } from '@/lib/supervision'
+import { lireConfig, collecter, filesEnAttente, rapportJour, rapportPeriode, bornesJour, semaineDe, esc, table, tuiles, page, heureBxlTxt } from '@/lib/supervision'
+import { releverAppels, lireAppels, rapportTelephone } from '@/lib/supervision/appels'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 export const maxDuration = 300
 
+// Le bloc téléphone se place avant la note de bas de page du rapport.
+const avecTel = (html: string, tel: string) => html.replace('<p style="color:#64748b;font-size:11px;margin-top:24px">', m => tel + m)
 const decale = (jour: string, n: number) => { const d = new Date(`${jour}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
 
 export async function GET(req: NextRequest) {
@@ -29,12 +32,22 @@ export async function GET(req: NextRequest) {
   try {
     const [d1, finJour] = bornesJour(jour)
     const d2 = new Date().toISOString() < finJour ? new Date().toISOString() : finJour
+    // Téléphone : relevé des 26 dernières heures (Microsoft ne garde que 30 jours), avant tout calcul.
+    const rel = await releverAppels(sb, cfg, new Date(+new Date(d2) - 26 * 3600e3).toISOString(), d2)
+    const fmt = { esc, table, tuiles, heure: heureBxlTxt }
     const files = await filesEnAttente(sb, cfg)
     const actifs = (fin: string) => cfg.personnes.filter(p => p.depuis < fin)
 
     if (!quoi || quoi === 'jour') {
       const c = await collecter(sb, cfg, d1, d2)
       for (const p of actifs(d2)) { const r = rapportJour(cfg, p, jour, c, files); await envoyer(`📋 ${r.sujet}`, r.html); fait.push(`jour ${p.nom}`) }
+      // Rapport téléphone de la journée (tout le monde, tous les services).
+      const ap = await lireAppels(sb, d1, d2)
+      const ent = ap.filter(a => a.sens === 'entrant')
+      const dateTxt = new Date(`${jour}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' })
+      const err = rel.erreurs.length ? `<p style="color:#b45309;font-size:12px">Relevé incomplet : ${[...new Set(rel.erreurs)].slice(0, 5).map(esc).join(' · ')}</p>` : ''
+      await envoyer(`📞 Téléphone — ${dateTxt} : ${ent.length} appels reçus, ${ent.filter(a => a.perdu).length} perdus`, page(`Téléphone — ${dateTxt}`, rapportTelephone(ap, fmt, true) + err))
+      fait.push('téléphone')
     }
     const dow = new Date(`${jour}T12:00:00Z`).getUTCDay()
     if ((!quoi && dow === 6) || quoi === 'semaine') {
@@ -44,7 +57,7 @@ export async function GET(req: NextRequest) {
       const p1 = bornesJour(decale(lundi, -7))[0], p2 = new Date(+new Date(d2) - 7 * 86400e3).toISOString()
       const prec = cfg.personnes.some(p => p.depuis < p2) ? await collecter(sb, cfg, p1, p2) : null
       const r = rapportPeriode({ ...cfg, personnes: actifs(d2) }, `Semaine du ${new Date(`${lundi}T12:00:00Z`).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' })}`, c, files, prec, 'jour')
-      await envoyer(`📊 ${r.sujet}`, r.html); fait.push('semaine')
+      await envoyer(`📊 ${r.sujet}`, avecTel(r.html, rapportTelephone(await lireAppels(sb, w1, d2), fmt, false))); fait.push('semaine')
     }
     if ((!quoi && jour.endsWith('-01')) || quoi === 'mois') {
       // Le mois écoulé (le 1er : le mois précédent en entier).
@@ -57,7 +70,7 @@ export async function GET(req: NextRequest) {
       const prec = cfg.personnes.some(p => p.depuis < a1) ? await collecter(sb, cfg, bornesJour(`${mp}-01`)[0], a1) : null
       const nomMois = new Date(`${debut}T12:00:00Z`).toLocaleDateString('fr-BE', { month: 'long', year: 'numeric' })
       const r = rapportPeriode({ ...cfg, personnes: actifs(a2) }, `Mois de ${nomMois}`, c, files, prec, 'semaine')
-      await envoyer(`🗓️ ${r.sujet}`, r.html); fait.push('mois')
+      await envoyer(`🗓️ ${r.sujet}`, avecTel(r.html, rapportTelephone(await lireAppels(sb, a1, a2 < d2 ? a2 : d2), fmt, false))); fait.push('mois')
     }
     return NextResponse.json({ ok: true, jour, fait })
   } catch (e: any) {

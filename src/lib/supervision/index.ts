@@ -62,6 +62,9 @@ export const AUTRES: Record<string, string> = {
   erp_facture: 'ERP : factures et notes de crédit clients créées',
   erp_paiement: 'ERP : paiements enregistrés',
   erp_lettrage: 'ERP : lettrages et rapprochements',
+  appel_recu: 'Téléphone : appels décrochés ou repris',
+  appel_emis: 'Téléphone : appels émis',
+  appel_interne: 'Téléphone : appels internes',
 }
 
 const LIBELLES: Record<string, string> = {
@@ -226,6 +229,11 @@ export async function collecter(sb: Sb, cfg: Config, d1: string, d2: string): Pr
       points: m.signataire ? (cfg.poids.mail ?? 2) : 0, cleUnique: `mail:${m.boite}:${m.at}:${m.sujet}`,
     })
   } catch (e: any) { erreurs.push(`Mails : ${String(e?.message || e).slice(0, 120)}`) }
+  // Téléphone : appels relevés dans supervision_appels.
+  try {
+    const { lireAppels, actionsAppels } = await import('./appels')
+    actions.push(...actionsAppels(await lireAppels(sb, d1, d2), cfg.poids))
+  } catch (e: any) { erreurs.push(String(e?.message || e).slice(0, 120)) }
   // Mails partis seuls (signature de service) = automatismes de Mobi, sans points pour le bureau.
   const gardees = actions.filter(a => { const d = debut.get(a.qui); return !d || a.at >= d })
   // Points dédoublonnés : une fiche, une catégorie, un jour = une fois.
@@ -247,6 +255,7 @@ export interface Chiffres { actions: number; points: number; heures: number; ind
 
 export function chiffres(actions: Action[]): Chiffres {
   const util = actions.filter(a => a.cat !== 'sync')
+  const visibles = util.filter(a => a.cat !== 'appel_fin')
   const t = util.map(a => a.at).sort()
   const premier = t[0] || null, dernier = t[t.length - 1] || null
   // Heures actives : temps entre deux actions consécutives, plafonné à 30 min (une pause plus longue ne compte pas),
@@ -256,9 +265,9 @@ export function chiffres(actions: Action[]): Chiffres {
   for (let i = 0; i < s.length; i++) heures += (i && s[i] - s[i - 1] <= PAUSE_MS ? s[i] - s[i - 1] : 5 * 60e3) / 3600e3
   const points = actions.reduce((s, a) => s + a.points, 0)
   const parCat: Chiffres['parCat'] = {}
-  for (const a of actions) { const c = (parCat[a.cat] ||= { n: 0, points: 0 }); c.n++; c.points += a.points }
+  for (const a of actions) { if (a.cat === 'appel_fin') continue; const c = (parCat[a.cat] ||= { n: 0, points: 0 }); c.n++; c.points += a.points }
   return {
-    actions: util.length, points, heures: util.length ? heures : 0, indice: util.length ? points / Math.max(heures, 0.25) : 0,
+    actions: visibles.length, points, heures: util.length ? heures : 0, indice: util.length ? points / Math.max(heures, 0.25) : 0,
     factureHt: actions.reduce((s, a) => s + (a.montant || 0), 0), premier, dernier, parCat,
   }
 }
@@ -350,10 +359,10 @@ export function rapportJour(cfg: Config, p: Personne, jour: string, c: Collecte,
   const ordre = [...CATS.map(x => x.cle), ...Object.keys(AUTRES)]
   const cats = Object.entries(k.parCat).sort((a, b) => ordre.indexOf(a[0]) - ordre.indexOf(b[0]))
   corps += `<h3 style="margin:16px 0 4px">Par type de travail</h3>` + (cats.length ? table(['Type', 'Nombre', 'Points'], cats.map(([cle, v]) => [esc(titreCat(cle)), String(v.n), String(v.points)])) : '<p>Aucune action enregistrée.</p>')
-  const detail = mes.filter(a => a.cat !== 'sync').sort((a, b) => a.at.localeCompare(b.at))
+  const detail = mes.filter(a => a.cat !== 'sync' && a.cat !== 'appel_fin').sort((a, b) => a.at.localeCompare(b.at))
   if (detail.length) corps += `<h3 style="margin:16px 0 4px">Détail (${detail.length})</h3>` + table(['Heure', 'Type', 'Action', 'Fiche', 'Détail'], detail.map(a => [heureBxlTxt(a.at), esc(titreCat(a.cat).split(' (')[0]), esc(a.titre) + (a.montant ? ` <b>${eur(a.montant)}</b>` : ''), ficheTxt(a, cfg.app_url), esc(a.detail || '')]))
   // Rattrapé par les agents de Mobi : ce qu'un humain aurait dû faire dans la journée.
-  const agents = c.actions.filter(a => a.qui === 'Agents' && a.cat !== 'mail' && a.cat !== 'sync')
+  const agents = c.actions.filter(a => a.qui === 'Agents' && !['mail', 'sync', 'appel_fin'].includes(a.cat))
   if (agents.length) {
     const g = groupBy(agents, a => a.cat)
     corps += `<h3 style="margin:16px 0 4px">Resté de côté, rattrapé par Mobi (agents, tout le bureau)</h3>` + table(['Type', 'Nombre', 'Exemples'], Object.entries(g).map(([cle, l]) => [esc(titreCat(cle)), String(l.length), l.slice(0, 4).map(a => `${esc(a.titre)} ${ficheTxt(a, cfg.app_url)}`).join('<br>')]))
@@ -372,7 +381,7 @@ export function blocFiles(files: File[], p?: Personne) {
 /** Tableau « Qui fait quoi ? » : catégories × personnes, doublons et tâches laissées aux agents. */
 export function quiFaitQuoi(cfg: Config, c: Collecte): string {
   const gens = [...cfg.personnes.map(p => p.nom), 'Mobi', 'Agents']
-  const ordre = [...CATS.map(x => x.cle), ...Object.keys(AUTRES)].filter(k => k !== 'sync')
+  const ordre = [...CATS.map(x => x.cle), ...Object.keys(AUTRES)].filter(k => k !== 'sync' && k !== 'appel_interne')
   const lignes: string[][] = []
   for (const cle of ordre) {
     const n = gens.map(g => c.actions.filter(a => a.qui === g && a.cat === cle && (a.points > 0 || cle === 'sync_err' || g === 'Agents')).length)
