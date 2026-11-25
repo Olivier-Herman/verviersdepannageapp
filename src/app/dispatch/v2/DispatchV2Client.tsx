@@ -370,6 +370,14 @@ const ResumeBureau = ({ m }: { m: M }) => {
     </dl>
   )
 }
+// Véhicule au parc : où le relivrer (liste du téléphone et tableau, Olivier 25/11). L'adresse s'affiche dans tous
+// les onglets ; « pas encore connue » seulement dans « À relivrer », où elle est attendue.
+const LigneRelivraison = ({ m, onglet }: { m: M; onglet: boolean }) => {
+  if (m.status !== 'parked') return null
+  const adr = court(m.redelivery_address)
+  if (adr) return <div className="text-emerald-800 font-semibold text-[13px] break-words" title={adr}>Relivraison → {adr}</div>
+  return onglet ? <div className="text-amber-800 text-[12.5px]">Relivraison : adresse pas encore connue</div> : null
+}
 const DetailTel = ({ m }: { m: M }) => (
   <>
     <dl className="lg:hidden grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
@@ -750,6 +758,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                       <div className="flex items-center justify-between gap-2"><b className="text-stone-900 text-[14px]">{m.assigned_user?.name || 'Sans chauffeur'}</b><span className={`px-2 py-0.5 rounded-full text-[12px] font-bold ${e.cls}`}>{e.txt}</span></div>
                       <div className="flex items-center gap-1.5 min-w-0"><Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span><Plaque m={m} /><span className="text-stone-600 text-[13px] truncate">{trajetCourt(m)}</span></div>
                       {m.status === 'assigned' && m.assigned_at && <span className={`text-[12.5px] font-bold ${minutesDepuis(m.assigned_at, now) >= 10 ? 'text-red-800' : 'text-amber-800'}`}>pas encore acceptée · {duree(minutesDepuis(m.assigned_at, now))}</span>}
+                      <LigneRelivraison m={m} onglet={filtre === 'parked'} />
                       <DetailTel m={m} />
                       {(m.accepted_at || m.on_way_at || m.on_site_at) && <Avancement m={m} />}
                       {m.assigned_user?.phone && (
@@ -778,7 +787,7 @@ export default function DispatchV2Client({ userName, userEmail, userId, userRole
                           </td>
                           <td className="px-2 py-2"><div className="flex gap-1.5 items-center flex-wrap"><Source m={m} sources={sources} /><span className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-bold ${couleurType(m).pastille}`} title={couleurType(m).nom}>{typeCourt(m)}</span></div>
                             <div className="mt-1 flex gap-1.5 items-center flex-wrap"><Plaque m={m} /><span className="text-stone-600">{vehicule(m)}</span></div></td>
-                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{lieu(m) || '—'}</div>{destination(m) && <div className="text-stone-700 truncate" title={destination(m)}>→ {destination(m)}</div>}{filtre === 'parked' && (court(m.redelivery_address) ? <div className="text-emerald-800 font-medium truncate" title={court(m.redelivery_address)}>Relivraison → {court(m.redelivery_address)}</div> : <div className="text-amber-800 text-[12.5px]">Relivraison : adresse pas encore connue</div>)}{panneUtile(m) && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{panneUtile(m)}</div>}</td>
+                          <td className="px-2 py-2 text-stone-800 max-w-[420px]"><div className="truncate">{lieu(m) || '—'}</div>{destination(m) && <div className="text-stone-700 truncate" title={destination(m)}>→ {destination(m)}</div>}<LigneRelivraison m={m} onglet={filtre === 'parked'} />{panneUtile(m) && <div className="text-stone-500 text-[12.5px] line-clamp-1" title={m.incident_description}>{panneUtile(m)}</div>}</td>
                           <td className="px-2 py-2 text-stone-900">{filtre === 'parked'
                             // Onglet « À relivrer » (Olivier 18/11) : le chauffeur du remorquage ne fera pas forcément la relivraison ;
                             // la zone et les nuits au parc aident à préparer la tournée.
