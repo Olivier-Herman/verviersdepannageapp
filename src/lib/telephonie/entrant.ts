@@ -36,9 +36,10 @@ export async function prevenirAgents(sb: Sb, a: { id: string; numero: string | n
   const lisible = motifNumero(a.numero) ? numeroLisible(a.numero) : 'Numéro masqué'
   let titre = `📞 ${f.nom} : ${lisible}`, corps = 'Numéro sur aucune fiche : touchez pour chercher ou créer la fiche.'
   let url = a.numero && motifNumero(a.numero) ? `/appel?tel=${encodeURIComponent(a.numero)}` : '/appels'
-  let missionId: string | undefined
+  let missionId: string | undefined, nb = 0
   try {
     const fiches = await fichesDuNumero(sb, a.numero)
+    nb = fiches.length
     const ev = ficheEvidente(fiches)
     await sb.from('appels_entrants').update({ fiches: fiches.length, mission_id: ev?.id || null }).eq('id', a.id)
     if (ev) {
@@ -49,7 +50,7 @@ export async function prevenirAgents(sb: Sb, a: { id: string; numero: string | n
     }
   } catch (e: any) { corps = `Fiche non cherchée (${String(e?.message || e).slice(0, 80)}).` }
   const { sendNotification } = await import('@/lib/notifications/send')
-  await Promise.all(f.prevenir.map(uid => sendNotification(uid, 'appel_entrant', { title: titre, body: corps, action_url: url, mission_id: missionId, data: { numero: a.numero, file: a.file } }).catch(() => null)))
+  await Promise.all(f.prevenir.map(uid => sendNotification(uid, 'appel_entrant', { title: titre, body: corps, action_url: url, mission_id: missionId, data: { numero: a.numero, file: a.file, fiches: nb } }).catch(() => null)))
 }
 
 /** Un renvoi qui échoue : mail d'alerte (l'appelant risque d'être perdu). */

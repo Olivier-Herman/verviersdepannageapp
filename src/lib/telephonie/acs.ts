@@ -51,19 +51,32 @@ export async function decrocher(incomingCallContext: string, callbackUri: string
   return r.json?.callConnectionId
 }
 
-/** Transfère un appel décroché ; le sujet (plaque, client) s'affiche dans la fenêtre d'appel Teams de l'agent. */
-export async function transferer(connexionId: string, cible: any, ctx: { sujet?: string; numero?: string | null; nom?: string | null; operationContext?: string }): Promise<void> {
-  const corps: any = { targetParticipant: cible, operationContext: ctx.operationContext }
-  if (ctx.sujet && ctx.numero) {
-    corps.customCallingContext = { teamsPhoneCallDetails: {
-      callTopic: ctx.sujet.slice(0, 48),
-      teamsPhoneCallerDetails: { caller: { phoneNumber: { value: ctx.numero } }, name: (ctx.nom || ctx.numero).slice(0, 64), phoneNumber: ctx.numero },
-    } }
+/** Niveaux d'un transfert : 0 = numéro de l'appelant présenté + fiche dans la fenêtre d'appel ; 1 = fiche seule ; 2 = rien de plus. */
+export type NiveauTransfert = 0 | 1 | 2
+
+/** Transfère un appel décroché vers la file Teams, en présentant le numéro de l'appelant (et non celui du compte qui
+ *  transfère) et, dans la fenêtre d'appel de l'agent, le sujet (plaque, client). Ce que Microsoft refuse est retiré
+ *  cran par cran : le transfert compte plus que l'affichage. Renvoie le niveau accepté et les refus rencontrés
+ *  (Olivier 25/11/2026 : Teams affichait le numéro Verviers Dépannage au lieu de celui de l'appelant). */
+export async function transferer(connexionId: string, cible: any, ctx: { sujet?: string | null; numero?: string | null; nom?: string | null; operationContext?: string; niveau?: NiveauTransfert }): Promise<{ niveau: NiveauTransfert; refus: string[] }> {
+  const numero = ctx.numero && /^\+\d{6,15}$/.test(ctx.numero) ? ctx.numero : null
+  const refus: string[] = []
+  const chemin = `/calling/callConnections/${encodeURIComponent(connexionId)}:transferToParticipant`
+  let niveau: NiveauTransfert = numero ? (ctx.niveau ?? 0) : 2
+  for (;;) {
+    const corps: any = { targetParticipant: cible, operationContext: ctx.operationContext }
+    if (numero && niveau === 0) corps.sourceCallerIdNumber = { value: numero }
+    if (numero && niveau <= 1) {
+      corps.customCallingContext = { teamsPhoneCallDetails: {
+        ...(ctx.sujet ? { callTopic: ctx.sujet.slice(0, 48) } : {}),
+        teamsPhoneCallerDetails: { caller: { phoneNumber: { value: numero } }, name: (ctx.nom || numero).slice(0, 64), phoneNumber: numero },
+      } }
+    }
+    const r = await acs('POST', chemin, corps)
+    if (r.status === 202 || r.status === 200) return { niveau, refus }
+    if (r.status === 400 && niveau < 2) { refus.push(`niveau ${niveau} : ${erreur(r)}`); niveau = (niveau + 1) as NiveauTransfert; continue }
+    throw new Error(`Transfert refusé : ${erreur(r)}`)
   }
-  let r = await acs('POST', `/calling/callConnections/${encodeURIComponent(connexionId)}:transferToParticipant`, corps)
-  // Contexte refusé : on retente sans (le transfert compte plus que l'affichage).
-  if (r.status === 400 && corps.customCallingContext) { delete corps.customCallingContext; r = await acs('POST', `/calling/callConnections/${encodeURIComponent(connexionId)}:transferToParticipant`, corps) }
-  if (r.status !== 202 && r.status !== 200) throw new Error(`Transfert refusé : ${erreur(r)}`)
 }
 
 /** Consentement serveur : autorise le service d'appels à recevoir les appels d'un compte de ressource Teams. */

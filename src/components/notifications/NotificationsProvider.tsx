@@ -16,6 +16,7 @@ import { useClearHandledPushes } from '@/hooks/useClearHandledPushes'
 import { useEndFinishedLiveActivities } from '@/hooks/useEndFinishedLiveActivities'
 import NotificationBanner from './NotificationBanner'
 import BlockingNotificationModal from './BlockingNotificationModal'
+import AppelEntrantBandeau from './AppelEntrantBandeau'
 import VetementsSamModal from '@/components/vetements/VetementsSamModal'
 
 interface NotifEvent {
@@ -230,10 +231,12 @@ export default function NotificationsProvider({
           </div>
         )
       })()}
+      {/* Appel entrant d'un service : grand bandeau qui reste jusqu'à ce qu'on le traite (Olivier 25/11/2026) */}
+      <AppelEntrantBandeau appels={pending.filter(n => n.notif_type === 'appel_entrant').slice().reverse()} onDone={markRead} />
       {/* Stack de bandeaux : top-right, plus recente en haut */}
-      {pending.some(n => !n.payload?.data?.modal) && (
+      {pending.some(n => !n.payload?.data?.modal && n.notif_type !== 'appel_entrant') && (
         <div className="fixed top-4 right-4 z-[300] flex flex-col gap-2 pointer-events-none max-w-sm w-full sm:max-w-md">
-          {pending.filter(n => !n.payload?.data?.modal).slice(-5).reverse().map(n => (
+          {pending.filter(n => !n.payload?.data?.modal && n.notif_type !== 'appel_entrant').slice(-5).reverse().map(n => (
             <div key={n.id} className="pointer-events-auto">
               <NotificationBanner
                 notif={n}
