@@ -34,9 +34,10 @@ export default function AppelEntrantBandeau({ appels, onDone }: { appels: Appel[
   }, [premier])
 
   if (!appels.length) return null
-  // On quitte la page : la lecture est envoyée de façon à survivre au changement de page, sinon le bandeau reviendrait.
+  // Prendre l'appel (tout bouton sauf « Fermer ») le retire aussi des écrans des autres personnes prévenues.
+  // On quitte la page : l'envoi est fait de façon à survivre au changement de page, sinon le bandeau reviendrait.
   const aller = (id: string, url: string) => {
-    try { fetch(`/api/notifications/${id}/read`, { method: 'POST', keepalive: true }).catch(() => {}) } catch {}
+    try { fetch('/api/telephonie/pris', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notif_id: id }) }).catch(() => {}) } catch {}
     void onDone(id); window.location.href = url
   }
   const gros = 'inline-flex items-center justify-center gap-2 min-h-[56px] px-5 rounded-2xl text-base sm:text-lg font-bold'
@@ -79,6 +80,7 @@ export default function AppelEntrantBandeau({ appels, onDone }: { appels: Appel[
               )}
               <button type="button" className={`${gros} border-2 border-green-700 bg-white text-green-900 hover:bg-green-100`} onClick={() => void onDone(a.id)}><X size={22} /> Fermer</button>
             </div>
+            <p className="mt-2 text-sm text-green-800">Dès que quelqu’un prend l’appel ici, ce bandeau disparaît chez les autres. « Fermer » ne le retire que de votre écran.</p>
           </div>
         )
       })}

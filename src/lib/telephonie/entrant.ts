@@ -50,7 +50,7 @@ export async function prevenirAgents(sb: Sb, a: { id: string; numero: string | n
     }
   } catch (e: any) { corps = `Fiche non cherchée (${String(e?.message || e).slice(0, 80)}).` }
   const { sendNotification } = await import('@/lib/notifications/send')
-  await Promise.all(f.prevenir.map(uid => sendNotification(uid, 'appel_entrant', { title: titre, body: corps, action_url: url, mission_id: missionId, data: { numero: a.numero, file: a.file, fiches: nb } }).catch(() => null)))
+  await Promise.all(f.prevenir.map(uid => sendNotification(uid, 'appel_entrant', { title: titre, body: corps, action_url: url, mission_id: missionId, data: { numero: a.numero, file: a.file, fiches: nb, appel_id: a.id } }).catch(() => null)))
 }
 
 /** Un renvoi qui échoue : mail d'alerte (l'appelant risque d'être perdu). */

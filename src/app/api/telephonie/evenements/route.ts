@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     } else if (type === 'CallTransferFailed') {
       const motif = `${d.resultInformation?.message || d.resultInformation?.code || 'sans détail'}`
       // Trace pas encore écrite (refus arrivé très vite) : le premier essai était le plus complet dès qu'il y a un numéro.
-      const fait = (a.contexte?.transfert || (a.numero ? { niveau: 0, refus: [] } : undefined)) as { niveau: NiveauTransfert; refus: string[] } | undefined
+      const fait = (a.contexte?.transfert || (a.numero ? { niveau: 1, refus: [] } : undefined)) as { niveau: NiveauTransfert; refus: string[] } | undefined
       // Refus après coup : l'appelant est toujours en ligne avec VD Soft. On retente aussitôt un cran plus simple
       // (sans le numéro présenté, puis sans la fiche) avant d'alerter.
       if (fait && fait.niveau < 2 && a.statut !== 'echec') {

@@ -145,13 +145,16 @@ export default function NotificationsProvider({
         // dans la liste des non-répondus → on le retire ici aussi. 2026-09-05.
         const stillOpen = new Set(((j.notifications || []) as NotifEvent[]).map(n => n.id))
         setPending(prev => prev.filter(n => !(n.payload?.data?.modal || n.payload?.data?.question) || stillOpen.has(n.id)))
+        // Appel entrant pris par quelqu'un d'autre (ou vieux de plus de 30 min) : son grand bandeau se retire ici aussi.
+        // Marge de 20 s : un appel tout juste arrivé peut manquer dans un relevé parti avant lui (Olivier 25/11/2026).
+        setPending(prev => prev.filter(n => n.notif_type !== 'appel_entrant' || stillOpen.has(n.id) || Date.now() - +new Date(n.created_at) < 20_000))
       } catch {}
     }
     pollUnread()  // tick immediat
     const stopPoll = pollWhenVisible(pollUnread, 15_000, { immediate: false })
     // Tant qu'un popup bloquant est affiché : 4 s (pour le fermer vite quand
     // quelqu'un d'autre a répondu).
-    const fastId = setInterval(() => { if (pendingRef.current.some(n => n.payload?.data?.modal)) pollUnread() }, 4_000)
+    const fastId = setInterval(() => { if (pendingRef.current.some(n => n.payload?.data?.modal || n.notif_type === 'appel_entrant')) pollUnread() }, 4_000)
 
     return () => {
       clearInterval(fastId)

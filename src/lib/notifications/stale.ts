@@ -37,7 +37,9 @@ export interface NotifRef { key: string; mission_id?: string | null; action_url?
 
 /** Clés des notifs sans objet pour ce chauffeur. */
 export async function staleNotifKeys(userId: string, items: NotifRef[]): Promise<string[]> {
-  const withMission = items.map(n => ({ ...n, mid: missionIdOf(n) })).filter(n => n.mid)
+  // Appel entrant d'un service : la fiche liée est celle de l'appelant, souvent clôturée et jamais attribuée à la
+  // personne prévenue. Elle ne rend pas la notification sans objet (Olivier 25/11/2026).
+  const withMission = items.filter(n => n.notif_type !== 'appel_entrant').map(n => ({ ...n, mid: missionIdOf(n) })).filter(n => n.mid)
   if (!withMission.length) return []
   const mids = [...new Set(withMission.map(n => n.mid as string))]
   const { data } = await createAdminClient()

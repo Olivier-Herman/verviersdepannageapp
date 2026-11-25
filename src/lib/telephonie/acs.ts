@@ -62,7 +62,10 @@ export async function transferer(connexionId: string, cible: any, ctx: { sujet?:
   const numero = ctx.numero && /^\+\d{6,15}$/.test(ctx.numero) ? ctx.numero : null
   const refus: string[] = []
   const chemin = `/calling/callConnections/${encodeURIComponent(connexionId)}:transferToParticipant`
-  let niveau: NiveauTransfert = numero ? (ctx.niveau ?? 0) : 2
+  // Le numéro présenté (niveau 0, sourceCallerIdNumber) est refusé par Microsoft pour ces appels (« not supported for
+  // transfer in a One Phone System call », essai du 25/11/2026) : c'est la fiche de l'appelant (niveau 1) qui porte
+  // son numéro jusqu'à Teams. On commence donc au niveau 1.
+  let niveau: NiveauTransfert = numero ? (Math.max(ctx.niveau ?? 1, 1) as NiveauTransfert) : 2
   for (;;) {
     const corps: any = { targetParticipant: cible, operationContext: ctx.operationContext }
     if (numero && niveau === 0) corps.sourceCallerIdNumber = { value: numero }
