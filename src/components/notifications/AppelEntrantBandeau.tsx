@@ -66,10 +66,10 @@ export default function AppelEntrantBandeau({ appels, onDone }: { appels: Appel[
               {ficheId ? (
                 <>
                   <button type="button" className={`${gros} flex-1 bg-green-700 text-white hover:bg-green-800`} onClick={() => aller(a.id, `/dispatch/${ficheId}`)}><FolderOpen size={22} /> Ouvrir la fiche</button>
-                  {tel && <button type="button" className={`${gros} border-2 border-green-700 bg-white text-green-900 hover:bg-green-100`} onClick={() => aller(a.id, `/appel?tel=${encodeURIComponent(tel)}`)}><Search size={22} /> Autre fiche</button>}
+                  {tel && <button type="button" className={`${gros} border-2 border-green-700 bg-white text-green-900 hover:bg-green-100`} onClick={() => aller(a.id, `/appel?tel=${encodeURIComponent(tel)}&choisir=1`)}><Search size={22} /> Autre fiche</button>}
                 </>
               ) : tel && nb > 1 ? (
-                <button type="button" className={`${gros} flex-1 bg-green-700 text-white hover:bg-green-800`} onClick={() => aller(a.id, `/appel?tel=${encodeURIComponent(tel)}`)}><List size={22} /> Choisir parmi les {nb} fiches</button>
+                <button type="button" className={`${gros} flex-1 bg-green-700 text-white hover:bg-green-800`} onClick={() => aller(a.id, `/appel?tel=${encodeURIComponent(tel)}&choisir=1`)}><List size={22} /> Choisir parmi les {nb} fiches</button>
               ) : tel ? (
                 <>
                   <button type="button" className={`${gros} flex-1 bg-green-700 text-white hover:bg-green-800`} onClick={() => aller(a.id, `/appel?tel=${encodeURIComponent(tel)}`)}><Search size={22} /> Chercher la fiche</button>

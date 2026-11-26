@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Phone, Plus, Loader2 } from 'lucide-react'
 import ChoisirFiche, { type FicheChoix } from '@/components/appels/ChoisirFiche'
 
-export default function AppelClient({ numero, numeroLisible, fiches, erreur }: { numero: string; numeroLisible: string; fiches: FicheChoix[]; erreur: string | null }) {
+export default function AppelClient({ numero, numeroLisible, fiches, erreur, chercher }: { numero: string; numeroLisible: string; fiches: FicheChoix[]; erreur: string | null; chercher?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(erreur)
 
@@ -27,7 +27,8 @@ export default function AppelClient({ numero, numeroLisible, fiches, erreur }: {
         <div>
           <h1 className="text-xl font-bold text-ink">{numeroLisible || 'Numéro masqué'}</h1>
           <p className="text-sm text-ink-secondary">
-            {!numeroLisible ? 'L’appelant cache son numéro : cherchez la fiche.'
+            {chercher && numeroLisible ? 'Demandez au client sa plaque, son nom ou son numéro de fiche, cherchez ci-dessous, puis touchez la bonne fiche : elle sera liée à ce numéro.'
+              : !numeroLisible ? 'L’appelant cache son numéro : cherchez la fiche.'
               : fiches.length ? `${fiches.length} fiche${fiches.length > 1 ? 's' : ''} avec ce numéro : laquelle concerne cet appel ?`
               : 'Ce numéro n’est sur aucune fiche : cherchez-la, ou créez-en une (le numéro y sera déjà).'}
           </p>
@@ -35,7 +36,7 @@ export default function AppelClient({ numero, numeroLisible, fiches, erreur }: {
       </div>
       {err && <p className="text-sm text-red-800 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
       <div className="bg-surface border rounded-2xl p-4">
-        <ChoisirFiche proposees={fiches} choisie={busy} onChoisir={ouvrir} autoFocus={!fiches.length} />
+        <ChoisirFiche proposees={fiches} choisie={busy} onChoisir={ouvrir} autoFocus={chercher || !fiches.length} />
       </div>
       {busy && <p className="flex items-center gap-2 text-sm text-ink-secondary"><Loader2 size={16} className="animate-spin" /> Ouverture de la fiche…</p>}
       <div className="flex flex-wrap gap-2">

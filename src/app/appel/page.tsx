@@ -2,6 +2,8 @@
 // application pour les appels entrants » de la stratégie d'appel Teams, adresse /appel?tel={phone}). Olivier 24/11/2026.
 // Une fiche évidente pour ce numéro (numéro retenu, ou une seule fiche en cours) → elle s'ouvre directement.
 // Sinon : choix parmi les fiches du numéro, ou recherche ; le choix retient le numéro pour la fiche.
+// ?choisir=1 (bouton « Autre fiche » du bandeau d'appel, Olivier 26/11/2026) : jamais d'ouverture directe, on arrive
+// sur l'écran de recherche pour interroger le client puis lier la bonne fiche.
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
@@ -31,6 +33,7 @@ export default async function AppelPage({ searchParams }: { searchParams?: { tel
   return (
     <AppShell title="Appel en cours" userName={u.name || ''} userEmail={u.email || undefined} userId={u.id} userRole={u.role || ''} userModules={u.modules || []}>
       <AppelClient
+        chercher={!!searchParams?.choisir}
         numero={tel} numeroLisible={motifNumero(tel) ? numeroLisible(tel) : ''} erreur={erreur}
         fiches={fiches.slice(0, 8).map(f => ({ id: f.id, ...libelleFiche(f) }))}
       />
