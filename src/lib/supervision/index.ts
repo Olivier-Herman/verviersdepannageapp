@@ -175,8 +175,14 @@ async function erp(uids: number[], d1: string, d2: string, qui: string, poids: R
   const dom = [['create_uid', 'in', uids], ['create_date', '>=', dt(d1)], ['create_date', '<', dt(d2)]]
   for (const c of [...new Set(Object.values(ODOO_COMPANIES).map(Number))]) {
     try {
-      const moves: any[] = await odooRpcCompany(c, 'account.move', 'search_read', [[['company_id', '=', c], ...dom]], { fields: ['name', 'move_type', 'partner_id', 'amount_untaxed_signed', 'state', 'create_date', 'ref'], limit: 2000 })
+      const moves: any[] = await odooRpcCompany(c, 'account.move', 'search_read', [[['company_id', '=', c], ...dom]], { fields: ['name', 'move_type', 'partner_id', 'amount_untaxed_signed', 'state', 'create_date', 'ref', 'origin_payment_id', 'statement_line_id'], limit: 2000 })
+      // Un encaissement = UN geste (Olivier 26/11/2026, rapport de Jona : 4 restitutions comptées comme 4 paiements,
+      // 4 « pièces encodées » et 4 « lettrages »). L'écriture qu'un paiement crée tout seul, et celle d'une ligne de
+      // banque importée, ne sont pas des pièces encodées ; le lettrage automatique d'un paiement avec sa facture n'est
+      // pas un rapprochement. Seul le paiement compte.
+      const ecrituresPaiement = new Set<number>()
       for (const m of moves) {
+        if (m.origin_payment_id || m.statement_line_id) { if (m.origin_payment_id) ecrituresPaiement.add(m.id); continue }
         const client = m.move_type === 'out_invoice' || m.move_type === 'out_refund'
         const cat = client ? 'erp_facture' : 'erp_piece'
         const genre = ({ out_invoice: 'Facture', out_refund: 'Note de crédit', in_invoice: 'Facture d’achat', in_refund: 'Note de crédit fournisseur', entry: 'Opération diverse' } as any)[m.move_type] || m.move_type
@@ -185,9 +191,17 @@ async function erp(uids: number[], d1: string, d2: string, qui: string, poids: R
           montant: client ? Number(m.amount_untaxed_signed || 0) : null, points: poids[cat] ?? (client ? 0 : 3), cleUnique: `${qui}:erp:${c}:${m.id}`,
         })
       }
-      const pays: any[] = await odooRpcCompany(c, 'account.payment', 'search_read', [[['company_id', '=', c], ...dom]], { fields: ['name', 'amount', 'payment_type', 'partner_id', 'create_date'], limit: 2000 })
+      const pays: any[] = await odooRpcCompany(c, 'account.payment', 'search_read', [[['company_id', '=', c], ...dom]], { fields: ['name', 'amount', 'payment_type', 'partner_id', 'create_date', 'move_id'], limit: 2000 })
+      for (const p of pays) if (p.move_id) ecrituresPaiement.add(Number(p.move_id[0]))
       for (const p of pays) actions.push({ at: iso(p.create_date), qui, cat: 'erp_paiement', titre: `${p.payment_type === 'outbound' ? 'Paiement fournisseur' : 'Paiement reçu'} ${p.name || ''}`.trim(), detail: [p.partner_id?.[1], `${Number(p.amount || 0).toFixed(2)} €`].filter(Boolean).join(' · '), points: poids.erp_paiement ?? 2, cleUnique: `${qui}:pay:${c}:${p.id}` })
-      const lett: any[] = await odooRpcCompany(c, 'account.partial.reconcile', 'search_read', [[['company_id', '=', c], ...dom]], { fields: ['create_date', 'amount'], limit: 5000 })
+      const lettTous: any[] = await odooRpcCompany(c, 'account.partial.reconcile', 'search_read', [[['company_id', '=', c], ...dom]], { fields: ['create_date', 'amount', 'debit_move_id', 'credit_move_id'], limit: 5000 })
+      // Lignes des écritures de paiement : leur lettrage avec la facture fait partie de l'encaissement.
+      const lignesPaiement = new Set<number>()
+      if (ecrituresPaiement.size && lettTous.length) {
+        const aml: any[] = await odooRpcCompany(c, 'account.move.line', 'search_read', [[['move_id', 'in', [...ecrituresPaiement]]]], { fields: ['id'], limit: 20000 })
+        for (const x of aml) lignesPaiement.add(Number(x.id))
+      }
+      const lett = lettTous.filter(l => !lignesPaiement.has(Number(l.debit_move_id?.[0])) && !lignesPaiement.has(Number(l.credit_move_id?.[0])))
       for (const l of lett) actions.push({ at: iso(l.create_date), qui, cat: 'erp_lettrage', titre: 'Lettrage', detail: `${Number(l.amount || 0).toFixed(2)} €`, points: poids.erp_lettrage ?? 1, cleUnique: `${qui}:rec:${c}:${l.id}` })
     } catch (e: any) { erreurs.push(`ERP société ${c} : ${String(e?.message || e).slice(0, 120)}`) }
   }
