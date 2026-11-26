@@ -25,6 +25,8 @@ import { getServerSession }  from 'next-auth'
 import { authOptions }       from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase'
 import { exitParcNow }       from '@/lib/parc/exit-parc'
+import { printZPLRaw }       from '@/lib/print/zebra-raw'
+import { buildAbandonLabelZPL } from '@/lib/print/zpl-templates/abandon-label'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +41,50 @@ async function getActor() {
 const str = (v: any, max = 200) => {
   const s = String(v ?? '').trim()
   return s ? s.slice(0, max) : null
+}
+
+// ── ÉTIQUETTE « ABANDON » (Olivier 26/11/2026) ─────────────────────────────
+// Sort en même temps que le document : logo de recyclage, marque, modèle, châssis, date de l'abandon, et
+// « CPR » / « AXEL » à entourer au marqueur. Le n° affiché est celui de la fiche principale (l'abandon peut
+// être posé sur le volet Gardiennage). Imprimante hors ligne : l'étiquette part en file et ressort toute seule.
+async function imprimerEtiquette(sb: ReturnType<typeof createAdminClient>, missionId: string, actorId: string | null): Promise<{ ok: boolean; enFile: boolean; erreur: string | null }> {
+  try {
+    const { data: m } = await sb.from('incoming_missions')
+      .select('id, mission_number, vehicle_brand, vehicle_model, vehicle_plate, vehicle_vin, abandon_at, abandon_data, dossier_leg, parent_mission_id')
+      .eq('id', missionId).maybeSingle()
+    if (!m || !(m as any).abandon_at) return { ok: false, enFile: false, erreur: 'pas d’abandon enregistré sur cette fiche' }
+    const parent = (m as any).dossier_leg && (m as any).parent_mission_id
+      ? (await sb.from('incoming_missions').select('mission_number').eq('id', (m as any).parent_mission_id).maybeSingle()).data
+      : null
+    const v = (m as any).abandon_data?.vehicle || {}
+    const zpl = buildAbandonLabelZPL({
+      missionNumber: (parent as any)?.mission_number ?? (m as any).mission_number ?? null,
+      brand: v.brand || (m as any).vehicle_brand, model: v.model || (m as any).vehicle_model,
+      plate: v.plate || (m as any).vehicle_plate, vin: v.vin || (m as any).vehicle_vin,
+      abandonAt: (m as any).abandon_at,
+    })
+    const r = await printZPLRaw(zpl, { missionId, context: 'abandon_label' })
+    await sb.from('mission_logs').insert({
+      mission_id: missionId, actor_id: actorId,
+      action: r.ok ? 'label_printed' : 'label_print_failed',
+      notes: r.ok ? 'Étiquette « Abandon – recyclage » imprimée'
+        : r.queued ? 'Étiquette « Abandon – recyclage » en attente : imprimante injoignable, elle sortira dès qu’elle répond'
+        : `Étiquette « Abandon – recyclage » NON imprimée : ${r.error || 'erreur inconnue'}`,
+      metadata: { kind: 'abandon', ok: r.ok, queued: !!r.queued, error: r.ok ? null : (r.error || null) },
+    }).then(() => {}, () => {})
+    return { ok: r.ok, enFile: !!r.queued, erreur: r.ok ? null : (r.error || 'erreur inconnue') }
+  } catch (e: any) {
+    return { ok: false, enFile: false, erreur: e?.message || 'erreur inconnue' }
+  }
+}
+
+// PUT /api/missions/[id]/abandon → réimprime l'étiquette « Abandon – recyclage ».
+export async function PUT(_req: Request, { params }: { params: { id: string } }) {
+  const actor = await getActor()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const etiquette = await imprimerEtiquette(createAdminClient(), params.id, actor.id)
+  if (!etiquette.ok && !etiquette.enFile) return NextResponse.json({ error: `Étiquette non imprimée : ${etiquette.erreur}` }, { status: 500 })
+  return NextResponse.json({ ok: true, etiquette })
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -143,7 +189,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!ex.ok) exitWarning = `Abandon enregistré, mais le véhicule n'a pas pu sortir du parc : ${ex.error}`
   }
 
-  return NextResponse.json({ ok: true, abandon, doc_url: `/api/missions/${params.id}/abandon-doc`, exit_warning: exitWarning })
+  const etiquette = await imprimerEtiquette(sb, params.id, actor.id)
+
+  return NextResponse.json({ ok: true, abandon, doc_url: `/api/missions/${params.id}/abandon-doc`, exit_warning: exitWarning, etiquette })
 }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {

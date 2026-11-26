@@ -171,9 +171,24 @@ export default function AbandonVehiculeButton({
       // Abandon = sortie du parc + dépannage à facturer (Olivier 14/09/2026).
       // Si la sortie a été refusée (scénario SNC manquant, contrôle de sortie), on le dit.
       if (j?.exit_warning) window.alert(j.exit_warning)
+      // Étiquette « Abandon – recyclage » (Olivier 26/11/2026) : imprimée avec le document ; on ne dit rien si elle est sortie.
+      else if (j?.etiquette && !j.etiquette.ok) window.alert(j.etiquette.enFile
+        ? 'L’étiquette « Abandon » attend l’imprimante : elle sortira dès que l’imprimante répond.'
+        : `L’étiquette « Abandon » n’a pas pu être imprimée (${j.etiquette.erreur}). Utilisez « Réimprimer l’étiquette » sur la fiche.`)
     } catch (e: any) {
       setErr(e?.message || 'Erreur')
     } finally { setBusy(false) }
+  }
+
+  const [etiquetteMsg, setEtiquetteMsg] = useState<string | null>(null)
+  const reimprimer = async () => {
+    setBusy(true); setErr(null); setEtiquetteMsg(null)
+    try {
+      const r = await fetch(`/api/missions/${missionId}/abandon`, { method: 'PUT' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j?.error || 'Impression impossible.')
+      setEtiquetteMsg(j?.etiquette?.ok ? 'Étiquette envoyée à l’imprimante.' : 'Imprimante injoignable : l’étiquette sortira dès qu’elle répond.')
+    } catch (e: any) { setErr(e?.message || 'Erreur') } finally { setBusy(false) }
   }
 
   const cancelAbandon = async () => {
@@ -198,16 +213,21 @@ export default function AbandonVehiculeButton({
           Par {signedName || '—'} le {new Date(abandonAt).toLocaleDateString('fr-BE')}
           {abandonData?.waive_storage ? ' · gardiennage remis à zéro' : ''}
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a href={docUrl} target="_blank" rel="noopener noreferrer"
             className="flex-1 py-2 text-center bg-surface hover:bg-surface-2 border border-app rounded-xl text-sm font-medium text-ink">
             🖨️ Rouvrir le document
           </a>
+          <button type="button" onClick={reimprimer} disabled={busy}
+            className="flex-1 min-h-[44px] py-2 text-center bg-surface hover:bg-surface-2 border border-app rounded-xl text-sm font-medium text-ink disabled:opacity-50">
+            🏷️ Réimprimer l&apos;étiquette
+          </button>
           <button type="button" onClick={cancelAbandon} disabled={busy}
             className="px-3 py-2 text-xs text-critical hover:underline disabled:opacity-50">
             Annuler l&apos;abandon
           </button>
         </div>
+        {etiquetteMsg && <p className="text-ink text-xs">{etiquetteMsg}</p>}
         {err && <p className="text-critical text-xs">⚠ {err}</p>}
       </div>
     )
