@@ -138,6 +138,8 @@ async function handleGET(req: Request) {
     const { isTrajetVide } = await import('@/lib/missions/mission-types')
     const { vabSolutionTrajetVide } = await import('@/lib/cloture/transform/vab')
     const candidats: any[] = ((fiches || []) as any[]).filter(f => !isTrajetVide(f.mission_type) || vabSolutionTrajetVide(f.panne_motif))
+      // …et jamais un trajet vide qui est un REMORQUAGE chez VAB : sa fin le déclarerait livré (Olivier 25/11/2026).
+      .filter(f => !(isTrajetVide(f.mission_type) && /remorquage/i.test(types[aidCible(f) || ''] || '')))
     if (candidats.length === 0) {
       await trace({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
       return NextResponse.json({ ok: true, ouverts: ouverts.length, vrIgnorés: vr.length, aTraiter: 0 })
@@ -159,13 +161,17 @@ async function handleGET(req: Request) {
     const nbEssais = new Map<string, number>()
     // Dernier échec « adresse de livraison sans rue » : l'adresse alors refusée.
     const adresseRefusée = new Map<string, string>()
+    // Déplacement pour rien sur un remorquage VAB : laissé à la main une fois pour toutes (Olivier 25/11/2026).
+    const aLaMain = new Set<string>()
     for (const l of (essais || []) as any[]) {
+      if (l.metadata?.trajetVideRemorquage) aLaMain.add(l.mission_id)
       if (!dernierEssai.has(l.mission_id)) {
         dernierEssai.set(l.mission_id, l.created_at)
         if (l.action === 'vab_close_failed' && typeof l.metadata?.adresseIllisible === 'string') adresseRefusée.set(l.mission_id, l.metadata.adresseIllisible)
       }
       nbEssais.set(l.mission_id, (nbEssais.get(l.mission_id) || 0) + 1)
     }
+    for (let i = candidats.length - 1; i >= 0; i--) if (aLaMain.has(candidats[i].id)) candidats.splice(i, 1)
     // Adresse de livraison sans rue : rejouer avec la MÊME adresse échoue à coup sûr (2JXX385 : 46 essais
     // du 06 au 09/11/2026). Le chauffeur a été prévenu ; on attend qu'elle change (Olivier 09/11/2026).
     for (let i = candidats.length - 1; i >= 0; i--) {

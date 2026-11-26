@@ -249,6 +249,23 @@ export interface VabTowCloseInput {
   actorId?: string | null
   /** « Transformer en remorquage » : un échec ici = pas de demande de remorquage chez VAB → alerte dispatch. */
   transformation?: boolean
+  /** Clôture « déplacement pour rien » du chauffeur (la fiche n'est pas encore passée en trajet vide). */
+  trajetVide?: boolean
+  /** Clôture lancée par le chauffeur : le dispatch est prévenu si elle n'aboutit pas (le filet, lui, ne prévient pas). */
+  alerteSiEchec?: boolean
+}
+
+/** Rappel au dispatch : un dossier VAB à clôturer à la main dans Comet. */
+async function alerteComet(missionId: string, titre: string, corps: string) {
+  try {
+    const sb = createAdminClient()
+    const { data: mm } = await sb.from('incoming_missions').select('vehicle_plate, mission_number').eq('id', missionId).maybeSingle()
+    const qui = [(mm as any)?.vehicle_plate, (mm as any)?.mission_number ? `n° ${(mm as any).mission_number}` : ''].filter(Boolean).join(' · ')
+    const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+    await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'vab_onsite_failed', {
+      title: `⚠️ VAB ${qui} : ${titre}`, body: corps, action_url: `/missions/${missionId}`,
+    } as any)
+  } catch (e: any) { console.error('[vab] rappel Comet KO :', e?.message) }
 }
 
 /**
@@ -297,20 +314,26 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     if (input.transformation && (action === 'vab_close_failed' || (action === 'vab_close_skipped' && !/déjà clôturée/.test(notes)))) {
       const { data: mm } = await sb.from('incoming_missions').select('vehicle_plate, mission_number').eq('id', input.missionId).maybeSingle()
       await alertOnSiteFailed({ missionId: input.missionId, externalId: input.externalId, tow: true }, mm, notes.replace(/^VAB : /, '').slice(0, 160))
+    } else if (input.alerteSiEchec && action === 'vab_close_failed') {
+      await alerteComet(input.missionId, 'clôture non passée',
+        `VAB n'a pas accepté la clôture du déplacement pour rien (${notes.replace(/^VAB : /, '').slice(0, 120)}). Nouvel essai automatique dans le quart d'heure ; sinon à clôturer dans Comet.`)
     }
   }
 
   const assignmentId = vabAssignmentId(input.externalId)
   if (!assignmentId) { await log('vab_close_skipped', 'VAB : AssignmentId introuvable dans external_id', { externalId: input.externalId }); return }
 
-  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at, mission_type, panne_motif').eq('id', input.missionId).maybeSingle()
+  const { data: m } = await sb.from('incoming_missions').select('vab_closed_at, mission_type, panne_motif, panne_motif_label').eq('id', input.missionId).maybeSingle()
   // Trajet vide : jamais « Mobilité rétablie » (2EVV422, 13/10/2026). Le motif choisi par le
   // chauffeur donne l'issue « Client Pas Aidé » de VAB ; sans correspondance sûre, la main à l'humain.
   const { isTrajetVide } = await import('@/lib/missions/mission-types')
-  const trajetVide = isTrajetVide((m as any)?.mission_type)
+  const trajetVide = !!input.trajetVide || isTrajetVide((m as any)?.mission_type)
   const solutionTrajetVide = trajetVide ? vabSolutionTrajetVide((m as any)?.panne_motif) : null
   if (trajetVide && !solutionTrajetVide) {
     await log('vab_close_skipped', `VAB : trajet vide (motif ${(m as any)?.panne_motif || 'non renseigné'}) — clôture à faire à la main dans Comet`, { assignmentId, trajetVide: true })
+    // Motif sans issue VAB connue (« un autre dépanneur a été envoyé »…) : on ne tente rien, on prévient (Olivier 25/11/2026).
+    if (input.alerteSiEchec) await alerteComet(input.missionId, 'déplacement pour rien à clôturer dans Comet',
+      `Motif du chauffeur : ${(m as any)?.panne_motif_label || (m as any)?.panne_motif || 'non renseigné'}. Pas de clôture automatique pour ce motif : à faire à la main dans Comet.`)
     return
   }
   if ((m as any)?.vab_closed_at) {
@@ -406,6 +429,16 @@ export async function runVabTowClose(input: VabTowCloseInput): Promise<void> {
     const { loginVab: lv3 } = await import('@/lib/vab/scraper')
     const types = await vabTaskTypes(await lv3())
     const type = types[assignmentId] || ''
+    if (/remorquage/i.test(type) && !estVehiculeRemplacementVab(type) && trajetVide) {
+      // Déplacement pour rien sur un REMORQUAGE chez VAB : leur seule fin de remorquage déclare le véhicule livré
+      // (parking, clé à la réception). Jamais en automatique : à la main dans Comet (Olivier 25/11/2026, 1LDC775).
+      await log('vab_close_skipped', 'VAB : déplacement pour rien sur un remorquage — clôture à faire à la main dans Comet (jamais « livré » en automatique)',
+        { assignmentId, trajetVide: true, trajetVideRemorquage: true })
+      await releaseLock()
+      if (input.alerteSiEchec) await alerteComet(input.missionId, 'déplacement pour rien à clôturer dans Comet',
+        'Chez VAB, ce dossier est un remorquage : sa clôture automatique le déclarerait livré. À clôturer à la main dans Comet.')
+      return
+    }
     if (/remorquage/i.test(type) && !estVehiculeRemplacementVab(type)) {
       const { closeVabTowInBrowser } = await import('@/lib/vab/sign-browser')
       const r = await closeVabTowInBrowser({ assignmentId, vehicleLocation: input.vehicleLocation || 'Parking' })

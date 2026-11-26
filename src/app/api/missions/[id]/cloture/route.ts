@@ -451,7 +451,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const transformation = outcomeIsRem(outcome)
     // Dépannage réussi : même clôture complète tout de suite (codes « Mobilité rétablie »),
     // c'est exactement ce que le filet faisait 13 min plus tard en médiane.
-    const complète = (isTow && arrived) || transformation || outcome === 'dsp'
+    // Déplacement pour rien (Olivier 25/11/2026) : la clôture complète tout de suite, avec l'issue « Client pas aidé »
+    // du motif. Avant, la brique « écran de codes » partait sans kilométrage, VAB refusait à chaque fois et le dispatch
+    // recevait une alerte pour rien, le filet soldant le dossier un quart d'heure plus tard.
+    const dpr = outcome === 'dpr'
+    const complète = (isTow && arrived) || transformation || outcome === 'dsp' || dpr
     const vabTask = (complète
       ? runVabTowClose({
           missionId:       (m as any).id,
@@ -462,6 +466,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           signature:       common.signature ?? null,
           actorId:         (actor as any)?.id ?? null,
           transformation,
+          // La fiche ne passe en « trajet vide » qu'au « Terminer » qui suit : on le dit ici, sinon VAB recevrait
+          // « Mobilité rétablie » pour un déplacement pour rien.
+          trajetVide:      dpr,
+          alerteSiEchec:   dpr,
         })
       : runVabOnSite({
           missionId:     (m as any).id,
