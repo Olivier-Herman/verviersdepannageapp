@@ -262,6 +262,11 @@ function groupBy<T>(l: T[], k: (x: T) => string): Record<string, T[]> {
   return o
 }
 
+/** Mobi dans les rapports (Olivier 24/11/2026 : « il manque le mien ») : ses propres actions, comptées comme celles
+ *  du bureau ; ce que ses automatismes ont fait seuls est montré à part et n'entre pas dans son indice. Ses comptes
+ *  VD Soft et ERP viennent des réglages mobi_user_ids / mobi_odoo_uids (lus dans collecter). */
+export const mobiPersonne = (cfg: Config): Personne => ({ nom: 'Mobi', user_ids: [], odoo_uids: [], signatures: cfg.mobi_signatures || [], depuis: '2000-01-01T00:00:00.000Z' })
+
 // ── Chiffres d'une personne ─────────────────────────────────────────────────────────────────────────────────────
 const PAUSE_MS = 30 * 60e3
 
@@ -364,7 +369,7 @@ export function rapportJour(cfg: Config, p: Personne, jour: string, c: Collecte,
   const mes = c.actions.filter(a => a.qui === p.nom)
   const k = chiffres(mes)
   const dateTxt = new Date(`${jour}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' })
-  const debutTxt = p.depuis > c.d1 ? ` (suivi à partir de ${heureBxlTxt(p.depuis)})` : ''
+  const debutTxt = p.depuis > c.d1 && p.depuis < c.d2 ? ` (suivi à partir de ${heureBxlTxt(p.depuis)})` : ''
   let corps = `<p style="color:#475569;margin:0 0 8px">${esc(dateTxt)}${debutTxt}</p>`
   corps += tuiles([
     ['Actions', String(k.actions)], ['Présence active', k.premier ? `${heureBxlTxt(k.premier)} → ${heureBxlTxt(k.dernier!)}` : '—'],
@@ -375,11 +380,14 @@ export function rapportJour(cfg: Config, p: Personne, jour: string, c: Collecte,
   corps += `<h3 style="margin:16px 0 4px">Par type de travail</h3>` + (cats.length ? table(['Type', 'Nombre', 'Points'], cats.map(([cle, v]) => [esc(titreCat(cle)), String(v.n), String(v.points)])) : '<p>Aucune action enregistrée.</p>')
   const detail = mes.filter(a => a.cat !== 'sync' && a.cat !== 'appel_fin').sort((a, b) => a.at.localeCompare(b.at))
   if (detail.length) corps += `<h3 style="margin:16px 0 4px">Détail (${detail.length})</h3>` + table(['Heure', 'Type', 'Action', 'Fiche', 'Détail'], detail.map(a => [heureBxlTxt(a.at), esc(titreCat(a.cat).split(' (')[0]), esc(a.titre) + (a.montant ? ` <b>${eur(a.montant)}</b>` : ''), ficheTxt(a, cfg.app_url), esc(a.detail || '')]))
-  // Rattrapé par les agents de Mobi : ce qu'un humain aurait dû faire dans la journée.
-  const agents = c.actions.filter(a => a.qui === 'Agents' && !['mail', 'sync', 'appel_fin'].includes(a.cat))
+  // Rattrapé par les agents de Mobi : ce qu'un humain aurait dû faire dans la journée. Dans le rapport de Mobi, ce
+  // sont « ses agents », mails partis seuls compris, hors de son indice.
+  const estMobi = p.nom === 'Mobi'
+  const agents = c.actions.filter(a => a.qui === 'Agents' && !['sync', 'appel_fin'].includes(a.cat) && (estMobi || a.cat !== 'mail'))
   if (agents.length) {
     const g = groupBy(agents, a => a.cat)
-    corps += `<h3 style="margin:16px 0 4px">Resté de côté, rattrapé par Mobi (agents, tout le bureau)</h3>` + table(['Type', 'Nombre', 'Exemples'], Object.entries(g).map(([cle, l]) => [esc(titreCat(cle)), String(l.length), l.slice(0, 4).map(a => `${esc(a.titre)} ${ficheTxt(a, cfg.app_url)}`).join('<br>')]))
+    const titreAg = estMobi ? `Fait par tes agents (${agents.length}, hors indice)` : 'Resté de côté, rattrapé par Mobi (agents, tout le bureau)'
+    corps += `<h3 style="margin:16px 0 4px">${titreAg}</h3>` + table(['Type', 'Nombre', 'Exemples'], Object.entries(g).map(([cle, l]) => [esc(cle === 'mail' ? 'Mails partis seuls (signature de service)' : titreCat(cle)), String(l.length), l.slice(0, 4).map(a => `${esc(a.titre)} ${ficheTxt(a, cfg.app_url)}`).join('<br>')]))
   }
   corps += blocFiles(files, p)
   if (c.erreurs.length) corps += `<p style="color:#b45309;font-size:12px">Sources incomplètes : ${c.erreurs.map(esc).join(' · ')}</p>`
@@ -394,7 +402,7 @@ export function blocFiles(files: File[], p?: Personne) {
 
 /** Tableau « Qui fait quoi ? » : catégories × personnes, doublons et tâches laissées aux agents. */
 export function quiFaitQuoi(cfg: Config, c: Collecte): string {
-  const gens = [...cfg.personnes.map(p => p.nom), 'Mobi', 'Agents']
+  const gens = [...new Set([...cfg.personnes.map(p => p.nom), 'Mobi', 'Agents'])]
   const ordre = [...CATS.map(x => x.cle), ...Object.keys(AUTRES)].filter(k => k !== 'sync' && k !== 'appel_interne')
   const lignes: string[][] = []
   for (const cle of ordre) {

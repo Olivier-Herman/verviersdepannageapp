@@ -1,5 +1,5 @@
 // src/app/api/cron/supervision/route.ts — rapports de suivi du bureau envoyés à Mobi (Olivier 24/11/2026).
-// Chaque jour à 21 h à Bruxelles : la journée de chaque personne suivie ; le samedi en plus, la semaine (lundi →
+// Chaque jour à 21 h à Bruxelles : la journée de chaque personne suivie et celle de Mobi ; le samedi en plus, la semaine (lundi →
 // samedi) ; le 1er du mois en plus, le mois écoulé. Vercel planifie en UTC : passages à 19 h et 20 h UTC, la garde ne
 // laisse travailler qu'à 21 h belges, une fois. « ?force=1 » relance à la main ; « &jour=AAAA-MM-JJ » rejoue un jour,
 // « &quoi=jour|semaine|mois » limite l'envoi. Un échec part par mail au même destinataire (rien dans l'application).
@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
 import { sendEmail } from '@/lib/emails'
 import { gardeHeureBxl, heureBxl } from '@/lib/cron/heure-bxl'
-import { lireConfig, collecter, filesEnAttente, rapportJour, rapportPeriode, bornesJour, semaineDe, esc, table, tuiles, page, heureBxlTxt } from '@/lib/supervision'
+import { lireConfig, collecter, filesEnAttente, rapportJour, rapportPeriode, mobiPersonne, bornesJour, semaineDe, esc, table, tuiles, page, heureBxlTxt } from '@/lib/supervision'
 import { releverAppels, lireAppels, rapportTelephone } from '@/lib/supervision/appels'
 
 export const dynamic = 'force-dynamic'
@@ -36,7 +36,8 @@ export async function GET(req: NextRequest) {
     const rel = await releverAppels(sb, cfg, new Date(+new Date(d2) - 26 * 3600e3).toISOString(), d2)
     const fmt = { esc, table, tuiles, heure: heureBxlTxt }
     const files = await filesEnAttente(sb, cfg)
-    const actifs = (fin: string) => cfg.personnes.filter(p => p.depuis < fin)
+    // Mobi a aussi son rapport (Olivier 24/11/2026), toujours en dernier.
+    const actifs = (fin: string) => [...cfg.personnes.filter(p => p.depuis < fin), mobiPersonne(cfg)]
 
     if (!quoi || quoi === 'jour') {
       const c = await collecter(sb, cfg, d1, d2)
