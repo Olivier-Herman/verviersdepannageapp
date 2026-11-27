@@ -23,7 +23,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, notified, dpReminders, scrada: backlog, ...r })
   } catch (e: any) {
     const msg = String(e?.message || e).slice(0, 300)
-    try { await createAdminClient().from('app_settings').upsert({ key: 'especes_last_run', value: JSON.stringify({ at: new Date().toISOString(), ok: false, error: msg }) }, { onConflict: 'key' }) } catch {}
+    // Un échec doit se voir (27/11/2026 : bloqué 7 jours sans alerte) : on garde le début de la panne, et on prévient
+    // une seule fois, au premier passage raté ; l'avertissement reste ensuite dans la fenêtre « Espèces ».
+    try {
+      const sb = createAdminClient()
+      const { data } = await sb.from('app_settings').select('value').eq('key', 'especes_last_run').maybeSingle()
+      let prev: any = null; try { prev = data?.value ? JSON.parse(String(data.value)) : null } catch { prev = null }
+      const now = new Date().toISOString()
+      const depuis = prev && prev.ok === false ? (prev.depuis || prev.at) : now
+      await sb.from('app_settings').upsert({ key: 'especes_last_run', value: JSON.stringify({ at: now, depuis, ok: false, error: msg }) }, { onConflict: 'key' })
+      if (!prev || prev.ok !== false) {
+        const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+        await sendNotificationToRoles(['superadmin'], 'especes_panne', {
+          title: '⚠️ Espèces : la liste n’est plus mise à jour',
+          body: `Les nouveaux encaissements en espèces n’arrivent plus dans la fenêtre « Espèces » : ${msg.slice(0, 160)}`,
+          action_url: '/admin/settings',
+        } as any).catch(() => {})
+      }
+    } catch {}
     return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
 }

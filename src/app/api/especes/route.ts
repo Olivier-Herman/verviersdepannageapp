@@ -4,6 +4,7 @@
 //        { action: 'encode_fourriere', ids, pin }               (Olivier, caisse fourrière)
 //        { action: 'confirm', ids, pin } | 'not_received' | 'remind'   (Momo)
 import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { role, adminView, adminAction, adminEncodeFourriere, momoView, momoConfirm, momoNotReceived, momoRemind } from '@/lib/especes/actions'
@@ -14,7 +15,16 @@ export async function GET() {
   const u = (await getServerSession(authOptions))?.user as any
   if (!u?.id) return NextResponse.json({ role: null, items: [] })
   const r = await role(u.id)
-  if (r === 'admin') return NextResponse.json({ role: r, items: await adminView() })
+  if (r === 'admin') {
+    // Dernier passage de la mise à jour en échec : Olivier le voit (27/11/2026 : bloquée du 20 au 27/11 sans que personne le sache).
+    let panne: string | null = null
+    try {
+      const { data } = await createAdminClient().from('app_settings').select('value').eq('key', 'especes_last_run').maybeSingle()
+      const v = data?.value ? JSON.parse(String(data.value)) : null
+      if (v && v.ok === false) panne = `La liste des espèces n’est plus mise à jour depuis le ${new Date(v.depuis || v.at).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} : ${String(v.error || 'erreur inconnue').slice(0, 200)}`
+    } catch { /* l'avertissement est un plus */ }
+    return NextResponse.json({ role: r, items: await adminView(), panne })
+  }
   if (r === 'momo') return NextResponse.json({ role: r, items: await momoView() })
   return NextResponse.json({ role: null, items: [] })
 }

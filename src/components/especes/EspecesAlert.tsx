@@ -37,12 +37,13 @@ export default function EspecesAlert() {
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [panne, setPanne] = useState<string | null>(null)   // mise à jour des espèces en échec (27/11/2026)
   const [fouIds, setFouIds] = useState<number[]>([])   // caisse fourrière : paiements à encoder (code PIN d'Olivier)
 
   const load = useCallback(async () => {
     const r = await fetch('/api/especes', { cache: 'no-store' }).then(x => x.json()).catch(() => null)
     if (!r) return
-    setRole(r.role); setItems(r.items || [])
+    setRole(r.role); setItems(r.items || []); setPanne(r.panne || null)
     if (r.role === 'momo' && (r.items || []).length) { setOpen(true); setChecked(new Set((r.items || []).map((x: Item) => x.odoo_payment_id))) }
     if (r.role === 'momo' && !(r.items || []).length) setOpen(false)
     if (r.role === 'admin' && (r.items || []).some((x: Item) => x.status === 'pending')) {
@@ -69,7 +70,7 @@ export default function EspecesAlert() {
     return r
   }
 
-  if (!role || !items.length) return null
+  if (!role || (!items.length && !(role === 'admin' && panne))) return null
 
   // ── Olivier ────────────────────────────────────────────────────────────
   if (role === 'admin') {
@@ -84,7 +85,7 @@ export default function EspecesAlert() {
     if (!open) return (
       // Au-dessus du bouton du talkie (même coin, bas à droite) — 06/10/2026 : il le cachait à moitié.
       <button type="button" data-flottant="especes" onClick={() => setOpen(true)} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)' }} className="fixed right-3 z-40 min-h-[44px] px-4 rounded-full bg-orange-600 text-white text-sm font-semibold shadow-lg">
-        Espèces · {todo.length + todoFou.length}
+        {panne ? '⚠ ' : ''}Espèces · {todo.length + todoFou.length}
       </button>
     )
     return (
@@ -94,6 +95,7 @@ export default function EspecesAlert() {
             <div><p className="font-bold text-slate-900">Espèces</p><p className="text-sm text-slate-700">{todo.length > 0 && <>À remettre à Momo : {todo.length} paiement{todo.length > 1 ? 's' : ''} · {eur(total)}</>}{todo.length > 0 && todoFou.length > 0 && ' — '}{todoFou.length > 0 && <>Caisse fourrière : {todoFou.length} · {eur(fouTotal)}</>}</p></div>
             <button type="button" aria-label="Fermer" onClick={() => setOpen(false)} className="w-11 h-11 rounded-xl border text-slate-700">✕</button>
           </div>
+          {panne && <p className="px-4 py-2 text-sm font-semibold text-red-800 bg-red-50 border-b">⚠ {panne}</p>}
           <div className="divide-y">
             {todo.map(it => (
               <div key={it.odoo_payment_id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2">
