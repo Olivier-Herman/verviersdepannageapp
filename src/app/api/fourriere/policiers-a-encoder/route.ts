@@ -5,9 +5,9 @@
 //   GET              → la liste (zone de police déduite du lieu d'enlèvement quand elle manque)
 //   POST { id, officer_name, remarque, relancer }
 //                    → écrit le policier (officer_name) et la remarque sur la fiche.
-// Relances : le robot des saisies relie un nom de policier à son contact police et relance
-// le réquisitoire au passage suivant. « relancer » décide donc requisitoire_stop sur la fiche
-// (décoché = nom enregistré, relances coupées).
+// Relances : « relancer » décide requisitoire_stop sur la fiche (décoché = nom enregistré,
+// relances coupées). Coché avec un contact police relié : la relance part tout de suite, au
+// clic sur « Enregistrer » (Olivier 27/11/2026), puis le robot reprend son rythme de 7 jours.
 
 import { NextResponse }      from 'next/server'
 import { getServerSession }  from 'next-auth'
@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { sessionAccess }     from '@/lib/access'
 import { sourcesWithTag }    from '@/lib/missions/source-catalog'
 import { PARC_STATUSES }     from '@/lib/requisitoire/relance-items'
+import { sendRequisitoireRelance } from '@/lib/requisitoire/relance'
 
 export const dynamic = 'force-dynamic'
 
@@ -94,5 +95,14 @@ export async function POST(req: Request) {
   if (!!m.requisitoire_stop !== !relancer) notes.push(relancer ? 'Relances du réquisitoire activées' : 'Relances du réquisitoire coupées')
   if (notes.length) await sb.from('mission_logs').insert({ mission_id: id, action: 'note', notes: notes.join(' · '), actor_id: acc.id || null }).then(() => {}, () => {})
   const lie = (nomChange || contactChange) ? (nom ? partnerId : null) : (m.officer_partner_id ?? null)
-  return NextResponse.json({ ok: true, policier: nom, policier_id: lie, policier_relie: !!lie, remarque, relances_coupees: !relancer })
+  let relance: { ok: boolean; email?: string; error?: string } | null = null
+  // Envoi seulement quand la relance vient d'être cochée ou que le policier change :
+  // modifier la remarque d'une fiche déjà relancée ne renvoie rien.
+  const declenche = relancer && (!!m.requisitoire_stop || !m.officer_partner_id || nomChange || contactChange)
+  if (declenche) {
+    relance = !nom ? { ok: false, error: 'Pas de policier sur la fiche : rien à envoyer' }
+      : !lie ? { ok: false, error: 'Policier pas relié à un contact police : choisis-le dans la liste pour envoyer la relance' }
+      : await sendRequisitoireRelance(id).catch((e: any) => ({ ok: false, error: e?.message || 'Envoi impossible' }))
+  }
+  return NextResponse.json({ ok: true, policier: nom, policier_id: lie, policier_relie: !!lie, remarque, relances_coupees: !relancer, relance })
 }

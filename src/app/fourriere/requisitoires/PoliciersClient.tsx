@@ -74,9 +74,11 @@ export default function PoliciersClient() {
       setItems(list => (list || []).map(x => x.id === i.id ? { ...x, policier: j.policier, policier_id: j.policier_id, policier_relie: j.policier_relie, remarque: j.remarque, relances: b.relancer, relances_coupees: j.relances_coupees } : x))
       setBrouillons(s => { const n = { ...s }; delete n[i.id]; return n })
       setFaites(s => new Set(s).add(i.id))
-      setFlash({ id: i.id, ok: true, msg: b.relancer && b.policier.trim() ? 'Enregistré · le policier sera relancé au prochain passage' : 'Enregistré' })
+      const rel = j.relance as { ok: boolean; email?: string; error?: string } | null
+      if (rel?.ok) setItems(list => (list || []).map(x => x.id === i.id ? { ...x, nb_relances: x.nb_relances + 1 } : x))
+      setFlash({ id: i.id, ok: !rel || rel.ok, msg: !rel ? 'Enregistré' : rel.ok ? `Enregistré · relance envoyée à ${rel.email}` : `Enregistré, mais la relance n’est pas partie : ${rel.error}` })
     } catch (e: any) { setFlash({ id: i.id, ok: false, msg: e?.message || 'Enregistrement impossible' }) }
-    finally { setBusy(null); setTimeout(() => setFlash(f => f?.id === i.id ? null : f), 5000) }
+    finally { setBusy(null); setTimeout(() => setFlash(f => f?.id === i.id ? null : f), 10000) }
   }
 
   if (erreur) return (
@@ -95,7 +97,7 @@ export default function PoliciersClient() {
     <div className="px-3 lg:px-6 pt-3 pb-10 max-w-[1800px] min-w-0 [contain:inline-size] mx-auto space-y-3">
       <div className="rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 p-3.5 text-sm leading-relaxed">
         Véhicules au parc <b>sans réquisitoire</b>. Le nom du policier s’écrit sur la fiche. Tant que <b>« Relancer ce policier »</b> n’est pas cochée,
-        aucune relance ne part : le nom est seulement enregistré. Cochée, le policier reçoit la demande de réquisitoire au prochain passage du robot.
+        aucune relance ne part : le nom est seulement enregistré. Cochée, la demande de réquisitoire part au policier dès que tu cliques « Enregistrer », puis une relance par semaine.
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
