@@ -61,9 +61,13 @@ export async function importScradaCoda(days = 14): Promise<ScradaImportResult> {
   // le 07/10/2026 et l'import de 6 h, qui ne lisait qu'info@, n'a rien trouvé.
   const boxes = String(box || '').split(',').map(b => b.trim()).filter(Boolean)
   const mails: { id: string; box: string }[] = []
-  for (const b of boxes) {
-    const list = await graph(`/users/${encodeURIComponent(b)}/messages?$search=${encodeURIComponent(`"from:${sender}"`)}&$select=id,subject,receivedDateTime&$top=25`, token)
-    for (const m of list.value || []) if (m.receivedDateTime >= since && /coda/i.test(m.subject)) mails.push({ id: m.id, box: b })
+  // Expéditeurs : Scrada aujourd'hui, HOOS Livre de caisse à partir de la bascule du 01/12/2026 (Olivier 27/11) —
+  // même compte de caisse, même suite de relevés, donc même journal. Plusieurs adresses possibles, séparées par des virgules.
+  // HOOS n'écrit pas « CODA » dans l'objet (« Relevé de caisse · … ») : on accepte les deux.
+  const senders = String(sender || '').split(',').map(x => x.trim()).filter(Boolean)
+  for (const b of boxes) for (const from of senders) {
+    const list = await graph(`/users/${encodeURIComponent(b)}/messages?$search=${encodeURIComponent(`"from:${from}"`)}&$select=id,subject,receivedDateTime&$top=25`, token)
+    for (const m of list.value || []) if (m.receivedDateTime >= since && /coda|relev[ée] de caisse/i.test(m.subject) && !mails.some(x => x.id === m.id)) mails.push({ id: m.id, box: b })
   }
 
   // Les CODA, lus et triés par numéro de relevé.

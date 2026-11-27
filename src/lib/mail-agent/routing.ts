@@ -51,8 +51,9 @@ export async function routeByRules(msg: AgentMessage): Promise<Route | null> {
     .map(s => s.toLowerCase()).filter(Boolean)
   if (adviceSenders.includes(from)) return route('reconciliation', 'expéditeur des avis de paiement')
   if (ADVICE_SUBJECT.test(msg.subject || '')) return route('reconciliation', 'objet : avis ou détail de paiement')
-  const scrada = (await getBusinessText('mail_scrada_coda').catch(() => '')).toLowerCase()
-  if (scrada && from === scrada) return route('scrada', 'relevé Scrada')
+  // Plusieurs expéditeurs possibles (Scrada, puis HOOS Livre de caisse dès le 01/12/2026), séparés par des virgules.
+  const scrada = (await getBusinessText('mail_scrada_coda').catch(() => '')).toLowerCase().split(',').map(x => x.trim()).filter(Boolean)
+  if (scrada.includes(from)) return route('scrada', 'relevé de caisse')
   return null
 }
 
