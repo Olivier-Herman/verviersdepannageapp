@@ -8,15 +8,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import OfficerAutocomplete from '@/components/missions/OfficerAutocomplete'
 
 interface Item {
   id: string; fiche: number | null; plaque: string | null; vehicule: string | null
-  ancienne: boolean; zone: string | null; zone_deduite: boolean; adresse: string | null
+  ancienne: boolean; zone: string | null; societe_zone: number | null; zone_deduite: boolean; adresse: string | null
   entree: string | null; zone_parc: string | null; requerant: string | null
-  policier: string; policier_relie: boolean; relances: boolean; relances_coupees: boolean; nb_relances: number
+  policier: string; policier_id: number | null; policier_relie: boolean; relances: boolean; relances_coupees: boolean; nb_relances: number
   remarque: string; vu: { at: string; releve: boolean } | null
 }
-interface Brouillon { policier: string; remarque: string; relancer: boolean }
+interface Brouillon { policier: string; policier_id: number | null; remarque: string; relancer: boolean }
 
 const jour = (s: string | null) => s ? new Date(s).toLocaleDateString('fr-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 const mois = (s: string | null) => s ? Math.floor((Date.now() - Date.parse(s)) / (30.44 * 86_400_000)) : null
@@ -58,18 +59,19 @@ export default function PoliciersClient() {
     .filter(i => vue === 'tous' || faites.has(i.id) || (vue === 'sans' ? !i.policier.trim() : !!i.policier.trim()))
     .filter(i => !q.trim() || norm([i.plaque, i.fiche, i.vehicule, i.adresse, i.policier, i.requerant, i.remarque].filter(Boolean).join(' ')).includes(norm(q.trim())))
 
-  const brouillon = (i: Item): Brouillon => brouillons[i.id] || { policier: i.policier, remarque: i.remarque, relancer: i.relances }
-  const modifie = (i: Item) => { const b = brouillons[i.id]; return !!b && (b.policier.trim() !== i.policier.trim() || b.remarque.trim() !== i.remarque.trim() || b.relancer !== i.relances) }
-  const changer = (i: Item, p: Partial<Brouillon>) => setBrouillons(s => ({ ...s, [i.id]: { ...brouillon(i), ...p } }))
+  const brouillon = (i: Item): Brouillon => brouillons[i.id] || { policier: i.policier, policier_id: i.policier_id, remarque: i.remarque, relancer: i.relances }
+  const modifie = (i: Item) => { const b = brouillons[i.id]; return !!b && (b.policier.trim() !== i.policier.trim() || (b.policier_id ?? null) !== (i.policier_id ?? null) || b.remarque.trim() !== i.remarque.trim() || b.relancer !== i.relances) }
+  // Mise à jour fonctionnelle : le champ policier envoie le nom puis le contact dans le même clic.
+  const changer = (i: Item, p: Partial<Brouillon>) => setBrouillons(s => ({ ...s, [i.id]: { ...(s[i.id] || { policier: i.policier, policier_id: i.policier_id, remarque: i.remarque, relancer: i.relances }), ...p } }))
 
   const enregistrer = async (i: Item) => {
     const b = brouillon(i)
     setBusy(i.id)
     try {
-      const r = await fetch('/api/fourriere/policiers-a-encoder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: i.id, officer_name: b.policier, remarque: b.remarque, relancer: b.relancer }) })
+      const r = await fetch('/api/fourriere/policiers-a-encoder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: i.id, officer_name: b.policier, officer_partner_id: b.policier_id, remarque: b.remarque, relancer: b.relancer }) })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Enregistrement impossible')
-      setItems(list => (list || []).map(x => x.id === i.id ? { ...x, policier: j.policier, policier_relie: j.policier_relie, remarque: j.remarque, relances: b.relancer, relances_coupees: j.relances_coupees } : x))
+      setItems(list => (list || []).map(x => x.id === i.id ? { ...x, policier: j.policier, policier_id: j.policier_id, policier_relie: j.policier_relie, remarque: j.remarque, relances: b.relancer, relances_coupees: j.relances_coupees } : x))
       setBrouillons(s => { const n = { ...s }; delete n[i.id]; return n })
       setFaites(s => new Set(s).add(i.id))
       setFlash({ id: i.id, ok: true, msg: b.relancer && b.policier.trim() ? 'Enregistré · le policier sera relancé au prochain passage' : 'Enregistré' })
@@ -137,17 +139,20 @@ export default function PoliciersClient() {
                 </div>
 
                 <div className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-2.5">
-                  <label className="block">
-                    <span className="text-xs font-semibold text-ink-secondary">Policier</span>
-                    <input value={b.policier} onChange={e => changer(i, { policier: e.target.value })} placeholder="Nom et prénom"
-                      className="mt-1 w-full min-h-[44px] px-3 rounded-xl border border-app bg-surface text-sm text-ink" />
+                  <div className="block min-w-0">
+                    <OfficerAutocomplete label="Policier" value={b.policier}
+                      onChange={v => changer(i, { policier: v })}
+                      onPickPartner={id => changer(i, { policier_id: id })}
+                      companyId={i.societe_zone} allZones={!i.societe_zone} />
                     {i.requerant && !b.policier.trim() && (
-                      <button onClick={() => changer(i, { policier: i.requerant! })} className="mt-1.5 min-h-[36px] px-2.5 rounded-lg text-xs font-semibold border border-sky-300 bg-sky-50 text-sky-800">
-                        Reprendre « {i.requerant} » (requérant de l’ancien logiciel)
+                      <button onClick={() => changer(i, { policier: i.requerant!.split(/\s+/)[0], policier_id: null })} className="mt-1.5 min-h-[36px] px-2.5 rounded-lg text-xs font-semibold border border-sky-300 bg-sky-50 text-sky-800">
+                        Chercher « {i.requerant} » (requérant de l’ancien logiciel)
                       </button>
                     )}
-                    {i.policier && i.policier_relie && b.policier.trim() === i.policier.trim() && <span className="block mt-1 text-[11px] text-emerald-700">relié à son contact police</span>}
-                  </label>
+                    {b.policier.trim() && (b.policier_id
+                      ? <span className="block mt-1 text-[11px] font-semibold text-emerald-700">✓ relié à son contact police</span>
+                      : <span className="block mt-1 text-[11px] font-semibold text-amber-700">pas relié : choisis le policier dans la liste des contacts</span>)}
+                  </div>
                   <label className="block">
                     <span className="text-xs font-semibold text-ink-secondary">Remarque</span>
                     <textarea value={b.remarque} onChange={e => changer(i, { remarque: e.target.value })} rows={2} placeholder="Remarque libre"

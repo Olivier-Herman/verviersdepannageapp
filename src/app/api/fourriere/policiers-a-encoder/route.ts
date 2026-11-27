@@ -35,6 +35,10 @@ export async function GET() {
     .order('id', { ascending: true }).limit(1000)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const rows = data || []
+  // Zone de police → société des contacts police (recherche du policier dans sa zone).
+  const { data: pz } = await sb.from('police_zones').select('name, odoo_company_id')
+  const societe: Record<string, number | null> = {}
+  for (const z of pz || []) if (z?.name) societe[z.name] = z.odoo_company_id ?? null
 
   // Dernière fois que le véhicule a été vu au contrôle du parc (scan ou relevé de Verviers).
   const vu: Record<string, { at: string; releve: boolean }> = {}
@@ -50,9 +54,9 @@ export async function GET() {
     const requerant = r.billed_to_name && !/commissariat|prefecture|police|zone|options/i.test(r.billed_to_name) ? r.billed_to_name : null
     return {
       id: r.id, fiche: r.mission_number, plaque: r.vehicle_plate, vehicule: [r.vehicle_brand, r.vehicle_model].filter(Boolean).join(' ') || null,
-      ancienne: LEGACY.includes(r.source || ''), zone, zone_deduite: !r.police_zone && !!zone, adresse: adresse || null,
+      ancienne: LEGACY.includes(r.source || ''), zone, societe_zone: zone ? (societe[zone] ?? null) : null, zone_deduite: !r.police_zone && !!zone, adresse: adresse || null,
       entree: r.parked_at || r.created_at, zone_parc: r.parc_zone_key, requerant,
-      policier: r.officer_name || '', policier_relie: !!r.officer_partner_id,
+      policier: r.officer_name || '', policier_id: r.officer_partner_id ?? null, policier_relie: !!r.officer_partner_id,
       relances: !r.requisitoire_stop && !!r.officer_partner_id, relances_coupees: !!r.requisitoire_stop, nb_relances: r.requisitoire_reminder_count || 0,
       remarque: r.fourriere_remarque || '', vu: vu[r.id] || null,
     }
@@ -74,20 +78,21 @@ export async function POST(req: Request) {
   const nom = String(b.officer_name ?? '').trim().replace(/\s+/g, ' ')
   const remarque = String(b.remarque ?? '').trim()
   const relancer = !!b.relancer
+  // Contact police choisi dans la liste (comme le champ Agent de la fiche) ; texte libre = pas de contact.
+  const partnerId = Number(b.officer_partner_id) || null
   const patch: Record<string, any> = { fourriere_remarque: remarque || null, requisitoire_stop: !relancer, updated_at: new Date().toISOString() }
   const nomChange = nom !== String(m.officer_name || '').trim()
-  if (nomChange) {
-    patch.officer_name = nom || null
-    // Autre policier : l'ancien contact ne vaut plus, le robot reliera le nouveau nom.
-    patch.officer_partner_id = null
-  }
+  const contactChange = (partnerId ?? null) !== (m.officer_partner_id ?? null)
+  if (nomChange) patch.officer_name = nom || null
+  if (nomChange || contactChange) patch.officer_partner_id = nom ? partnerId : null
   const { error } = await sb.from('incoming_missions').update(patch).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const notes: string[] = []
-  if (nomChange) notes.push(nom ? `Policier encodé : ${nom}` : 'Policier retiré de la fiche')
+  if (nomChange || contactChange) notes.push(nom ? `Policier encodé : ${nom}${partnerId ? ' (contact police relié)' : ' (texte libre, pas de contact relié)'}` : 'Policier retiré de la fiche')
   if (remarque !== String(m.fourriere_remarque || '').trim()) notes.push(remarque ? `Remarque : ${remarque}` : 'Remarque effacée')
   if (!!m.requisitoire_stop !== !relancer) notes.push(relancer ? 'Relances du réquisitoire activées' : 'Relances du réquisitoire coupées')
   if (notes.length) await sb.from('mission_logs').insert({ mission_id: id, action: 'note', notes: notes.join(' · '), actor_id: acc.id || null }).then(() => {}, () => {})
-  return NextResponse.json({ ok: true, policier: nom, policier_relie: nomChange ? false : !!m.officer_partner_id, remarque, relances_coupees: !relancer })
+  const lie = (nomChange || contactChange) ? (nom ? partnerId : null) : (m.officer_partner_id ?? null)
+  return NextResponse.json({ ok: true, policier: nom, policier_id: lie, policier_relie: !!lie, remarque, relances_coupees: !relancer })
 }
