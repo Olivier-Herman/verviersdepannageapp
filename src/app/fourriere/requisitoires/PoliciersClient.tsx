@@ -76,7 +76,7 @@ export default function PoliciersClient() {
       setFaites(s => new Set(s).add(i.id))
       const rel = j.relance as { ok: boolean; email?: string; error?: string } | null
       if (rel?.ok) setItems(list => (list || []).map(x => x.id === i.id ? { ...x, nb_relances: x.nb_relances + 1 } : x))
-      setFlash({ id: i.id, ok: !rel || rel.ok, msg: !rel ? 'Enregistré' : rel.ok ? `Enregistré · relance envoyée à ${rel.email}` : `Enregistré, mais la relance n’est pas partie : ${rel.error}` })
+      setFlash({ id: i.id, ok: !rel || rel.ok, msg: !rel ? 'Enregistré' : rel.ok ? `Relance envoyée à ${rel.email} · la fiche quitte cette liste et se suit dans « Manquants »` : `Enregistré, mais la relance n’est pas partie : ${rel.error}` })
     } catch (e: any) { setFlash({ id: i.id, ok: false, msg: e?.message || 'Enregistrement impossible' }) }
     finally { setBusy(null); setTimeout(() => setFlash(f => f?.id === i.id ? null : f), 10000) }
   }
@@ -97,7 +97,7 @@ export default function PoliciersClient() {
     <div className="px-3 lg:px-6 pt-3 pb-10 max-w-[1800px] min-w-0 [contain:inline-size] mx-auto space-y-3">
       <div className="rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 p-3.5 text-sm leading-relaxed">
         Véhicules au parc <b>sans réquisitoire</b>. Le nom du policier s’écrit sur la fiche. Tant que <b>« Relancer ce policier »</b> n’est pas cochée,
-        aucune relance ne part : le nom est seulement enregistré. Cochée, la demande de réquisitoire part au policier dès que tu cliques « Enregistrer », puis une relance par semaine.
+        aucune relance ne part : le nom est seulement enregistré. Cochée, la demande de réquisitoire part au policier dès que tu cliques « Enregistrer », puis une relance par semaine ; la fiche quitte alors cette liste et se suit dans « Manquants ».
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">

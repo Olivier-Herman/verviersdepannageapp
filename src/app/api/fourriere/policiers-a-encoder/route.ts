@@ -49,7 +49,8 @@ export async function GET() {
     for (const x of it || []) if (!vu[x.mission_id] || x.scanned_at > vu[x.mission_id].at) vu[x.mission_id] = { at: x.scanned_at, releve: x.via === 'releve' }
   }
 
-  const items = rows.map(r => {
+  // Policier relié et relance partie : la fiche est suivie dans « Manquants », elle quitte cet onglet (Olivier 27/11/2026).
+  const items = rows.filter(r => !(r.officer_partner_id && !r.requisitoire_stop && (r.requisitoire_reminder_count || 0) > 0)).map(r => {
     const adresse = String(r.incident_address || '').replace(/gps:.*$/i, '').replace(/Code Postal:\s*\d+/i, '').replace(/,\s*Belgium/i, '').replace(/\s+/g, ' ').trim().replace(/,$/, '')
     const zone = r.police_zone || (VESDRE.test(r.incident_address || '') ? 'Police Zone Vesdre' : null)
     const requerant = r.billed_to_name && !/commissariat|prefecture|police|zone|options/i.test(r.billed_to_name) ? r.billed_to_name : null
