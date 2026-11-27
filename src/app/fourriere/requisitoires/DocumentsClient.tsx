@@ -10,7 +10,7 @@
 //     (policier lié ? portail ? rappels), l'écran Relance existant, embarqué.
 // Les deux écrans d'origine restent joignables par leur adresse.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import TabLegend from '@/components/ui/TabLegend'
 import RequisitoiresClient from './RequisitoiresClient'
@@ -27,6 +27,13 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
   const [tab, setTab] = useState<'recus' | 'manquants' | 'policiers'>(pendingCount > 0 ? 'recus' : 'manquants')
   // S3 : dans la préversion, « Manquants » ne compte que les saisies de moins de 6 mois.
   const missing = relanceItems.filter(i => !i.stop && (!habille || !estHorsDelai(i))).length
+  // Tuile « Policiers à encoder » : même liste que l'onglet (fiches de l'ancien logiciel comprises).
+  const [aEncoder, setAEncoder] = useState<number | null>(null)
+  useEffect(() => {
+    if (!habille) return
+    fetch('/api/fourriere/policiers-a-encoder', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+      .then(j => { if (j?.items) setAEncoder(j.items.filter((i: any) => !String(i.policier || '').trim()).length) }).catch(() => {})
+  }, [habille, tab])
   const noOfficer = relanceItems.filter(i => !i.stop && !i.officer_linked && (!habille || !estHorsDelai(i))).length
 
   return (
@@ -45,7 +52,7 @@ export default function DocumentsClient({ userRole, userName, userEmail, userMod
               <b className="block text-3xl font-extrabold leading-none tabular-nums">{missing}</b><span className="text-[13px] font-semibold">Manquants</span>
             </button>
             <button onClick={() => setTab('policiers')} className={`text-left rounded-2xl px-4 py-3 min-h-[80px] border shadow-sm bg-amber-100 border-amber-300 text-amber-900 col-span-2 lg:col-span-1 ${tab === 'policiers' ? 'ring-2 ring-current ring-offset-2 ring-offset-surface' : ''}`}>
-              <b className="block text-3xl font-extrabold leading-none tabular-nums">{relanceItems.filter(i => !i.officer_name?.trim()).length}</b><span className="text-[13px] font-semibold">Policiers à encoder</span>
+              <b className="block text-3xl font-extrabold leading-none tabular-nums">{aEncoder ?? '…'}</b><span className="text-[13px] font-semibold">Policiers à encoder</span>
             </button>
           </div>
         )}
