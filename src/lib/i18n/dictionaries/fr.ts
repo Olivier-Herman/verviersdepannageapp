@@ -413,6 +413,8 @@ export const fr = {
     mg_deplacement_sub:  'Il paie le déplacement et reprend son véhicule tout de suite.',
     mg_deplacement_amount: 'À encaisser : {amount} € TVAC. Le paiement termine la mission.',
     snc_payment_required:'💳 Encaisse le client avant de finaliser (paiement obligatoire).',
+    photos_en_attente:   '⏳ {n} photo(s) pas encore envoyée(s) : elles sont gardées sur le téléphone et partiront seules dès que le réseau revient.',
+    photos_non_gardees:  '⚠️ {n} photo(s) pas encore envoyée(s) et pas gardées sur le téléphone : ne ferme pas l\'app, attends le réseau ou préviens le dispatch.',
     snc_amount_unresolved:'⚠️ Montant à encaisser NON calculé (position incident manquante). Préviens le dispatch pour fixer le montant AVANT de clôturer.',
     btn_other_actions:   '☰ Autres actions',
     parked_card_title:   '🅿️ Véhicule déposé au parc',

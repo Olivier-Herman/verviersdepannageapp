@@ -789,6 +789,19 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const photosRef    = useRef<File[]>([]);   photosRef.current    = photos
   const photoUrlsRef = useRef<string[]>([]); photoUrlsRef.current = photoUrls
   const bgBusyRef    = useRef(false)
+  // Photos non envoyées gardées sur le téléphone, dans le stockage des gros fichiers (lib/photos/attente.ts) —
+  // 0AGB096, 28/11/2026 : l'ancienne copie (petit stockage, ≈ 5 Mo) échouait en silence dès la première photo et la
+  // page rechargée après « Véhicule chargé » les perdait. `gardePhotosRef` = dernière sauvegarde en cours : on l'attend
+  // avant tout rechargement de la page.
+  const PHOTOS_FILE = `mission:${M.id}`
+  const gardePhotosRef = useRef<Promise<void>>(Promise.resolve())
+  const photosPretesRef = useRef(false)
+  const reduitesRef = useRef(new WeakMap<File, Blob>())
+  const [photosNonGardees, setPhotosNonGardees] = useState(false)
+  /** Recharge la page APRÈS avoir gardé les photos pas encore envoyées (jamais de perte au rechargement). */
+  const recharger = (href?: string) => {
+    gardePhotosRef.current.catch(() => {}).finally(() => { if (href) window.location.href = href; else recharger() })
+  }
   const [sig, setSig]             = useState<string>('')
   const [disch, setDisch]         = useState<DischargeEntry[]>([])
   const [paid, setPaid]           = useState(false)
@@ -1002,7 +1015,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       }
       setSetAmtModalOpen(false)
       setSetAmtValue(''); setSetAmtPin(''); setSetAmtPinMode(false); setSetAmtNoPin(false)
-      window.location.reload()
+      recharger()
     } catch (e: any) {
       setErr(e.message || 'Erreur')
     } finally {
@@ -1351,6 +1364,20 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       setPreviews([...uploaded, ...pending])
       if (pending.length) setPhotos(pending.map((b64, i) => dataUrlToFile(b64, `restored-${Date.now()}-${i}.jpg`)))
     }
+    // Photos gardées dans le stockage durable (28/11/2026) : elles remplacent l'ancienne copie base64 si elles existent.
+    ;(async () => {
+      try {
+        const { lister } = await import('@/lib/photos/attente')
+        const gardees = await lister(PHOTOS_FILE)
+        if (gardees.length) {
+          const fichiers = gardees.map((g, i) => new File([g.blob], `garde-${g.at}-${i}.jpg`, { type: g.blob.type || 'image/jpeg' }))
+          fichiers.forEach((f, i) => reduitesRef.current.set(f, gardees[i].blob))
+          setPhotos(fichiers)
+          setPreviews([...uploaded, ...fichiers.map(f => URL.createObjectURL(f))])
+        }
+      } catch { /* stockage indisponible : on garde la copie base64 éventuelle */ }
+      finally { photosPretesRef.current = true; setPhotos(p => [...p]) }
+    })()
     if (d.sig)   setSig(d.sig)
     if (d.disch) setDisch(Array.isArray(d.disch) ? d.disch : d.disch ? [d.disch] : [])
     // ⚠️ L'ÉCRAN AUSSI SE MÉMORISE (Olivier 2026-08-21). L'app peut être fermée
@@ -1372,10 +1399,23 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   // Persiste en continu les photos NON envoyées (base64) dans le brouillon, pour
   // qu'elles ne soient jamais perdues (app tuée en arrière-plan pendant le trajet).
   // Garde : ne pas écrire avant la ré-hydratation (sinon on écraserait le draft).
+  // 28/11/2026 : dans le stockage des gros fichiers, photos réduites (l'ancienne copie base64 dépassait la place).
   useEffect(() => {
-    if (!hydratedRef.current) return
-    saveDraft({ pendingB64: previews.slice(photoUrls.length) })
-  }, [previews, photoUrls]) // eslint-disable-line
+    if (!photosPretesRef.current) return
+    const lot = [...photos]
+    gardePhotosRef.current = gardePhotosRef.current.catch(() => {}).then(async () => {
+      const { remplacer, reduire } = await import('@/lib/photos/attente')
+      const blobs: Blob[] = []
+      for (const f of lot) {
+        let b = reduitesRef.current.get(f)
+        if (!b) { b = await reduire(f); reduitesRef.current.set(f, b) }
+        blobs.push(b)
+      }
+      const ok = await remplacer(PHOTOS_FILE, blobs)
+      setPhotosNonGardees(!ok && lot.length > 0)
+      if (ok) saveDraft({ pendingB64: [] })   // l'ancienne copie n'est plus utile
+    })
+  }, [photos]) // eslint-disable-line
 
   // Décharge — flow type → champs dynamiques → signature
   const [dTypeKey, setDTypeKey] = useState<string>('')  // '' = ecran de selection
@@ -1713,7 +1753,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
         const __url = new URL(window.location.href)
         __url.searchParams.set('t', String(Date.now()))
         console.log(`[api] RELOAD URL=${__url.toString()}`)
-        window.location.href = __url.toString()
+        recharger(__url.toString())
       }
     } catch (e: any) {
       console.error(`[api] ERR action=${action}:`, e?.message || e)
@@ -2043,7 +2083,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       {
         const __url = new URL(window.location.href)
         __url.searchParams.set('t', String(Date.now()))
-        window.location.href = __url.toString()
+        recharger(__url.toString())
       }
     } catch (e: any) { setErr(e.message || 'Erreur') }
     finally { setLoading(false) }
@@ -2133,7 +2173,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       if (!r.ok) throw new Error(j.error || 'Erreur')
       const __url = new URL(window.location.href)
       __url.searchParams.set('t', String(Date.now()))
-      window.location.href = __url.toString()
+      recharger(__url.toString())
     } catch (e: any) { setErr(e.message || 'Échec de la reclassification Siabis') }
     finally { setLoading(false) }
   }
@@ -2203,7 +2243,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       if (!r.ok) throw new Error(j.error || 'Erreur')
       const __url = new URL(window.location.href)
       __url.searchParams.set('t', String(Date.now()))
-      window.location.href = __url.toString()
+      recharger(__url.toString())
     } catch (e: any) { setErr(e.message || 'Échec du repassage sur l\'assistance d\'origine') }
     finally { setLoading(false) }
   }
@@ -2673,7 +2713,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
   const reloadMission = () => {
     const __url = new URL(window.location.href)
     __url.searchParams.set('t', String(Date.now()))
-    window.location.href = __url.toString()
+    recharger(__url.toString())
   }
 
 
@@ -3248,7 +3288,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               après chaque prise (autosave + retries). On informe juste si un envoi
               est encore en cours, sans bloquer. Olivier 2026-07-25. */}
           {photos.length > 0 && (
-            <p className="text-center text-amber-500 text-sm font-medium">⏳ {photos.length} photo{photos.length > 1 ? 's' : ''} en cours d&apos;envoi… (automatique)</p>
+            <p className={`text-center text-sm font-medium ${photosNonGardees ? 'text-red-700' : 'text-amber-700'}`}>{photosNonGardees ? t('mission_detail.photos_non_gardees', { n: String(photos.length) }) : t('mission_detail.photos_en_attente', { n: String(photos.length) })}</p>
           )}
           {photos.length === 0 && previews.length > 0 && (
             <p className="text-center text-emerald-500 text-sm font-medium">✓ Toutes les photos sont enregistrées</p>
@@ -4319,10 +4359,10 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
                   // Plus rien en pending → soit decision rendue, soit cancelled
                   // Force reload pour re-render proprement (la modal peut ne pas
                   // avoir le contexte si decision rendue avant subscription)
-                  window.location.reload()
+                  recharger()
                 }
               } catch {
-                window.location.reload()
+                recharger()
               }
             } else {
               (window as any).__derogTapTs = now
@@ -4521,7 +4561,7 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
               </div>
             )}
             <button
-              onClick={() => { setDerogResult(null); window.location.reload() }}
+              onClick={() => { setDerogResult(null); recharger() }}
               className="w-full py-3.5 bg-brand text-white font-semibold rounded-2xl text-sm"
             >
               OK
@@ -5294,6 +5334,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
 
 
 
+        {photos.length > 0 && (
+          <p className={`text-sm rounded-xl px-3 py-2 border ${photosNonGardees ? 'bg-red-50 border-red-300 text-red-800' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
+            {photosNonGardees ? t('mission_detail.photos_non_gardees', { n: String(photos.length) }) : t('mission_detail.photos_en_attente', { n: String(photos.length) })}
+          </p>
+        )}
         {err && <p className="text-red-400 text-sm bg-red-500/10 rounded-xl px-3 py-2">⚠️ {err}<SignalerErreur message={err} where="action" missionId={M.id} /></p>}
       </div>
 

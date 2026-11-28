@@ -403,6 +403,8 @@ export const sq: Dictionary = {
     mg_deplacement_sub:  'Ai paguan udhëtimin dhe e merr automjetin menjëherë.',
     mg_deplacement_amount: 'Për të arkëtuar: {amount} € me TVSH. Pagesa e përfundon misionin.',
     snc_payment_required:'💳 Arkëto klientin para se të përfundosh (pagesë e detyrueshme).',
+    photos_en_attente:   '⏳ {n} foto ende të padërguara: ruhen në telefon dhe do të dërgohen vetë sapo të kthehet rrjeti.',
+    photos_non_gardees:  '⚠️ {n} foto ende të padërguara dhe të paruajtura në telefon: mos e mbyll aplikacionin, prit rrjetin ose njofto dispeçerin.',
     snc_amount_unresolved:'⚠️ Shuma për t\'u arkëtuar NUK është llogaritur (mungon vendndodhja e incidentit). Njofto dispeçerin për të caktuar shumën PARA se ta mbyllësh.',
     btn_other_actions:   '☰ Veprime të tjera',
     parked_card_title:   '🅿️ Mjeti i dorëzuar në parking',

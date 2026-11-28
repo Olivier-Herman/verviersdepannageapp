@@ -7,7 +7,7 @@
 // 4,5 Mo, et deux envois simultanés pouvaient s'écraser la liste des photos.
 // Les photos rejoignent celles du chauffeur (driver_photos) : fiche, PDF, FSM.
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, ImagePlus, Loader2 } from 'lucide-react'
 import BurstCamera from '@/components/camera/BurstCamera'
 import { compressImage } from '@/lib/image-compress'
@@ -22,11 +22,19 @@ export function usePhotoQueue(missionId: string, via: PhotoVia, onAdded?: (urls:
   const [failed, setFailed] = useState(0)
   const [added, setAdded] = useState<string[]>([])
   const [total, setTotal] = useState<number | null>(null)
-  const enqueue = useCallback((blob: Blob) => {
+  // File gardée sur le téléphone (lib/photos/attente.ts, 28/11/2026) : sans réseau, la photo n'est plus perdue à la
+  // fermeture de l'app ou au rechargement ; elle repart à la prochaine ouverture et au retour du réseau.
+  const FILE = `${via}:${missionId}`
+  const enCours = useRef(new Set<string>())   // photos gardées déjà dans la file d'envoi (pas de double envoi)
+  const enqueue = useCallback((blob: Blob, idGarde?: string) => {
     setPending(n => n + 1)
     chain.current = chain.current.then(async () => {
+      const { garder, oublier } = await import('@/lib/photos/attente')
+      let id = idGarde || null
       try {
         const small = await compressImage(blob, 1600)
+        if (!id) id = await garder(FILE, small)
+        if (id) enCours.current.add(id)
         const fd = new FormData()
         fd.append('files', new File([small], `photo_${Date.now()}.jpg`, { type: small.type || 'image/jpeg' }))
         fd.append('via', via)
@@ -37,9 +45,24 @@ export function usePhotoQueue(missionId: string, via: PhotoVia, onAdded?: (urls:
         setAdded(a => [...a, ...urls]); setSent(n => n + 1)
         if (typeof j.total === 'number') setTotal(j.total)
         onAdded?.(urls)
-      } catch { setFailed(n => n + 1) } finally { setPending(n => n - 1) }
+        if (id) await oublier(id)
+      } catch { setFailed(n => n + 1) } finally { if (id) enCours.current.delete(id); setPending(n => n - 1) }
     })
-  }, [missionId, via, onAdded])
+  }, [missionId, via, onAdded]) // eslint-disable-line
+  // Reprise des photos restées sur le téléphone, puis nouvel essai au retour du réseau.
+  const reprendre = useCallback(async () => {
+    const { lister } = await import('@/lib/photos/attente')
+    const restees = await lister(FILE)
+    if (!restees.length) return
+    setFailed(0)
+    for (const r of restees) if (!enCours.current.has(r.id)) { enCours.current.add(r.id); enqueue(r.blob, r.id) }
+  }, [FILE, enqueue])
+  useEffect(() => {
+    reprendre()
+    const onLine = () => { reprendre() }
+    window.addEventListener('online', onLine)
+    return () => window.removeEventListener('online', onLine)
+  }, [reprendre])
   return { enqueue, sent, pending, failed, added, total }
 }
 

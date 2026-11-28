@@ -460,7 +460,9 @@ export default function SncMissionFiche({
   // camion, puis choisit. Une prise = un envoi, dans l'ordre ; sans réseau, la photo attend et repart seule.
   const [camera, setCamera] = useState(false)
   const [photosEnAttente, setPhotosEnAttente] = useState(0)
-  const fileRef = useRef<Blob[]>([])
+  // File gardée sur le téléphone (lib/photos/attente.ts, 28/11/2026) : une photo sans réseau survit à la fermeture de
+  // l'app et au rechargement de la page, et repart seule.
+  const fileRef = useRef<{ blob: Blob; id: string | null }[]>([])
   const envoiRef = useRef(false)
   const envoyerPhotos = useCallback(async () => {
     if (envoiRef.current) return
@@ -468,12 +470,13 @@ export default function SncMissionFiche({
     try {
       while (fileRef.current.length) {
         const fd = new FormData()
-        fd.append('files', fileRef.current[0], `siabis-${Date.now()}.jpg`)
+        fd.append('files', fileRef.current[0].blob, `siabis-${Date.now()}.jpg`)
         fd.append('via', 'fiche')
         const r = await fetch(`/api/missions/${M.id}/photos-add`, { method: 'POST', body: fd })
         if (!r.ok) throw new Error('envoi')
         const j = await r.json().catch(() => ({}))
-        fileRef.current.shift()
+        const envoyee = fileRef.current.shift()
+        if (envoyee?.id) { const { oublier } = await import('@/lib/photos/attente'); await oublier(envoyee.id) }
         setPhotosEnAttente(fileRef.current.length)
         if (Array.isArray(j.urls)) setM(prev => ({ ...prev, driver_photos: [...(prev.driver_photos || []), ...j.urls] }))
       }
@@ -487,7 +490,24 @@ export default function SncMissionFiche({
     const iv = setInterval(envoyerPhotos, 15000)
     return () => { window.removeEventListener('online', onLine); clearInterval(iv) }
   }, [photosEnAttente, envoyerPhotos])
-  const prendrePhoto = (b: Blob) => { fileRef.current.push(b); setPhotosEnAttente(fileRef.current.length); envoyerPhotos() }
+  const prendrePhoto = async (b: Blob) => {
+    const { garder, reduire } = await import('@/lib/photos/attente')
+    const petite = await reduire(b)
+    const entree = { blob: petite, id: null as string | null }
+    fileRef.current.push(entree); setPhotosEnAttente(fileRef.current.length)
+    entree.id = await garder(`siabis:${M.id}`, petite)
+    envoyerPhotos()
+  }
+  // Photos restées sur le téléphone (app fermée, page rechargée sans réseau) : on les reprend et on les envoie.
+  useEffect(() => {
+    ;(async () => {
+      const { lister } = await import('@/lib/photos/attente')
+      const restees = await lister(`siabis:${M.id}`)
+      if (!restees.length) return
+      for (const r of restees) if (!fileRef.current.some(x => x.id === r.id)) fileRef.current.push({ blob: r.blob, id: r.id })
+      setPhotosEnAttente(fileRef.current.length); envoyerPhotos()
+    })()
+  }, [M.id]) // eslint-disable-line
   const nbPhotos = (M.driver_photos || []).length
 
   const goLegacyPhotos = () => {
