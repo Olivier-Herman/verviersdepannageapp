@@ -504,8 +504,8 @@ export const NOTIFICATION_TYPES: readonly NotificationType[] = [
   },
   {
     key:             'touring_close_failed',
-    label:           'Touring : clôture d’une relivraison non passée',
-    description:     "La relivraison est terminée chez nous mais VD Soft n'a pas pu la clôturer dans COMEX : Touring la voit encore « en route ». La clôturer dans COMEX ou prévenir Mobi.",
+    label:           'Touring : mission terminée chez nous, pas clôturée chez eux',
+    description:     "Une relivraison ou une mission est terminée chez nous mais n'a pas été clôturée dans COMEX : Touring la voit encore en cours. La clôturer dans COMEX ou prévenir Mobi.",
     category:        'admin',
     applicableRoles: ['dispatcher', 'admin', 'superadmin'],
     defaultEnabled:  true,

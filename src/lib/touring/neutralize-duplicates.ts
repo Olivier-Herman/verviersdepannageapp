@@ -96,6 +96,21 @@ export async function neutralizeTouringDuplicates(sb: any): Promise<{ ignored: n
       }).then(() => {}, () => {})
       merged++
       refs.push(`#${n.mission_number}→#${sibling.mission_number}`)
+      // La fiche est DÉJÀ terminée chez nous (le chauffeur a déclaré « transformer en remorquage » puis « livré »
+      // d'un trait, avant que Touring ne crée son action de remorquage) : personne ne clôturera cette action de
+      // suite. On la clôture « livrée » avec les codes du remorquage déjà déclarés (2JNL128, 2GJY961, 2HDD491 —
+      // Olivier 28/11/2026). Seulement si une transformation en remorquage est bien partie de cette fiche.
+      if (['to_invoice', 'completed', 'invoiced'].includes(String(sibling.status))) {
+        try {
+          const { REM_FIN_CODES } = await import('@/lib/touring/close-presets')
+          const { data: clos } = await sb.from('mission_logs').select('metadata').eq('mission_id', sibling.id).eq('action', 'touring_closed').order('created_at', { ascending: false }).limit(10)
+          const rem = (clos || []).map((x: any) => x.metadata || {}).find((md: any) => REM_FIN_CODES.has(String(md.finCode)) && md.cause && md.desc && md.result)
+          if (rem) {
+            const { closeComexPourFiche } = await import('@/lib/touring/close-bureau')
+            await closeComexPourFiche(sibling.id, null, { outcome: 'delivered', prefill: { cause: rem.cause, desc: rem.desc, result: rem.result }, seq: String(nSeq), contexte: 'suite créée par Touring après la livraison' })
+          }
+        } catch (e: any) { console.warn('[touring] clôture de la suite après livraison', e?.message) }
+      }
       continue
     }
 

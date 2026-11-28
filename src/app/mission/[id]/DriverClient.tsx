@@ -2106,7 +2106,11 @@ export default function DriverClient({ mission: init, currentUserId, userRole, i
       await changeType('REM')   // recharge la fiche
     } else if (kind === 'arrival') {
       // Arrivée à destination d'un REM sans adresse : adresse enregistrée →
-      // on enchaîne sur l'écran de clôture.
+      // on enchaîne sur l'écran de clôture. Avec la clôture unifiée, c'est celle de
+      // l'assistance d'abord, comme pour un remorquage dont l'adresse était connue :
+      // sinon la mission se terminait chez nous sans rien envoyer à l'assistance
+      // (1CTN270, 27/11/2026 : restée « sur place » chez Touring).
+      if (flux2 && !rel) { setF2Outcome('delivered'); setF2Screen('close'); return }
       setCloseType('rem')
       setScreen('close')
     } else {

@@ -4,6 +4,7 @@ import ContratAssistance from '@/components/missions/ContratAssistance'
 import { SNC_SUPPLEMENTS, normSupplements } from '@/lib/snc/supplements'
 import SamConversations from '@/components/sam/SamConversations'
 import RaisonForcage from '@/components/missions/RaisonForcage'
+import ClotureTouringBureau from '@/components/missions/ClotureTouringBureau'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import EtapeVrVab from '@/components/mission/EtapeVrVab'
 import { useRouter }   from 'next/navigation'
@@ -480,6 +481,9 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
+  // Remorquage Touring jamais clôturé par le chauffeur : le serveur demande le motif de la panne (28/11/2026).
+  const [motifs,   setMotifs]   = useState<Array<{ key: string; label: string; icon?: string }>>([])
+  const [motifKey, setMotifKey] = useState<string>('')
 
   useEffect(() => {
     fetch('/api/parc/zones-and-depots')
@@ -511,10 +515,12 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
           // Zone optionnelle : null si dépôt sans zones (uniquement Pepinster
           // a des zones aujourd hui ; les autres entrepots deposent sans zone).
           parc_zone_key:   zoneKey || null,
+          ...(motifKey ? { touring_motif: motifKey } : {}),
           ...extra,
         }),
       })
       const j = await r.json()
+      if (r.status === 409 && j.motif_required) { setMotifs(j.motifs || []); setError(null); setSubmitting(false); return }
       // Une relivraison existe déjà : on le PROPOSE au dispatch au lieu de refuser (Olivier 09/09/2026).
       if (r.status === 409 && j.rel_exists && j.rel) {
         const n = j.rel.mission_number ?? ''
@@ -591,6 +597,18 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
               </div>
             </div>
 
+            {motifs.length > 0 && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
+                <label className="block text-amber-900 text-xs font-bold mb-1">Motif de la panne (demandé par Touring)</label>
+                <p className="text-amber-800 text-[11px] mb-2">Le chauffeur n’a pas clôturé cette mission : choisis le motif, il servira à clôturer la relivraison chez Touring.</p>
+                <select value={motifKey} onChange={e => setMotifKey(e.target.value)}
+                  className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2.5 text-amber-900 text-sm min-h-[44px]">
+                  <option value="">— Choisir le motif —</option>
+                  {motifs.map(x => <option key={x.key} value={x.key}>{x.icon ? `${x.icon} ` : ''}{x.label}</option>)}
+                </select>
+              </div>
+            )}
+
             {error && <p className="text-critical text-xs">⚠ {error}</p>}
 
             <div className="flex gap-2 pt-2">
@@ -598,7 +616,7 @@ function ForceParkModal({ missionId, currentDepotId, currentZone, onClose, onDon
                 className="flex-1 py-2.5 bg-surface-2 border text-ink-secondary rounded-xl text-sm font-medium">
                 Annuler
               </button>
-              <button onClick={() => submit()} disabled={submitting || !depotId}
+              <button onClick={() => submit()} disabled={submitting || !depotId || (motifs.length > 0 && !motifKey)}
                 className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold">
                 {submitting ? '⏳ ...' : 'Mettre en Parc'}
               </button>
@@ -896,6 +914,8 @@ export default function MissionDetailClient({
   const [forceScen, setForceScen] = useState(false)   // choix du scénario Siabis au forçage (01/11/2026)
   const [forceRaison, setForceRaison] = useState(false)
   const [forcingRaison, setForcingRaison] = useState(false)
+  // Mission Touring jamais clôturée chez eux : issue + motif demandés au bureau avant de forcer (28/11/2026).
+  const [forceTouring, setForceTouring] = useState<null | { raison: string; motifs_dsp: any[]; motifs_rem: any[]; motifs_dpr: any[] }>(null)
   // Audit dispatch B8 (08/09/2026) : chaque router.refresh() de la fiche signale
   // aussi « cette fiche a changé » aux lignes dépliées / dossiers qui l'embarquent.
   const nextRouter = useRouter()
@@ -4556,8 +4576,24 @@ export default function MissionDetailClient({
                             headers: { 'Content-Type': 'application/json' },
                             body:    JSON.stringify({ status: 'to_invoice', raison }),
                           })
-                          if (!r.ok) { const j = await r.json().catch(() => ({})); if (j.scenario_required) { setForceRaison(false); setForceScen(true); return } alert(j.error || 'Clôture refusée'); return }
+                          if (!r.ok) { const j = await r.json().catch(() => ({})); if (j.touring_cloture_required) { setForceRaison(false); setForceTouring({ raison, motifs_dsp: j.motifs_dsp || [], motifs_rem: j.motifs_rem || [], motifs_dpr: j.motifs_dpr || [] }); return } if (j.scenario_required) { setForceRaison(false); setForceScen(true); return } alert(j.error || 'Clôture refusée'); return }
                           setForceRaison(false)
+                          setStatus('to_invoice')
+                          setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
+                          router.refresh()
+                        } catch (e: any) { alert('Erreur : ' + e.message) } finally { setForcingRaison(false) }
+                      }} />}
+                    {forceTouring && <ClotureTouringBureau busy={forcingRaison} motifsDsp={forceTouring.motifs_dsp} motifsRem={forceTouring.motifs_rem} motifsDpr={forceTouring.motifs_dpr}
+                      onAnnuler={() => setForceTouring(null)} onChoix={async (choix) => {
+                        setForcingRaison(true)
+                        try {
+                          const r = await fetch(`/api/missions/${initialMission.id}/force-status`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body:    JSON.stringify({ status: 'to_invoice', raison: forceTouring.raison, touring_cloture: choix }),
+                          })
+                          if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Clôture refusée'); return }
+                          setForceTouring(null)
                           setStatus('to_invoice')
                           setM(prev => ({ ...prev, status: 'to_invoice', completed_at: new Date().toISOString() } as any))
                           router.refresh()

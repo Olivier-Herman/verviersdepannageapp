@@ -10,7 +10,7 @@ import { createAdminClient } from '@/lib/supabase'
 import { comexKeysOf } from '@/lib/touring/sync'
 import { transformTouring, type TransformInput } from '@/lib/cloture/transform/touring'
 import { enqueueClose, isRetryable } from '@/lib/cloture/queue'
-import { prefillCodes } from '@/lib/cloture/prefill'
+import { prefillCodes, codesSecoursRelivraison } from '@/lib/cloture/prefill'
 import { isRelivraison } from '@/lib/missions/mission-types'
 
 
@@ -41,9 +41,13 @@ export async function closeComexRelivraison(missionId: string, actorId: string |
     keys = { CID_DOS: keys.CID_DOS, CID_SEQ_ACTION: String(choix.CID_SEQ_ACTION) }
   } catch { /* liste indisponible : on tente avec la séquence de la fiche, la file rejouera si besoin */ }
 
+  // Rien à reprendre (mise au parc forcée par le bureau sans motif, véhicule entré par un appel police) : motif de
+  // secours au lieu d'un refus qui laisse la relivraison ouverte chez Touring (Olivier 28/11/2026).
+  const repris = await prefillCodes(sb, m)
+  const secours = repris ? null : await codesSecoursRelivraison(sb, m)
   const input: TransformInput = {
     outcome: 'delivered',
-    prefill: await prefillCodes(sb, m),
+    prefill: repris || secours!.codes,
     vin: (m as any).vehicle_vin || (m as any).vehicle_vin_partial || null,
     km: (m as any).vehicle_mileage ?? null,
     ficheDestination: (m as any).destination_address || null,
@@ -53,9 +57,9 @@ export async function closeComexRelivraison(missionId: string, actorId: string |
   }
   const r = await transformTouring(keys, input)
   if (r.ok && r.codes) {
-    await log('touring_closed', `Clôture Touring (relivraison) action ${keys.CID_SEQ_ACTION} — code ${r.finCode} (codes ${r.codes.cause}/${r.codes.desc}/${r.codes.result})`, {
+    await log('touring_closed', `Clôture Touring (relivraison) action ${keys.CID_SEQ_ACTION} — code ${r.finCode} (codes ${r.codes.cause}/${r.codes.desc}/${r.codes.result}${secours ? ` — motif de secours « ${secours.origine} », aucun code à reprendre` : ''})`, {
       finCode: r.finCode, cause: r.codes.cause, desc: r.codes.desc, result: r.codes.result, seq: keys.CID_SEQ_ACTION,
-      statusBefore: r.statusBefore, statusAfter: r.statusAfter, relivraison: true,
+      statusBefore: r.statusBefore, statusAfter: r.statusAfter, relivraison: true, ...(secours ? { secours: secours.origine } : {}),
     })
     return { ok: true, note: 'clôturée' }
   }

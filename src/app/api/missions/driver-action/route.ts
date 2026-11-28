@@ -636,7 +636,25 @@ export async function POST(req: Request) {
   if (['completed', 'complete_delivery'].includes(action) && (updated as any)?.source_format === 'comex') {
     const run = (async () => {
       const { closeComexRelivraison } = await import('@/lib/touring/close-relivraison')
-      await closeComexRelivraison(mission_id, actor?.id ?? null).catch(e => console.warn('[driver-action] clôture relivraison Touring', e?.message))
+      const rel = await closeComexRelivraison(mission_id, actor?.id ?? null).catch(e => { console.warn('[driver-action] clôture relivraison Touring', e?.message); return null })
+      // Filet (1CTN270, 27/11/2026) : une mission Touring qui n'est pas une relivraison se termine ici sans qu'aucune
+      // clôture ne soit partie chez Touring (ni envoyée, ni refusée, ni en file) → le dispatch le sait tout de suite.
+      if (rel && rel.note === 'pas une relivraison') {
+        try {
+          const { count } = await supabase.from('mission_logs').select('id', { count: 'exact', head: true }).eq('mission_id', mission_id)
+            .in('action', ['touring_closed', 'flux2_closed', 'flux2_close_failed', 'flux2_retry_ok'])
+          if (!count) {
+            await supabase.from('mission_logs').insert({ mission_id, actor_id: actor?.id ?? null, action: 'assistance_close_error',
+              notes: 'Mission terminée sans clôture chez Touring : aucun code n’est parti. À clôturer à la main dans COMEX.' }).then(() => {}, () => {})
+            const { sendNotificationToRoles } = await import('@/lib/notifications/send')
+            await sendNotificationToRoles(['dispatcher', 'admin', 'superadmin'], 'touring_close_failed', {
+              title: `Touring : ${(updated as any)?.vehicle_plate || 'mission'} terminée sans clôture dans COMEX`,
+              body: `Fiche ${(updated as any)?.mission_number || ''} : le chauffeur a terminé sans passer par la clôture Touring. Touring la voit encore en cours.`,
+              action_url: `/dispatch/${mission_id}`,
+            })
+          }
+        } catch (e: any) { console.warn('[driver-action] filet clôture Touring', e?.message) }
+      }
     })()
     try { const { waitUntil } = await import('@vercel/functions'); waitUntil(run) } catch { await run }
   }

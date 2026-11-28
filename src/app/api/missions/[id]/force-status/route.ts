@@ -52,6 +52,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     snc_scenario?:     string | null
     // R6 (Olivier 11/11/2026) : pourquoi la fiche est forcée « à facturer ».
     raison?:           string | null
+    // Motif de panne choisi par le bureau quand il force « au parc » un remorquage Touring (Olivier 28/11/2026).
+    touring_motif?:    string | null
+    // Clôture forcée d'une mission Touring jamais clôturée chez eux : issue + motif donnés par le bureau.
+    touring_cloture?:  { outcome?: string; motifKey?: string | null; dprCode?: string | null } | null
   }
   if (!body.status || !(ALLOWED_STATUS as readonly string[]).includes(body.status)) {
     return NextResponse.json({ error: `Status invalide. Allowed: ${ALLOWED_STATUS.join(', ')}` }, { status: 400 })
@@ -83,6 +87,66 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({
         error: `Cette fiche est le volet gardiennage du dossier (facturation), pas le véhicule. Agis sur la fiche principale${root?.mission_number ? ` #${root.mission_number}` : ''}.`,
       }, { status: 409 })
+    }
+  }
+
+  // Remorquage Touring forcé « au parc » par le bureau (Olivier 28/11/2026) : le chauffeur n'est pas passé par l'écran
+  // de clôture, donc aucun code de panne n'existe et la relivraison n'a rien à reprendre (6 relivraisons restées
+  // ouvertes chez Touring). Le bureau choisit le motif ici ; il servira à la clôture de la relivraison.
+  let motifBureau: { key: string; label: string; touring: { cause: string; desc: string; result: string } } | null = null
+  if (body.status === 'parked') {
+    const { data: tm } = await sb.from('incoming_missions').select('status, source_format, raw_content, mission_type').eq('id', params.id).maybeSingle()
+    const { comexKeysOf } = await import('@/lib/touring/sync')
+    const { isRelivraison } = await import('@/lib/missions/mission-types')
+    if (tm && tm.status !== 'parked' && comexKeysOf(tm as any) && !isRelivraison((tm as any).mission_type)) {
+      const { MOTIF_BUREAU } = await import('@/lib/cloture/prefill')
+      const { count } = await sb.from('mission_logs').select('id', { count: 'exact', head: true }).eq('mission_id', params.id).in('action', ['touring_closed', MOTIF_BUREAU])
+      if (!count) {
+        const { findMotif, motifsForBranch } = await import('@/lib/cloture/motifs')
+        const motif = body.touring_motif ? findMotif('remorquage', String(body.touring_motif)) : undefined
+        if (!motif) {
+          return NextResponse.json({
+            error: 'Mission Touring : choisis le motif de la panne avant de mettre au parc. Le chauffeur n’a pas clôturé, Touring attend ce motif pour la relivraison.',
+            motif_required: true,
+            motifs: motifsForBranch('remorquage').map(x => ({ key: x.key, label: x.label, icon: x.icon })),
+          }, { status: 409 })
+        }
+        motifBureau = { key: motif.key, label: motif.label, touring: motif.touring }
+      }
+    }
+  }
+
+  // Mission Touring en cours forcée « terminée / à facturer » (Olivier 28/11/2026 : « il faut que tout se clôture »,
+  // 1PBJ687 restée « sur place » chez Touring) : le bureau dit ce qui s'est passé (réparé, livré, déplacement pour
+  // rien) et le motif, et la clôture part chez Touring comme si le chauffeur l'avait faite. Seulement pour une
+  // mission en cours jamais clôturée chez eux ; une relivraison a sa propre clôture plus bas.
+  let clotureBureau: { outcome: 'dsp' | 'delivered' | 'dpr'; motifKey: string | null; dprCode: string | null } | null = null
+  if (body.status === 'to_invoice' || body.status === 'completed') {
+    const { data: tm } = await sb.from('incoming_missions').select('status, source_format, raw_content, mission_type').eq('id', params.id).maybeSingle()
+    const { comexKeysOf } = await import('@/lib/touring/sync')
+    const { isRelivraison } = await import('@/lib/missions/mission-types')
+    if (tm && ['assigned', 'accepted', 'in_progress', 'delivering'].includes(String(tm.status)) && comexKeysOf(tm as any) && !isRelivraison((tm as any).mission_type)) {
+      const { clotureTouringConnue } = await import('@/lib/touring/close-bureau')
+      if (!(await clotureTouringConnue(sb, params.id))) {
+        const { findMotif, motifsForBranch } = await import('@/lib/cloture/motifs')
+        const { DPR_END_CODES } = await import('@/lib/cloture/outcomes')
+        const tc = body.touring_cloture || {}
+        const o = String(tc.outcome || '')
+        const ok = (o === 'dsp' && !!findMotif('mobilite', String(tc.motifKey || '')))
+          || (o === 'delivered' && !!findMotif('remorquage', String(tc.motifKey || '')))
+          || (o === 'dpr' && DPR_END_CODES.some(x => x.code === String(tc.dprCode || '')))
+        if (!ok) {
+          const court = (l: any[]) => l.map(x => ({ key: x.key, label: x.label, icon: x.icon }))
+          return NextResponse.json({
+            error: 'Mission Touring : dis ce qui s’est passé et choisis le motif. La clôture partira chez Touring en même temps.',
+            touring_cloture_required: true,
+            motifs_dsp: court(motifsForBranch('mobilite')),
+            motifs_rem: court(motifsForBranch('remorquage')),
+            motifs_dpr: DPR_END_CODES.map(x => ({ key: x.code, label: x.label })),
+          }, { status: 409 })
+        }
+        clotureBureau = { outcome: o as any, motifKey: o === 'dpr' ? null : String(tc.motifKey), dprCode: o === 'dpr' ? String(tc.dprCode) : null }
+      }
     }
   }
 
@@ -287,6 +351,29 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     notes:      `Statut force par dispatcher → ${body.status}${body.raison ? ` · ${String(body.raison).slice(0, 200)}` : ''}`,
     metadata:   { forced_by_role: role, ...(body.raison ? { raison: String(body.raison).slice(0, 200) } : {}), ...(update.assigned_to === null ? { assignment_reset: true } : {}) },
   })
+
+  if (motifBureau) {
+    const { MOTIF_BUREAU } = await import('@/lib/cloture/prefill')
+    await sb.from('mission_logs').insert({
+      mission_id: params.id, actor_id: userId, action: MOTIF_BUREAU,
+      notes: `Motif de panne choisi par le bureau à la mise au parc forcée : ${motifBureau.label} (codes Touring ${motifBureau.touring.cause}/${motifBureau.touring.desc}/${motifBureau.touring.result}). Il servira à clôturer la relivraison chez Touring.`,
+      metadata: { ...motifBureau.touring, motifKey: motifBureau.key, label: motifBureau.label },
+    }).then(() => {}, () => {})
+    await sb.from('incoming_missions').update({ panne_motif: motifBureau.key, panne_motif_label: motifBureau.label }).eq('id', params.id).is('panne_motif', null)
+  }
+
+  // « Il faut que tout se clôture » (Olivier 28/11/2026) : la mise au parc ou la clôture forcée par le bureau part
+  // aussi chez Touring, en tâche de fond. Un refus de Touring est tracé sur la fiche et signalé au dispatch.
+  if (motifBureau || clotureBureau) {
+    const tBg = (async () => {
+      try {
+        const { closeComexPourFiche } = await import('@/lib/touring/close-bureau')
+        if (motifBureau) await closeComexPourFiche(params.id, userId, { outcome: 'park', motifKey: motifBureau.key, contexte: 'mise au parc par le bureau' })
+        else if (clotureBureau) await closeComexPourFiche(params.id, userId, { outcome: clotureBureau.outcome, motifKey: clotureBureau.motifKey, dprCode: clotureBureau.dprCode, contexte: 'clôture forcée par le bureau' })
+      } catch (e: any) { console.warn('[force-status] clôture Touring par le bureau', e?.message) }
+    })()
+    try { const { waitUntil } = await import('@vercel/functions'); waitUntil(tBg) } catch { await tBg }
+  }
 
   // Olivier 2026-06-18 : clôture FORCÉE par le dispatch d'une mission Kaze →
   // clôturer AUSSI le job Kaze automatiquement (étapes + photos), comme le ferait

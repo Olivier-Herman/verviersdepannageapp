@@ -5,11 +5,29 @@
 // « Une relivraison ne doit jamais demander le code panne. Le code panne est déterminé avant la mise en parc. La
 // voiture, en restant dans le parc, n'a pas de raison de changer de code panne. C'est un parking, pas Lourdes »
 // (Olivier 2026-08-18). On va donc chercher les codes chez le parent.
+/** Motif de panne choisi par le bureau quand il force « au parc » un remorquage Touring (pas d'écran de clôture
+ *  chauffeur, donc aucun code) : il sert à la relivraison, comme les codes d'une clôture normale. */
+export const MOTIF_BUREAU = 'touring_motif_bureau'
+
+/**
+ * Secours quand une relivraison n'a AUCUN code à reprendre (Olivier 28/11/2026 — 10 relivraisons restées ouvertes chez
+ * Touring depuis le 19/10) : véhicule entré par un appel police → véhicule entier / accident / réparation sur route
+ * impossible ; sinon le motif « Autre panne → remorquage ». Réservé à la clôture d'une relivraison.
+ */
+export async function codesSecoursRelivraison(sb: any, mission: any): Promise<{ codes: { cause: string; desc: string; result: string }; origine: 'appel police' | 'autre panne' }> {
+  const { CODES_RELIVRAISON_APPEL_POLICE } = await import('@/lib/touring/close-presets')
+  const { catchAllOf } = await import('@/lib/cloture/motifs')
+  let source: string | null = null
+  if (mission?.parent_mission_id) source = (await sb.from('incoming_missions').select('source').eq('id', mission.parent_mission_id).maybeSingle()).data?.source || null
+  if (/^police_/.test(String(source || ''))) return { codes: { ...CODES_RELIVRAISON_APPEL_POLICE }, origine: 'appel police' }
+  return { codes: { ...catchAllOf('remorquage').touring }, origine: 'autre panne' }
+}
+
 export async function prefillCodes(sb: any, mission: any): Promise<{ cause: string; desc: string; result: string } | null> {
   const ids = [mission?.id, mission?.parent_mission_id].filter(Boolean)
   for (const id of ids) {
     const { data } = await sb.from('mission_logs')
-      .select('metadata').eq('mission_id', id).eq('action', 'touring_closed')
+      .select('metadata').eq('mission_id', id).in('action', ['touring_closed', MOTIF_BUREAU])
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     const md: any = (data as any)?.metadata
     if (md?.cause && md?.desc && md?.result) return { cause: md.cause, desc: md.desc, result: md.result }

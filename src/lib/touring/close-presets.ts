@@ -43,6 +43,9 @@ export interface ClosePreset {
 
 /** COD_PANNE_RESULT figé pour tout remorquage. */
 export const RESULT_REM_IMPOSSIBLE = '73'   // « Réparation sur route impossible »
+/** Relivraison d'un véhicule entré par un APPEL POLICE et repris par Touring : la fiche d'origine n'a aucun code de
+ *  panne Touring. Olivier 28/11/2026 : « Appel police = véhicule entier – accident – réparation sur route impossible ». */
+export const CODES_RELIVRAISON_APPEL_POLICE = { cause: '999', desc: '42', result: RESULT_REM_IMPOSSIBLE }
 
 /**
  * Référentiel « Fin de mission » (COD_FIN_MISSION) code→libellé — dump COMEX
