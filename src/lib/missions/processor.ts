@@ -1142,6 +1142,36 @@ async function processEmailMessageInner(messageId: string): Promise<ProcessResul
       }
     }
 
+    // ── Commande DISTINCTE pour un véhicule déjà AU PARC (Olivier 28/11/2026, 1NPU771) ──
+    // Famille IMA : le remorquage (B61284451AA) et la relivraison commandée le lendemain
+    // (B61284451AB) partagent le même groupe de dossier. Le mail de relivraison était donc
+    // pris pour une redite du premier et ignoré : aucune alerte au dispatch, rien dans
+    // « À relivrer », commande jamais validée chez l'assistance. Une référence de commande
+    // DIFFÉRENTE de celle de la fiche en parc, et que nous n'avons encore nulle part, est une
+    // nouvelle commande : elle suit la règle commune (lib/missions/reserve-rel.ts — mise en
+    // réserve sur le dossier, adresse de relivraison, étiquette, « À relivrer »). Le second
+    // mail de la même commande (« Confirmation ») la retrouve par sa référence et reste ignoré.
+    let commandeAuParc: { parentId: string; ref: string } | null = null
+    if (existingMissionId && existingStatus === 'parked' && isImaLikeSrc) {
+      const ref = String(parsed.external_id || '').trim()
+      const refOk = !!ref && !ref.startsWith('UNKNOWN_') && !ref.startsWith('ERR_')
+      const { data: fichePark } = await supabase.from('incoming_missions').select('external_id').eq('id', existingMissionId).maybeSingle()
+      const refPark = String((fichePark as any)?.external_id || '').trim()
+      if (refOk && refPark && ref.toUpperCase() !== refPark.toUpperCase()) {
+        const { data: deja } = await supabase.from('incoming_missions').select('id').ilike('external_id', ref).not('id', 'eq', placeholderId || '').limit(1)
+        if (!(deja || []).length) {
+          commandeAuParc = { parentId: existingMissionId, ref }
+          console.log(`[Processor] ${ref} : nouvelle commande pour le véhicule au parc ${refPark} (${existingMissionId}) → fiche à part, mise en réserve`)
+          existingMissionId = null
+          existingKazeJobId = null
+          existingStatus    = null
+          existingAxaLinked = false
+          // Une relivraison part de notre dépôt : c'est un remorquage pour la mise en réserve.
+          if (/(R[ée]sum[ée]|Samenvatting)\s*:[^\n]*\b(Relivraison|Aflevering)\b/i.test(content.rawContent || '')) parsed.mission_type = 'remorquage'
+        }
+      }
+    }
+
     // ── Mail tardif sur un dossier DÉJÀ CLÔTURÉ chez nous ──────────────────
     // Cas réel (audit AXA 10/09/2026) : fiche créée à la main à l'appel
     // téléphonique, intervention faite, puis le mail de l'assisteur arrive
@@ -1624,7 +1654,26 @@ async function processEmailMessageInner(messageId: string): Promise<ProcessResul
     // n'est pas une nouvelle commande.
     if (!existingMissionId && targetId) {
       const { reserveTowForParkedVehicle } = await import('@/lib/missions/reserve-rel')
-      await reserveTowForParkedVehicle({ sb: supabase, missionId: targetId, actorName: `rattaché automatiquement à la réception du mail ${source}` })
+      const reserve = await reserveTowForParkedVehicle({ sb: supabase, missionId: targetId, actorName: `rattaché automatiquement à la réception du mail ${source}` })
+      // Commande reçue par mail pour un véhicule au parc (1NPU771, 28/11/2026) : personne ne la valide
+      // chez l'assistance à notre place. On le rappelle au dispatch et on le note sur la fiche en parc.
+      if (commandeAuParc) {
+        const { sourceLabel } = await import('@/lib/missions/source-catalog')
+        const qui = await sourceLabel(source).catch(() => String(source).toUpperCase())
+        const plaque = parsed.vehicle_plate || 'sans plaque'
+        const adresse = parsed.destination_address ? ` vers ${parsed.destination_address}` : ''
+        await supabase.from('mission_logs').insert({
+          mission_id: commandeAuParc.parentId, action: 'rel_order_received',
+          notes: `📩 ${qui} : commande de relivraison ${commandeAuParc.ref} reçue par mail${adresse}. ${reserve.reserved ? 'Mise en réserve dans « À relivrer ».' : `Arrivée dans les missions en attente (${reserve.reason || 'non rattachée'}).`} À valider chez l'assistance : VD Soft ne le fait pas pour une commande reçue par mail.`,
+          metadata: { ref: commandeAuParc.ref, order_mission_id: targetId, reserved: reserve.reserved, source_email_id: messageId },
+        }).then(() => {}, () => {})
+        const { sendPushToRole } = await import('@/lib/push')
+        await sendPushToRole(['admin', 'superadmin', 'dispatcher'], {
+          title: `📩 ${qui} : relivraison à valider — ${plaque}`,
+          body:  `Commande ${commandeAuParc.ref} reçue par mail${adresse}. À valider chez l'assistance, elle ne l'est pas automatiquement.`,
+          url:   reserve.reserved ? '/relivraison' : '/dispatch',
+        }).catch(() => {})
+      }
     }
 
     // ── Allianz : lecture DIRECTE d'Hexalite avec l'accès permanent (Olivier 23/11/2026) ──
